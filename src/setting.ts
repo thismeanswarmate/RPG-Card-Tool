@@ -135,17 +135,17 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
   const roles = cues('character')
 
   /** A person with a role and a home; their details come later, once there are powers to tie them to. */
-  const person = (home: string): Char => {
+  const person = (home: string, what?: string): Char => {
     const fresh = roles.filter((r) => !people.some((c) => c.what === r))
-    const c: Char = { id: nextId('c', people), kind: 'figure', what: pick(fresh.length ? fresh : roles), home, local: false, details: [] }
+    const c: Char = { id: nextId('c', people), kind: 'figure', what: what ?? pick(fresh.length ? fresh : roles), home, local: false, details: [] }
     name(c.id, { kind: 'person', tongue: tongueAt(home) }, rootOf(board, home))
     people.push(c)
     return c
   }
 
-  const make = (kind: Kind, home?: string, from?: string): Entity => {
+  const make = (kind: Kind, home?: string, from?: string, given?: string): Entity => {
     const fresh = PRIMARY[kind].filter((p) => !entities.some((e) => e.kind === kind && e.what === p))
-    const what = pick(fresh.length ? fresh : PRIMARY[kind])
+    const what = given ?? pick(fresh.length ? fresh : PRIMARY[kind])
     const e: Entity = { id: nextId('e', entities), kind, what, home, details: [], ...(from ? { from } : {}) }
     entities.push(e)
     const nameKind = kind === 'figure' || kind === 'place' ? 'object' : kind
@@ -237,9 +237,9 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
     return h
   }
   /** A settlement or dangerous place, rolled in full and named for where it stands. */
-  const build = (tool: Built['tool'], home: string): Built => {
+  const build = (tool: Built['tool'], home: string, given: Rolls = {}): Built => {
     const built = (s.built ??= [])
-    const rolls = tool === 'settlement' ? rollSettlement({}, [], rng) : rollPeril({}, [], rng)
+    const rolls = tool === 'settlement' ? rollSettlement(given, Object.keys(given), rng) : rollPeril(given, Object.keys(given), rng)
     const b: Built = { id: nextId('b', built), tool, home, rolls }
     built.push(b)
     if (tool === 'settlement') name(b.id, { kind: 'place', tongue: tongueAt(home) })

@@ -4,10 +4,10 @@
 import { cueText, autoEdge, rootOf, subtree } from './logic'
 import { PRIMARY, type Kind } from './lore'
 import { tonguesFor } from './names'
-import { kindLabel, rollAll as rollPeril, stepsFor as perilSteps } from './peril'
+import { KINDS as PERIL_KINDS, kindLabel, rollAll as rollPeril, stepsFor as perilSteps } from './peril'
 import { STORY_CARDS } from './story'
 import { DEFAULT_ANSWERS, weave, type Built, type Char, type Entity, type Setting } from './setting'
-import { rollAll as rollSettlement, stepsFor as settlementSteps } from './settlement'
+import { rollAll as rollSettlement, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
 import type { CardType } from './types'
 
@@ -270,4 +270,88 @@ export function remove(s: Setting, id: string) {
     if ('faction' in e && e.faction && gone.has(e.faction)) delete e.faction
   }
   for (const spec of Object.values(s.specs)) if (spec.homeId && gone.has(spec.homeId)) delete spec.homeId
+}
+
+// Mentions: words in a description that name a kind of thing the setting could hold — a council, a flood,
+// a lighthouse, a village — so that the thing itself can be added from where it is mentioned.
+
+export type Mention =
+  | { type: 'power'; kind: Kind; what?: string }
+  | { type: 'person'; what: string }
+  | { type: 'site'; card: string; cue: number }
+  | { type: 'built'; tool: Built['tool']; rolls: Record<string, number> }
+/** What a mention would add, in a word, for its colour and its button. */
+export const mentionKind = (m: Mention) => (m.type === 'power' ? m.kind : m.type === 'person' ? 'figure' : m.type === 'site' ? 'site' : m.tool)
+
+interface Lexicon { words: RegExp; names: RegExp | null; by: Map<string, Mention>; stamp: string }
+const lexicons = new WeakMap<Setting, Lexicon>()
+const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** Words with too many everyday meanings to be worth marking. */
+const TOO_COMMON = new Set(['order', 'watch', 'well', 'gate', 'map', 'rival', 'general', 'stranger', 'twin', 'cook', 'capital', 'landmark', 'child', 'friend', 'guest', 'keeper', 'pilot'])
+
+function lexicon(s: Setting): Lexicon {
+  // Made once for a setting as it stands, and again when its cards or names have changed.
+  const stamp = `${Object.keys(s.board).join()}|${Object.values(s.names).join()}`
+  const known = lexicons.get(s)
+  if (known?.stamp === stamp) return known
+  const by = new Map<string, Mention>()
+  const put = (word: string, m: Mention) => { const w = word.toLowerCase(); if (!by.has(w) && !TOO_COMMON.has(w)) by.set(w, m) }
+  // Earlier entries win where a word could be two things.
+  for (const c of unused(s, 'site')) c.cues.forEach((cue, i) => put(cue.text, { type: 'site', card: c.id, cue: i }))
+  for (const what of PRIMARY.faction) put(what, { type: 'power', kind: 'faction', what })
+  for (const what of [...roleCards(s).flatMap((c) => c.cues), ...PRIMARY.figure]) put(what, { type: 'person', what })
+  // The last word of a longer role stands for it: a "wizard" in a description can become the hedge wizard.
+  for (const what of roleCards(s).flatMap((c) => c.cues)) if (what.includes(' ')) put(what.split(' ').at(-1)!, { type: 'person', what })
+  Object.values(SETTLEMENT_TYPES).forEach((t, i) => put(t.label.replace(' town', ''), { type: 'built', tool: 'settlement', rolls: { type: i } }))
+  Object.values(PERIL_KINDS).forEach((k, i) => put(k.label, { type: 'built', tool: 'peril', rolls: { kind: i } }))
+  for (const kind of ['event', 'object', 'creature', 'material'] as Kind[]) for (const what of PRIMARY[kind]) put(what, { type: 'power', kind, what })
+  for (const word of ['god', 'goddess', 'deity', 'saint']) put(word, { type: 'power', kind: 'deity' })
+  const alt = (list: string[]) => list.sort((a, b) => b.length - a.length).map(escape).join('|')
+  const names = Object.values(s.names).filter((n) => n.length > 2)
+  const made: Lexicon = {
+    by, stamp,
+    words: new RegExp(`(?<![\\p{L}’'-])(${alt([...by.keys()])})(?:e?s)?(?![\\p{L}’'-])`, 'giu'),
+    names: names.length ? new RegExp(alt(names), 'gi') : null,
+  }
+  lexicons.set(s, made)
+  return made
+}
+
+/**
+ * A description cut into plain text and mentions. Names already given to things are left alone, each word
+ * is marked once, and `skip` is what the text is itself about.
+ */
+export function findMentions(s: Setting, text: string, skip?: string): (string | { text: string; mention: Mention })[] {
+  const lex = lexicon(s)
+  const named = lex.names ? [...text.matchAll(lex.names)].map((m) => [m.index, m.index + m[0].length]) : []
+  const out: (string | { text: string; mention: Mention })[] = []
+  const seen = new Set<string>()
+  let at = 0
+  for (const m of text.matchAll(lex.words)) {
+    const word = m[1].toLowerCase()
+    if (seen.has(word) || word === skip?.toLowerCase() || named.some(([a, b]) => m.index < b && m.index + m[0].length > a)) continue
+    seen.add(word)
+    out.push(text.slice(at, m.index), { text: m[0], mention: lex.by.get(word)! })
+    at = m.index + m[0].length
+  }
+  out.push(text.slice(at))
+  return out.filter((x) => x !== '')
+}
+
+/** Add the thing a mention names, at the spot whose description mentioned it. Returns its id. */
+export function addMention(s: Setting, m: Mention, home: string): string | undefined {
+  const w = weave(s)
+  if (m.type === 'site') {
+    if (s.board[m.card]) return
+    const root = rootOf(s.board, home)
+    tuck(s, m.card, root, m.cue)
+    const again = weave(s)
+    again.name(m.card, { kind: 'site', tongue: again.tongueAt(root), base: cueText(CARDS, s.board[m.card]).toLowerCase() }, root)
+    return m.card
+  }
+  if (m.type === 'built') return w.build(m.tool, home, m.rolls).id
+  if (m.type === 'person') { const c = w.person(home, m.what); w.detail(c, w.depth.minor, false); return c.id }
+  const e = w.make(m.kind, home, undefined, m.what)
+  w.detail(e, m.kind === 'faction' ? w.depth.major : w.depth.minor, false)
+  return e.id
 }

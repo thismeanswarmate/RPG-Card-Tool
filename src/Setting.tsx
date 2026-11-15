@@ -10,7 +10,7 @@ import {
   type Answers, type Built, type Char, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import {
-  addBuilt, addPerson, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn,
+  addBuilt, addMention, addPerson, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, findMentions, mentionKind,
   goneWith, redrawPlace, remove, removeStory, rerollStory, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
 } from './settingBuild'
 import { SettingMap } from './SettingMap'
@@ -174,6 +174,31 @@ function useRemove(s: SettingData) {
 
 const MORE: Kind[] = ['deity', 'event', 'object', 'creature', 'material']
 
+/**
+ * Paragraphs in which every word that names a kind of thing the setting could hold is coloured, with a +
+ * beside it while editing that adds that thing at this spot.
+ */
+function Prose({ s, text, home, skip }: { s: SettingData; text: string[]; home?: string; skip?: string }) {
+  const editing = useContext(EditCtx)
+  const add = useAdd()
+  return (
+    <div className="prose">
+      {text.map((t, i) => (
+        <p key={i}>
+          {findMentions(s, t, skip).map((part, j) => typeof part === 'string' ? part : (
+            <span key={j} className={`mention m-${mentionKind(part.mention)}`}>
+              {part.text}
+              {editing && home && s.board[home] && (
+                <button title={`Add this ${part.text.toLowerCase()} here`} aria-label={`Add ${part.text}`} onClick={() => add((d) => addMention(d, part.mention, home))}>+</button>
+              )}
+            </span>
+          ))}
+        </p>
+      ))}
+    </div>
+  )
+}
+
 /** The buttons for adding to one spot: a site on the land, or powers, people and built places anywhere. */
 function AddBar({ s, home, land }: { s: SettingData; home: string; land?: boolean }) {
   const add = useAdd()
@@ -202,7 +227,7 @@ function BuiltBlock({ b, s }: { b: Built; s: SettingData }) {
   return (
     <section id={`set-${b.id}`} className={`entry nested built ${b.tool}`}>
       <h5><Name id={b.id} s={s} /> <small>{b.tool === 'settlement' ? 'settlement' : 'dangerous place'} · {builtKind(b)}</small></h5>
-      <div className="prose">{builtText(s, b).map((t, i) => <p key={i}>{t}</p>)}</div>
+      <Prose s={s} text={builtText(s, b)} home={b.home} />
       {editing && (
         <>
           <details className="tables">
@@ -369,7 +394,7 @@ function EntityBlock({ e, s, children }: { e: Entity; s: SettingData; children?:
     <section id={`set-${e.id}`} className={`entry nested lk-${e.kind}`}>
       <h5><Name id={e.id} s={s} /> <small>{e.kind === 'deity' ? e.what : `${e.kind} · ${e.what}`}</small></h5>
       <Picture id={e.id} s={s} />
-      <div className="prose">{entityText(s, e).map((t, i) => <p key={i}>{t}</p>)}</div>
+      <Prose s={s} text={entityText(s, e)} home={e.home} skip={e.what} />
       <Refs label="Tied to" ids={tiesTo(s, e.id)} s={s} />
       <EditRow id={e.id} s={s} what={e.what} />
       {children}
@@ -382,7 +407,7 @@ function PersonBlock({ c, s }: { c: Char; s: SettingData }) {
     <section id={`set-${c.id}`} className="entry nested lk-figure">
       <h5><Name id={c.id} s={s} /> <small>{c.what}</small></h5>
       <Picture id={c.id} s={s} />
-      <div className="prose">{charText(s, c).map((t, i) => <p key={i}>{t}</p>)}</div>
+      <Prose s={s} text={charText(s, c)} home={c.home} skip={c.what} />
       <Refs label="Tied to" ids={tiesTo(s, c.id).filter((id) => id !== c.faction)} s={s} />
       <EditRow id={c.id} s={s} what={c.what} person={c} />
     </section>
@@ -447,7 +472,7 @@ function Gazetteer({ s }: { s: SettingData }) {
           <h3>{!roots.length ? 'Step 1: a place' : bare ? `Next: fill in ${s.names[bare]}` : 'Next: another place, or more detail'}</h3>
           <p>
             {!roots.length ? 'Every setting starts somewhere. Add a place and it arrives with a kind of land, a site, a name and a description, each drawn for you: pick between the options that came up, or redraw for new ones.'
-              : bare ? 'Use the “Add” buttons under the place to give it a faction, some people, a settlement or a danger. Whatever you add is described in terms of what is already there.'
+              : bare ? 'Use the “Add” buttons under the place to give it a faction, some people, a settlement or a danger. Whatever you add is described in terms of what is already there. A coloured word in a description names something you could add: press the + beside it.'
                 : 'Add the next place, or keep filling in the ones you have. “Rewrite” on anything lets it take in what you have added since, and every name can be redrawn or typed.'}
           </p>
           <div className="actions">
@@ -475,7 +500,7 @@ function Gazetteer({ s }: { s: SettingData }) {
           <article key={r} id={`set-${r}`} className="entry place">
             <h4><Name id={r} s={s} /> <small>{v.aka}</small></h4>
             <Picture id={r} s={s} />
-            <div className="prose"><p>{v.land.text}</p></div>
+            <Prose s={s} text={[v.land.text]} home={r} />
             {editing && (
               <>
                 {ASPECTS.flatMap(([type, label]) => {
@@ -492,7 +517,7 @@ function Gazetteer({ s }: { s: SettingData }) {
             {v.sites.map((site) => (
               <section key={site.id} id={`set-${site.id}`} className="entry nested site">
                 <h5><Name id={site.id} s={s} /> <small>site</small></h5>
-                <div className="prose"><p>{site.text}</p></div>
+                <Prose s={s} text={[site.text]} home={site.id} />
                 {editing && (
                   <>
                     <Pick s={s} root={r} type="site" label="Kind of site" current={site.id} />

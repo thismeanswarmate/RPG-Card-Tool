@@ -1017,3 +1017,43 @@ describe('story packs: mystery, curios and pasts', async () => {
     ])
   })
 })
+
+describe('mentions in descriptions', async () => {
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  it('marks words that name something addable, once each, and leaves given names alone', () => {
+    const s = B.newManual(['fantasy'], ['temperate'])
+    const root = B.addPlace(s)!
+    s.names[root] = 'Carrcombe'
+    const circus = B.addPower(s, 'faction', root)
+    s.names[circus] = 'the Coldgate Circus'
+    const parts = B.findMentions(s, 'A council governs Carrcombe, and the council fears the Coldgate Circus. Two villages were lost to floods; ringed by cliffs, in order to watch.')
+    const marked = parts.filter((p) => typeof p !== 'string') as { text: string; mention: import('./settingBuild').Mention }[]
+    expect(marked.map((m) => m.text)).toEqual(['council', 'villages', 'floods'])
+    expect(marked.map((m) => B.mentionKind(m.mention))).toEqual(['faction', 'settlement', 'event'])
+    expect(parts.map((p) => (typeof p === 'string' ? p : p.text)).join('')).toContain('fears the Coldgate Circus. Two villages')
+    expect(B.findMentions(s, 'The council meets.', 'council')).toEqual(['The council meets.'])
+  })
+  it('adds exactly what was mentioned, where it was mentioned', () => {
+    for (let n = 0; n < 15; n++) {
+      const s = B.newManual(['fantasy'], ['temperate'])
+      const root = B.addPlace(s)!
+      const text = 'A council, a village, a hideout, a smuggler, a bell, some amber, an owl, a god and a siege.'
+      const added = B.findMentions(s, text).flatMap((p) => (typeof p === 'string' ? [] : [B.addMention(s, p.mention, root)!]))
+      expect(added).toHaveLength(9)
+      expect(s.entities.map((e) => `${e.kind}:${e.kind === 'deity' ? '' : e.what}`)).toEqual(['faction:council', 'object:bell', 'material:amber', 'creature:owl', 'deity:', 'event:siege'])
+      expect(s.people[0].what).toBe('smuggler')
+      expect(s.built!.map(G.builtKind)).toEqual(['village', 'hideout'])
+      for (const id of added) expect(s.names[id]).toBeTruthy()
+      expect([...s.entities, ...s.people, ...s.built!].every((x) => x.home === root)).toBe(true)
+      // A kind of site that is not yet on the map can be added too, and then stops being offered.
+      const site = B.choices(s, 'site')[0]
+      const [hit] = B.findMentions(s, `Past the ${site.text.toLowerCase()}.`).filter((p) => typeof p !== 'string') as { mention: import('./settingBuild').Mention }[]
+      expect(B.mentionKind(hit.mention)).toBe('site')
+      const made = B.addMention(s, hit.mention, root)!
+      expect(G.placeView(s, root).sites.map((x) => x.id)).toContain(made)
+      expect(B.findMentions(s, `Past the ${site.text.toLowerCase()}.`).filter((p) => typeof p !== 'string' && B.mentionKind(p.mention) === 'site')).toHaveLength(0)
+      expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN/)
+    }
+  })
+})
