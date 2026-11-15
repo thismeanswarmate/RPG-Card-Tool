@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Decks } from './Decks'
 import { Hand } from './Hand'
+import { Lore } from './Lore'
 import { Panel } from './Panel'
 import { People } from './People'
 import { ToolCtx, type Tool } from './ToolNav'
@@ -36,7 +37,10 @@ const savedMode = (): Mode => {
 }
 
 const savedTool = (): Tool => {
-  try { return localStorage.getItem('storyloom-tool') === 'people' ? 'people' : 'worlds' } catch { return 'worlds' }
+  try {
+    const t = localStorage.getItem('storyloom-tool')
+    return t === 'people' || t === 'lore' ? t : 'worlds'
+  } catch { return 'worlds' }
 }
 
 function App() {
@@ -47,7 +51,7 @@ function App() {
   }
   return (
     <ToolCtx.Provider value={{ tool, setTool }}>
-      {tool === 'people' ? <People /> : <Worlds />}
+      {tool === 'people' ? <People /> : tool === 'lore' ? <Lore /> : <Worlds />}
     </ToolCtx.Provider>
   )
 }

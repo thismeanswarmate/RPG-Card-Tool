@@ -251,3 +251,57 @@ describe('expansions', async () => {
     expect(describeArea(b, all, T).join(' ')).not.toMatch(/lullaby|Saddle/)
   })
 })
+
+describe('lore web', async () => {
+  const L = await import('./lore')
+  const packs = { deities: true, emblems: true, names: true }
+
+  it('has whole cards of four cues and only valid link kinds', () => {
+    for (const k of [...L.BASE_KINDS, 'deity'] as const) {
+      expect(L.PRIMARY[k].length % 4, k).toBe(0)
+      expect(L.DETAIL[k].length % 4, k).toBe(0)
+      expect(new Set(L.PRIMARY[k]).size).toBe(L.PRIMARY[k].length)
+      for (const t of L.detailsFor(k, packs)) {
+        expect(t).toMatch(/^[A-Z]/)
+        for (const kinds of L.slots(t)) for (const x of kinds) expect(Object.keys(L.KIND_LABEL)).toContain(x)
+      }
+      expect(L.DETAIL[k].some((t) => L.slots(t).length > 0 && !t.includes('deity'))).toBe(true)
+    }
+    for (const k of L.BASE_KINDS) for (const t of L.DETAIL[k]) expect(t).not.toContain('deity')
+    for (const a of [L.MODIFIERS, L.EMBLEMS, L.EPITHETS]) expect(new Set(a).size).toBe(a.length)
+  })
+  it('names elements and reads links in a sentence', () => {
+    const crypt: import('./lore').LoreNode = { id: 'c', kind: 'place', primary: 'crypt', modifier: 'forgotten', epithet: 'of Spiders', details: [], x: 300, y: 0 }
+    const guild: import('./lore').LoreNode = {
+      id: 'g', kind: 'faction', primary: 'guild', emblem: 'a red door', x: 0, y: 0,
+      details: [
+        { text: 'Holds {place} sacred', links: [{ kinds: ['place'], kind: 'place', primary: 'crypt', node: 'c' }] },
+        { text: 'Controls all trade in {material/object}', links: [{ kinds: ['material', 'object'], kind: 'material', primary: 'amber' }] },
+        { text: 'Lost its greatest treasure, {object}', links: [{ kinds: ['object'], kind: 'object', primary: 'hourglass' }] },
+      ],
+    }
+    const web = { c: crypt, g: guild }
+    expect(L.title(crypt)).toBe('The Forgotten Crypt of Spiders')
+    expect(L.describeNode(guild, web)).toBe(
+      'The guild holds the Forgotten Crypt of Spiders sacred. It controls all trade in amber. It lost its greatest treasure, an hourglass. Its emblem is a red door.')
+    expect(L.spot(web, guild)).not.toEqual({ x: 0, y: 0 })
+    expect(L.spot(web, guild)).not.toEqual({ x: 300, y: 0 })
+  })
+  it('generates a connected web of the requested size', () => {
+    for (const p of [packs, { deities: false, emblems: false, names: false }])
+      for (const size of [5, 12]) {
+        const web = L.generateWeb(size, p)
+        const nodes = Object.values(web)
+        expect(nodes).toHaveLength(size)
+        expect(new Set(nodes.map((n) => `${n.x},${n.y}`)).size).toBe(size)
+        for (const n of nodes) {
+          expect(n.details).toHaveLength(4)
+          if (!p.deities) expect(n.kind).not.toBe('deity')
+          if (n.parent) expect(web[n.parent].details.some((d) => d.links.some((l) => l.node === n.id))).toBe(true)
+          for (const d of n.details) for (const l of d.links) { expect(l.primary).toBeTruthy(); if (l.node) expect(web[l.node]).toBeTruthy() }
+        }
+        expect(nodes.filter((n) => !n.parent)).toHaveLength(1)
+        expect(L.webText(web)).not.toMatch(/[{}…]|undefined/)
+      }
+  })
+})

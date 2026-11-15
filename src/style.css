@@ -177,6 +177,35 @@ code { background: var(--bg); border-radius: 4px; padding: 0 4px; font-size: 12p
 .modal h3 .toggle { margin-left: auto; text-transform: none; letter-spacing: 0; font-size: 13px; }
 .todo { font-size: 13px; line-height: 1.45; }
 .prose ul { padding-left: 18px; font-family: system-ui, sans-serif; font-size: 13px; }
+.lk-faction { --c: var(--omen); } .lk-figure { --c: var(--epithet); } .lk-event { --c: var(--legacy); } .lk-place { --c: var(--terrain); }
+.lk-object { --c: var(--site); } .lk-material { --c: #4a8f86; } .lk-creature { --c: var(--trait); } .lk-deity { --c: #b0527a; }
+.lore { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lore-add { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); flex-wrap: wrap; color: var(--muted); }
+.lore-add .step { border-radius: 4px; }
+.lore-scroll { flex: 1; overflow: auto; background: radial-gradient(circle, #2a313d 1px, transparent 1.5px) 0 0 / 28px 28px, var(--bg); }
+.lore-canvas { position: relative; }
+.lore-canvas svg { position: absolute; inset: 0; pointer-events: none; }
+.lore-canvas line { stroke: var(--c); stroke-width: 3; opacity: .7; }
+.lore-empty { height: 100%; display: grid; place-content: center; text-align: center; gap: 8px; color: var(--muted); padding: 20px; }
+.lore-empty p { max-width: 420px; line-height: 1.5; }
+.lnode { position: absolute; width: 250px; background: var(--raised); border-radius: 10px; box-shadow: 0 3px 10px rgb(0 0 0 / .45); overflow: hidden; }
+.lnode header { background: var(--c); color: #fff; padding: 7px 10px; display: flex; flex-direction: column; cursor: grab; touch-action: none; user-select: none; }
+.lnode header small { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; opacity: .85; }
+.lnode header b { font-size: 15px; line-height: 1.2; }
+.lnode header i { font-size: 11.5px; opacity: .9; }
+.lnode ul { list-style: none; margin: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.4; }
+.lnode li { position: relative; padding-right: 18px; }
+.lnode .x { position: absolute; right: -4px; top: -2px; border: none; background: none; color: var(--muted); padding: 0 4px; }
+.lnode .ref { display: inline; padding: 0 6px; border-radius: 10px; font-size: 12.5px; border: 1px dashed var(--c); background: none; color: var(--text); }
+.lnode .ref.on { border-style: solid; background: color-mix(in srgb, var(--c) 35%, var(--raised)); }
+.lnode .ref.todo { border-color: var(--accent); color: var(--accent); }
+.lnode footer { display: flex; gap: 6px; padding: 0 10px 10px; }
+.lnode footer button { font-size: 12px; padding: 3px 9px; }
+.lnode footer button:last-child { margin-left: auto; }
+.options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.option { text-align: left; padding: 10px 12px; border-left: 5px solid var(--c); display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.option small { color: var(--muted); font-size: 11px; }
+.prose h3 small { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
 .menu { display: contents; }
 .menu-btn, .tabs, .selbar { display: none; }
 html, body, #root { height: 100dvh; }
@@ -184,7 +213,10 @@ html, body, #root { height: 100dvh; }
 @media (max-width: 760px) {
   .topbar { gap: 6px 8px; padding: 6px 10px; }
   .topbar h1 { display: none; }
-  .tools button { padding: 6px 8px; }
+  .tools button { padding: 6px 7px; }
+  .options { grid-template-columns: 1fr; }
+  .lore-add { gap: 4px; padding: 6px 8px; }
+  .lore-add .step { flex: none; padding: 5px 8px; }
   .modes button { padding: 4px 10px; }
   .menu-btn { display: block; margin-left: auto; }
   .spacer { display: none; }
