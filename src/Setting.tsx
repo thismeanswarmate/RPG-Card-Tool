@@ -211,9 +211,9 @@ function Gazetteer({ s }: { s: SettingData }) {
         {['Places', 'Powers', 'People', 'Stories'].map((t) => <button key={t} onClick={() => go(t)}>{t}</button>)}
       </nav>
 
-      {meta && (
+      {(
         <section className="prose">
-          <h3>Across the world</h3>
+          <h3>Overview</h3>
           {meta.text.map((t, i) => <p key={i}>{t}</p>)}
           {meta.prompts.length > 0 && <ul>{meta.prompts.map((t, i) => <li key={i}>{t}</li>)}</ul>}
         </section>
@@ -247,7 +247,7 @@ function Gazetteer({ s }: { s: SettingData }) {
         <article key={e.id} id={`set-${e.id}`} className={`entry lk-${e.kind}`}>
           <h4><Name id={e.id} s={s} /> <small>{e.kind === 'deity' ? e.what : `${e.kind} · ${e.what}`}</small></h4>
           <Picture id={e.id} s={s} />
-          <div className="prose"><p>{entityText(s, e)}</p></div>
+          <div className="prose">{entityText(s, e).map((t, i) => <p key={i}>{t}</p>)}</div>
           {e.home && <Refs label="Where" ids={[homeRoot(s, e.home)]} s={s} />}
           <Refs label="Tied to" ids={tiesTo(s, e.id)} s={s} />
         </article>

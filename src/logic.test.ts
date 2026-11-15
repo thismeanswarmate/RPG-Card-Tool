@@ -483,3 +483,49 @@ describe('pictures', async () => {
     expect(g['9'].inputs.images).toEqual(['8', 0])
   })
 })
+
+describe('setting descriptions', async () => {
+  const G = await import('./setting')
+  const { GLOSS, ROLE_GLOSS } = await import('./glosses')
+  const L = await import('./lore')
+  const S = await import('./story')
+
+  it('has a gloss for every power, thing and role a setting can contain', () => {
+    for (const kind of ['faction', 'event', 'object', 'material', 'creature', 'deity'] as const)
+      for (const p of L.PRIMARY[kind]) expect(GLOSS[`${kind}:${p}`], `${kind}:${p}`).toMatch(/^(: |, | )\S/)
+    for (const c of S.STORY_CARDS.filter((x) => x.kind === 'character')) for (const role of c.cues) expect(ROLE_GLOSS[role], role).toBeTruthy()
+    for (const g of [...Object.values(GLOSS), ...Object.values(ROLE_GLOSS)]) expect(g).not.toMatch(/\.$|  /)
+  })
+  it('opens each element with what it is and weaves in what others say of it', () => {
+    const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, depth: 'rich', focus: ['power', 'faith', 'secrets'] }, 'prose')
+    const world = G.worldProse(s).text[0]
+    expect(world).toMatch(/is a country of \w+ places, taking in /)
+    expect(world).toMatch(/powers contend for it: /)
+    for (const e of s.entities) {
+      const text = G.entityText(s, e)
+      expect(text[0], e.id).toContain(s.names[e.id].replace(/^the /, ''))
+      expect(text[0]).toContain(e.what)
+      expect(text.length).toBeGreaterThanOrEqual(2)
+      for (const p of text) expect(p).toMatch(/^[A-Z“].*\.$/)
+      expect(text.join(' ')).not.toMatch(/undefined|  |\.\.| ,/)
+    }
+    const f = s.entities.find((e) => e.kind === 'faction')!
+    const member = s.people.find((c) => c.faction === f.id)!
+    expect(G.entityText(s, f).join(' ')).toContain(`Its people include ${s.names[member.id]} (`)
+    for (const c of s.people) {
+      const text = G.charText(s, c)
+      expect(text[0]).toContain(`${s.names[c.id]} is a`)
+      expect(text[0]).toContain(' They live ')
+      expect(text.join(' ')).not.toMatch(/undefined|  |\.\.| ,/)
+    }
+    // Someone a faction's details point at is told so in their own entry.
+    const pointed = s.people.find((c) => s.entities.some((e) => e.details.some((d) => d.links.some((l) => l.node === c.id))))
+    if (pointed) {
+      const who = s.entities.find((e) => e.details.some((d) => d.links.some((l) => l.node === pointed.id)))!
+      expect(G.charText(s, pointed).join(' ')).toContain(s.names[who.id].replace(/^the /, ''))
+    }
+    const home = G.placeView(s, G.homeRoot(s, member.home))
+    expect(home.prose.at(-1)).toContain(s.names[member.id])
+    for (const h of s.hooks) expect(G.hookText(s, h)).toMatch(/^[A-Z].*\.$/)
+  })
+})
