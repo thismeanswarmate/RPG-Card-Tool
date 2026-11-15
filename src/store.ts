@@ -230,9 +230,15 @@ export function generateWorld(s: Data, size: WorldSize, prepare?: (s: Data) => v
   const tuck = (id: string, hub: string, active: number) => {
     s.placed[id] = { id, active, x: 0, y: 0, parent: hub, edge: autoEdge(s.placed, cards, hub, cards[id], active), order: ++s.seq }
   }
-  /** Draw one card, or two for a complex microsetting, keeping one or both. */
+  let remaining = count
+  /** Cards of a type still to be had: the pile plus whatever the discards would give back. */
+  const supply = (type: CardType) => s.piles[type].length + s.discards.filter((d) => cards[d].type === type).length
+  /**
+   * Draw one card, or two for a complex microsetting, keeping one or both. The second is only drawn
+   * while enough cards remain for every place still to come to get one.
+   */
   const drawFor = (type: CardType, doubled: boolean) => {
-    const got = [pop(s, type), doubled ? pop(s, type) : undefined].filter((c): c is string => !!c)
+    const got = [pop(s, type), doubled && supply(type) > remaining ? pop(s, type) : undefined].filter((c): c is string => !!c)
     if (got.length === 2 && Math.random() < 0.5) s.discards.push(got.pop()!)
     return got
   }
@@ -262,6 +268,7 @@ export function generateWorld(s: Data, size: WorldSize, prepare?: (s: Data) => v
     }
     if (Math.random() < 0.5) for (const id of drawFor('quest', false)) tuck(id, terrain, 0)
     complex = !complex
+    remaining--
   }
   fitView(s)
 }
