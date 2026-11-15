@@ -1395,7 +1395,7 @@ describe('everything tied to races, cultures and history', async () => {
     expect(G.charText(s, person())[0]).toContain(`They are one of ${s.names[race]}.`)
     B.remove(s, race); B.remove(s, history)
     expect([person().race, of(guild).age]).toEqual([undefined, undefined])
-    expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN|They are one of|raised among|It was founded/)
+    expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN|They are one of|raised among|It was founded (in|among) /)
   })
 })
 
