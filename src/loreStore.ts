@@ -29,7 +29,9 @@ interface LoreState {
   removeDetail(node: string, detail: number): void
   drawName(node: string): void
   drawEmblem(node: string): void
-  togglePack(pack: keyof Packs): void
+  togglePack(pack: 'deities' | 'emblems' | 'names'): void
+  /** Put an element type in or out of the mix. */
+  toggleKind(kind: Kind): void
   generate(size: number): void
   reset(): void
 }
@@ -110,6 +112,10 @@ export const useLore = create<LoreState>()(
       drawName: (node) => set((s) => { if (s.web[node]) s.web[node].epithet = any(EPITHETS.filter((e) => e !== s.web[node].epithet)) }),
       drawEmblem: (node) => set((s) => { if (s.web[node]) s.web[node].emblem = any(EMBLEMS.filter((e) => e !== s.web[node].emblem)) }),
       togglePack: (pack) => set((s) => { s.packs[pack] = !s.packs[pack] }),
+      toggleKind: (kind) => set((s) => {
+        const off = s.packs.off ?? []
+        s.packs.off = off.includes(kind) ? off.filter((k) => k !== kind) : [...off, kind]
+      }),
       generate: (size) => set((s) => { s.web = generateWeb(size, s.packs); s.pending = null }),
       reset: () => set((s) => { s.web = {}; s.pending = null }),
     })),

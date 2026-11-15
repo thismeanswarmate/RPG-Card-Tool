@@ -1,20 +1,23 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { allowHint, isDirect } from './comfy'
+import { DeckDialog } from './DeckDialog'
 import { ART, imageIds, imageSpec } from './imagePrompts'
 import { useImages } from './imageStore'
 import { KIND_LABEL, type Kind } from './lore'
 import { titleCase } from './names'
 import { RollRows } from './Roller'
 import {
-  builtKind, builtText, charText, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
+  builtKind, builtText, charText, decksOf, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
   type Answers, type Built, type Char, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import {
   addBuilt, addMention, addPerson, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, findMentions, mentionKind,
-  goneWith, redrawPlace, remove, removeStory, rerollStory, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
+  goneWith, redrawPlace, remove, removeStory, rerollStory, toggleDeck, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
 } from './settingBuild'
 import { SettingMap } from './SettingMap'
 import { useSettings } from './settingStore'
+import { cardsOf } from './store'
+import { STORY_CARDS } from './story'
 import { ToolNav } from './ToolNav'
 import type { CardType } from './types'
 
@@ -143,6 +146,24 @@ function Pick({ s, root, type, label, current, optional }: { s: SettingData; roo
       <button className="redraw" onClick={() => edit((d) => choose(d, root, type, 'random', current))}>{current ? '↻ Redraw' : '+ Draw'}</button>
       {current && optional && <button className="redraw" title={`Leave “${label}” out`} aria-label={`Leave ${label} out`} onClick={() => edit((d) => choose(d, root, type, '', current))}>×</button>}
     </div>
+  )
+}
+
+const WORLD_CARDS = Object.values(cardsOf({ custom: [] }))
+
+/** Which decks a setting draws on when something is added or redrawn. */
+function SettingDecks({ s, onClose }: { s: SettingData; onClose(): void }) {
+  const edit = useSettings((x) => x.edit)
+  const now = decksOf(s)
+  return (
+    <DeckDialog onClose={onClose}
+      onToggle={(id) => { const [group, deck] = id.split(':'); edit((d) => toggleDeck(d, group as 'world' | 'story' | 'deities', deck)) }}
+      intro="Tick the decks this setting draws on. What is already in the setting stays; the choice applies to whatever is added or redrawn from now on."
+      groups={[
+        { title: 'Lands, sites and descriptions', items: Object.entries(WORLD_DECKS).map(([id, label]) => ({ id: `world:${id}`, label, note: `${WORLD_CARDS.filter((c) => c.deck === id).length} cards`, on: now.world.includes(id) })) },
+        { title: 'People and stories', items: Object.entries(STORY_DECKS).map(([id, label]) => ({ id: `story:${id}`, label, note: `${STORY_CARDS.filter((c) => c.deck === id && ['character', 'drive', 'obstacle'].includes(c.kind)).length} cards`, on: now.story.includes(id) })) },
+        { title: 'Powers', items: [{ id: 'deities:', label: 'Deities', note: 'gods, and details that mention them', on: now.deities }] },
+      ]} />
   )
 }
 
@@ -435,6 +456,7 @@ function SpotBody({ sp, s }: { sp: Spot; s: SettingData }) {
 function Gazetteer({ s }: { s: SettingData }) {
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(!!s.manual)
+  const [decks, setDecks] = useState(false)
   const edit = useSettings((x) => x.edit)
   const add = useAdd()
   const drop = useRemove(s)
@@ -463,10 +485,12 @@ function Gazetteer({ s }: { s: SettingData }) {
         <p className="hint">{summary(s)} · {s.manual ? 'built by hand' : `seed “${s.seed}”`}</p>
         <div className="actions">
           <button className={editing ? 'on' : ''} aria-pressed={editing} onClick={() => setEditing(!editing)}>{editing ? 'Done editing' : 'Edit'}</button>
+          <button onClick={() => setDecks(true)}>Decks</button>
           <button onClick={copy}>{copied ? 'Copied' : 'Copy as text'}</button>
           <button onClick={download}>Download</button>
         </div>
       </header>
+      {decks && <SettingDecks s={s} onClose={() => setDecks(false)} />}
       {editing && (
         <section className="guide">
           <h3>{!roots.length ? 'Step 1: a place' : bare ? `Next: fill in ${s.names[bare]}` : 'Next: another place, or more detail'}</h3>

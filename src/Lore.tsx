@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { describeNode, detailParts, KIND_LABEL, kindsFor, PACK_LABEL, refText, title, webText, type LoreNode, type Packs } from './lore'
+import { DeckDialog } from './DeckDialog'
+import { BASE_KINDS, describeNode, detailParts, KIND_LABEL, kindsFor, PACK_LABEL, refText, title, webText, type Kind, type LoreNode } from './lore'
 import { useLore, type Pending } from './loreStore'
 import { ToolNav } from './ToolNav'
 
@@ -120,6 +121,8 @@ export function Lore() {
   const s = useLore()
   const [size, setSize] = useState(8)
   const [reading, setReading] = useState(false)
+  const [decks, setDecks] = useState(false)
+  const types = [...BASE_KINDS, ...(s.packs.deities ? ['deity' as const] : [])]
   const nodes = Object.values(s.web)
   const ox = Math.min(0, ...nodes.map((n) => n.x)) - PAD
   const oy = Math.min(0, ...nodes.map((n) => n.y)) - PAD
@@ -140,15 +143,20 @@ export function Lore() {
           </select>
           <button className="primary" onClick={generate}>Generate web</button>
         </div>
-        <div className="chips" role="group" aria-label="Optional packs">
-          {(Object.keys(PACK_LABEL) as (keyof Packs)[]).map((k) => (
-            <button key={k} className={s.packs[k] ? 'on' : ''} aria-pressed={s.packs[k]} onClick={() => s.togglePack(k)}>{PACK_LABEL[k]}</button>
-          ))}
-        </div>
+        <button className="decks-button" onClick={() => setDecks(true)}>Decks <small>{kindsFor(s.packs).length} types in the mix</small></button>
         <div className="spacer" />
         {nodes.length > 0 && <button onClick={() => setReading(true)}>Read</button>}
         {nodes.length > 0 && <button onClick={() => confirm('Clear the whole web?') && s.reset()}>New web</button>}
       </header>
+      {decks && (
+        <DeckDialog onClose={() => setDecks(false)}
+          onToggle={(id) => (id === 'deities' || id === 'emblems' || id === 'names' ? s.togglePack(id) : s.toggleKind(id as Kind))}
+          intro="Tick what to draw from. Elements already in the web stay; the choice applies to what is added, linked and generated from now on."
+          groups={[
+            { title: 'Element types', items: types.map((k) => ({ id: k, label: KIND_LABEL[k], on: !s.packs.off?.includes(k) })) },
+            { title: 'Extras', items: (Object.keys(PACK_LABEL) as (keyof typeof PACK_LABEL)[]).map((k) => ({ id: k, label: PACK_LABEL[k], on: s.packs[k] })) },
+          ]} />
+      )}
       <div className="lore">
         <div className="lore-add">
           <span>Add</span>

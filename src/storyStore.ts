@@ -66,7 +66,7 @@ export const useStories = create<Stories>()(
         toggleLock: (slot) => set((s) => { const held = me(s).slots[slot]; if (held) held.locked = !held.locked }),
         generate: () => set((s) => { fill(me(s), s.packs) }),
         togglePack: (pack) => set((s) => {
-          if (!(pack in PACKS)) return
+          if (!(pack in PACKS) && !pack.startsWith('-')) return
           s.packs = s.packs.includes(pack) ? s.packs.filter((p) => p !== pack) : [...s.packs, pack]
         }),
       }

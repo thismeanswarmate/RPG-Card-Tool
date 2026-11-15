@@ -66,6 +66,22 @@ export interface Setting {
   built?: Built[]
   /** Built by hand, one piece at a time, rather than generated from answers. */
   manual?: boolean
+  /** Which decks later additions draw on; absent means the ones the answers call for. */
+  decks?: DeckChoice
+}
+
+/** The decks a setting draws on: lands and sites, people and stories, and whether there are gods. */
+export interface DeckChoice { world: string[]; story: string[]; deities: boolean }
+export const WORLD_DECKS: Record<string, string> = { starter: 'Starter', fantasy: 'Fantasy', scifi: 'Science fiction', horror: 'Horror', frost: 'Frost', coast: 'Coast', dry: 'Desert' }
+export const STORY_DECKS: Record<string, string> = { core: 'Core', fantasy: 'Fantasy', scifi: 'Science fiction', horror: 'Horror', mystery: 'Mystery' }
+export function decksOf(s: Pick<Setting, 'answers' | 'decks' | 'manual'>): DeckChoice {
+  if (s.decks) return s.decks
+  const { genres, lands, focus } = s.answers
+  return {
+    world: ['starter', ...[...genres, ...lands].filter((d) => d in WORLD_DECKS)],
+    story: ['core', ...genres.filter((g) => g in STORY_DECKS)],
+    deities: !!s.manual || focus.includes('faith') || genres.includes('fantasy'),
+  }
 }
 
 /** A settlement or dangerous place within the setting: where it is, and what its tables rolled. */
@@ -108,7 +124,7 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
   const pick = <T,>(a: T[]): T => a[Math.floor(rng() * a.length)]
   const genres = answers.genres.length ? answers.genres : ['grounded']
   const depth = DETAILS[answers.depth]
-  const deities = !!s.manual || answers.focus.includes('faith') || genres.includes('fantasy')
+  const deities = decksOf(s).deities
   const packs = { deities, emblems: false, names: false }
   const sitesOf = (root: string) => subtree(board, root).filter((id) => CARDS[id].type === 'site')
   // The map is read often and changes seldom, so it is read again only when cards have come or gone.
@@ -130,8 +146,13 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
     names[id] = makeName({ ...spec, home: homeId ? names[homeId] : undefined }, rng, taken)
     specs[id] = { ...spec, homeId }
   }
-  const storyDecks = ['core', ...genres.filter((g) => g !== 'grounded')]
-  const cues = (kind: string) => STORY_CARDS.filter((c) => c.kind === kind && storyDecks.includes(c.deck)).flatMap((c) => c.cues)
+  const storyDecks = decksOf(s).story
+  const cues = (kind: string) => {
+    const of = (decks: string[]) => STORY_CARDS.filter((c) => c.kind === kind && decks.includes(c.deck)).flatMap((c) => c.cues)
+    const mixed = of(storyDecks)
+    // A deck with nothing of this kind leaves the core deck to supply it.
+    return mixed.length ? mixed : of(['core'])
+  }
   const roles = cues('character')
 
   /** A person with a role and a home; their details come later, once there are powers to tie them to. */

@@ -1057,3 +1057,46 @@ describe('mentions in descriptions', async () => {
     }
   })
 })
+
+describe('choosing the decks in the mix', async () => {
+  const S = await import('./story')
+  const L = await import('./lore')
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  const { cardsOf } = await import('./store')
+  const CARDS = cardsOf({ custom: [] })
+
+  it('stories: draws only from the decks and kinds that are ticked', () => {
+    for (let n = 0; n < 80; n++) {
+      expect(S.CARD[S.drawCard('character', ['-core', 'horror'])!.card].deck).toBe('horror')
+      expect(S.CARD[S.drawCard('character', ['horror', 'mystery', '-horror:character'])!.card].deck).not.toBe('horror')
+      expect(S.CARD[S.drawCard('trait', ['-core'])!.card].deck).toBe('core')
+    }
+    expect(S.slotsOf('seed', ['pasts', '-pasts:present']).map((x) => x.id).slice(-1)).toEqual(['past'])
+    expect(S.slotsOf('circle', ['dynamics', '-dynamics:bond']).map((x) => x.id)).not.toContain('bond')
+    expect(S.slotsOf('circle', ['dynamics']).map((x) => x.id)).toContain('bond')
+  })
+  it('lore: leaves out the element types that are unticked', () => {
+    const packs = { deities: true, emblems: false, names: false, off: ['creature', 'material', 'deity'] as import('./lore').Kind[] }
+    expect(L.kindsFor(packs)).toEqual(['faction', 'figure', 'event', 'place', 'object'])
+    for (let n = 0; n < 20; n++) for (const node of Object.values(L.generateWeb(12, packs))) expect(packs.off).not.toContain(node.kind)
+    expect(L.kindsFor({ ...packs, off: [...L.BASE_KINDS, 'deity'] })).toHaveLength(8)
+  })
+  it('setting: draws places, sites and roles from the ticked decks, and keeps what is already there', () => {
+    const s = B.newManual(['fantasy'], ['temperate'])
+    expect(G.decksOf(s)).toEqual({ world: ['starter', 'fantasy'], story: ['core', 'fantasy'], deities: true })
+    const first = B.addPlace(s)!
+    B.toggleDeck(s, 'world', 'starter'); B.toggleDeck(s, 'world', 'fantasy'); B.toggleDeck(s, 'world', 'frost')
+    B.toggleDeck(s, 'story', 'core'); B.toggleDeck(s, 'story', 'fantasy'); B.toggleDeck(s, 'story', 'mystery')
+    B.toggleDeck(s, 'deities')
+    expect(s.decks).toEqual({ world: ['frost'], story: ['mystery'], deities: false })
+    const frost = [B.addPlace(s)!, B.addPlace(s)!]
+    for (const root of frost) for (const id of Object.keys(s.board).filter((id) => id === root || s.board[id].parent === root)) expect(CARDS[id].deck, id).toBe('frost')
+    expect(CARDS[first].deck).not.toBe('frost')
+    const mysteryRoles = S.STORY_CARDS.filter((c) => c.deck === 'mystery' && c.kind === 'character').flatMap((c) => c.cues)
+    for (let i = 0; i < 6; i++) { const id = B.addPerson(s, frost[0]); expect(mysteryRoles).toContain(s.people.find((c) => c.id === id)!.what) }
+    // The frost deck has six lands; once they are used up the starter deck steps in rather than nothing.
+    for (let i = 0; i < 6; i++) expect(B.addPlace(s)).toBeTruthy()
+    expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN/)
+  })
+})

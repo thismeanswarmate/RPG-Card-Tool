@@ -1,11 +1,27 @@
 import { useState } from 'react'
-import { CARD, KIND_INFO, PACKS, PATTERN, PATTERNS, slotsOf, write } from './story'
+import { DeckDialog, type DeckGroup } from './DeckDialog'
+import { CARD, deckOn, KIND_INFO, PACKS, PATTERN, PATTERNS, slotsOf, STORY_CARDS, write, type CardKind } from './story'
 import { useStories } from './storyStore'
 import { ToolNav } from './ToolNav'
 
 export function Stories() {
   const s = useStories()
   const [copied, setCopied] = useState(false)
+  const [decks, setDecks] = useState(false)
+  const deck = (id: string, label: string) => {
+    const cards = STORY_CARDS.filter((c) => c.deck === id)
+    const kinds = [...new Set(cards.map((c) => c.kind))] as CardKind[]
+    return {
+      id: id === 'core' ? '-core' : id, label, note: `${cards.length} cards`, on: deckOn(id, s.packs),
+      parts: kinds.map((k) => ({ id: `-${id}:${k}`, label: KIND_INFO[k].label, on: !s.packs.includes(`-${id}:${k}`) })),
+    }
+  }
+  const groups: DeckGroup[] = [
+    { title: 'Main deck', items: [deck('core', 'Core')] },
+    { title: 'Genres', items: ['fantasy', 'scifi', 'horror', 'mystery'].map((id) => deck(id, PACKS[id])) },
+    { title: 'Extras', items: ['curios', 'dynamics', 'pasts'].map((id) => deck(id, PACKS[id])) },
+  ]
+  const inPlay = groups.flatMap((g) => g.items).filter((i) => i.on).length
   const story = s.stories.find((x) => x.id === s.current)!
   const pattern = PATTERN[story.pattern] ?? PATTERNS[0]
   const defs = slotsOf(story.pattern, s.packs)
@@ -21,12 +37,12 @@ export function Stories() {
     <div className="app">
       <header className="topbar">
         <ToolNav />
-        <div className="chips" role="group" aria-label="Optional packs">
-          {Object.entries(PACKS).map(([k, label]) => (
-            <button key={k} className={s.packs.includes(k) ? 'on' : ''} aria-pressed={s.packs.includes(k)} onClick={() => s.togglePack(k)}>{label}</button>
-          ))}
-        </div>
+        <button className="decks-button" onClick={() => setDecks(true)}>Decks <small>{inPlay} in the mix</small></button>
       </header>
+      {decks && (
+        <DeckDialog groups={groups} onToggle={s.togglePack} onClose={() => setDecks(false)}
+          intro="Tick the decks to draw from. Cards already on the table stay; the choice applies to what is drawn from now on. With Advanced, each kind of card in a deck can be left out." />
+      )}
       <div className="people">
         <aside className="cast">
           <h3>Stories</h3>

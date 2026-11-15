@@ -213,8 +213,8 @@ export const EMBLEMS = words('a broken wheel, three black feathers, an open hand
 
 export const EPITHETS = words('of Spiders, of the Seven Keys, the Unbowed, of Quiet Water, of the Long Road, the Twice-Burned, of Ash and Honey, of the Last Bell, the Patient, of Broken Chains, of the Grey Hour, the Unforgiven, of Salt, of the Hollow Hill, the Wakeful, of Nine Winters, of the Black Sail, the Lesser, of Thorns, of the Open Door, the Elder, of Wolves, of the Drowned Moon, the Merciful, of Glass, of the Far Shore, the Nameless, of Embers, of the Crooked Mile, the Younger, of Rooks, of the Silver Hand')
 
-export interface Packs { deities: boolean; emblems: boolean; names: boolean }
-export const PACK_LABEL: Record<keyof Packs, string> = { deities: 'Deities', emblems: 'Emblems', names: 'Names' }
+export interface Packs { deities: boolean; emblems: boolean; names: boolean; /** Element types left out of the mix. */ off?: Kind[] }
+export const PACK_LABEL: Record<'deities' | 'emblems' | 'names', string> = { deities: 'Deities', emblems: 'Emblems', names: 'Names' }
 
 export interface LinkInst { kinds: Kind[]; kind?: Kind; primary?: string; node?: string }
 export interface DetailInst { text: string; links: LinkInst[] }
@@ -232,7 +232,12 @@ export interface LoreNode {
 }
 export type Web = Record<string, LoreNode>
 
-export const kindsFor = (packs: Packs): Kind[] => (packs.deities ? [...BASE_KINDS, 'deity'] : BASE_KINDS)
+export const kindsFor = (packs: Packs): Kind[] => {
+  const all: Kind[] = packs.deities ? [...BASE_KINDS, 'deity'] : BASE_KINDS
+  const kept = all.filter((k) => !packs.off?.includes(k))
+  // With everything switched off there would be nothing to draw, so the choice is ignored.
+  return kept.length ? kept : all
+}
 export const detailsFor = (kind: Kind, packs: Packs) => [...DETAIL[kind], ...(packs.deities ? DEITY_DETAIL[kind] ?? [] : [])]
 
 const SLOT = /\{([a-z/]+)\}/g

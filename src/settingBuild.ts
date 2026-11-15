@@ -6,7 +6,7 @@ import { PRIMARY, type Kind } from './lore'
 import { tonguesFor } from './names'
 import { KINDS as PERIL_KINDS, kindLabel, rollAll as rollPeril, stepsFor as perilSteps } from './peril'
 import { STORY_CARDS } from './story'
-import { DEFAULT_ANSWERS, weave, type Built, type Char, type Entity, type Setting } from './setting'
+import { decksOf, DEFAULT_ANSWERS, weave, type Built, type Char, type Entity, type Setting } from './setting'
 import { rollAll as rollSettlement, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
 import type { CardType } from './types'
@@ -29,10 +29,18 @@ export function newManual(genres: string[], lands: string[], title = ''): Settin
 
 /** The unused cards of a type from the decks this setting draws on. */
 function unused(s: Setting, type: CardType) {
-  const { genres, lands } = s.answers
-  const decks = new Set(['starter', ...genres, ...lands])
   const used = new Set([...Object.keys(s.board), ...s.meta.map((h) => h.card)])
-  return Object.values(CARDS).filter((c) => c.type === type && decks.has(c.deck) && !used.has(c.id))
+  const of = (decks: string[]) => Object.values(CARDS).filter((c) => c.type === type && decks.includes(c.deck) && !used.has(c.id))
+  const mixed = of(decksOf(s).world)
+  // Decks with nothing of this type left fall back on the starter deck.
+  return mixed.length ? mixed : of(['starter'])
+}
+
+/** Put a deck in or out of the mix for whatever is added from now on. */
+export function toggleDeck(s: Setting, group: 'world' | 'story' | 'deities', id = '') {
+  const now = decksOf(s)
+  const flip = (list: string[]) => (list.includes(id) ? list.filter((d) => d !== id) : [...list, id])
+  s.decks = group === 'deities' ? { ...now, deities: !now.deities } : { ...now, [group]: flip(now[group]) }
 }
 
 /** One of them at random, preferring the themed decks for terrain. */
@@ -40,7 +48,8 @@ function draw(s: Setting, type: CardType): string | undefined {
   const { lands } = s.answers
   const all = unused(s, type)
   const themed = all.filter((c) => c.deck !== 'starter')
-  const pool = type === 'terrain' && themed.length && lands.length && !lands.includes('temperate') ? themed : all
+  // Until the decks are chosen by hand, a setting without temperate lands keeps to its themed terrain.
+  const pool = type === 'terrain' && !s.decks && themed.length && lands.length && !lands.includes('temperate') ? themed : all
   return pool[rand(pool.length)]?.id
 }
 
@@ -180,8 +189,9 @@ export function rewrite(s: Setting, id: string) {
 
 /** The story decks a setting draws its roles from. */
 const roleCards = (s: Setting) => {
-  const decks = ['core', ...s.answers.genres.filter((g) => g !== 'grounded')]
-  return STORY_CARDS.filter((c) => c.kind === 'character' && decks.includes(c.deck))
+  const of = (decks: string[]) => STORY_CARDS.filter((c) => c.kind === 'character' && decks.includes(c.deck))
+  const mixed = of(decksOf(s).story)
+  return mixed.length ? mixed : of(['core'])
 }
 /** The kinds a power or thing can be, dealt out four to a draw. */
 const kindDraws = (kind: Kind) => Array.from({ length: Math.ceil(PRIMARY[kind].length / 4) }, (_, i) => PRIMARY[kind].slice(i * 4, i * 4 + 4))
@@ -291,7 +301,7 @@ const TOO_COMMON = new Set(['order', 'watch', 'well', 'gate', 'map', 'rival', 'g
 
 function lexicon(s: Setting): Lexicon {
   // Made once for a setting as it stands, and again when its cards or names have changed.
-  const stamp = `${Object.keys(s.board).join()}|${Object.values(s.names).join()}`
+  const stamp = `${Object.keys(s.board).join()}|${Object.values(s.names).join()}|${JSON.stringify(s.decks ?? 0)}`
   const known = lexicons.get(s)
   if (known?.stamp === stamp) return known
   const by = new Map<string, Mention>()

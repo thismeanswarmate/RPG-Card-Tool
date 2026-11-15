@@ -52,3 +52,5 @@ npm run dev      # local dev server
 npm test         # unit tests
 npm run build    # static site in dist/
 ```
+
+**Decks.** Setting, Lore and Stories each have a Decks button, like the one in Worlds, for choosing what is in the mix. In Stories it lists the core deck and every pack, and with Advanced each kind of card within one. In Lore it lists the element types and the extras. In a setting it lists the decks for lands and sites, the decks for people and stories, and whether there are deities; the choice applies to whatever is added or redrawn from then on.

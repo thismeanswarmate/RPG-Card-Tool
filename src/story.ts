@@ -235,11 +235,13 @@ export const PATTERN: Record<string, Pattern> = Object.fromEntries(PATTERNS.map(
 export function slotsOf(pattern: string, packs: string[]): SlotDef[] {
   const p = PATTERN[pattern] ?? PATTERNS[0]
   const pair = p.slots.filter((s) => s.kind === 'character').length > 1
+  const has = (deck: string, kind: CardKind) => inMix({ deck, kind }, packs)
   return [
     ...p.slots,
-    ...(packs.includes('pasts') ? [{ id: 'past', kind: 'past', label: 'What happened between them' }, { id: 'now', kind: 'present', label: 'Why it matters now' }] as SlotDef[] : []),
-    ...(packs.includes('dynamics') && pair ? [{ id: 'bond', kind: 'bond', label: 'Bond between them' } as SlotDef] : []),
-    ...(packs.includes('dynamics') ? [{ id: 'ask', kind: 'question', label: 'Question' } as SlotDef] : []),
+    ...(has('pasts', 'past') ? [{ id: 'past', kind: 'past', label: 'What happened between them' } as SlotDef] : []),
+    ...(has('pasts', 'past') && has('pasts', 'present') ? [{ id: 'now', kind: 'present', label: 'Why it matters now' } as SlotDef] : []),
+    ...(has('dynamics', 'bond') && pair ? [{ id: 'bond', kind: 'bond', label: 'Bond between them' } as SlotDef] : []),
+    ...(has('dynamics', 'question') ? [{ id: 'ask', kind: 'question', label: 'Question' } as SlotDef] : []),
   ]
 }
 
@@ -263,9 +265,17 @@ export function write(story: Story): string[] {
   ].filter(Boolean)
 }
 
-/** A random card of a kind from the decks in play, avoiding ones the story already uses. */
+/**
+ * Whether a card is in the mix. `packs` lists the optional decks that are on; an entry starting with "-"
+ * takes something out: "-core" the core deck, "-horror:trait" the Trait cards of the horror deck.
+ */
+export const deckOn = (deck: string, packs: string[]) => (deck === 'core' ? !packs.includes('-core') : packs.includes(deck))
+export const inMix = (c: { deck: string; kind: CardKind }, packs: string[]) => deckOn(c.deck, packs) && !packs.includes(`-${c.deck}:${c.kind}`)
+
+/** A random card of a kind from the decks in play, avoiding ones the story already uses. With nothing of that kind in play, the core deck steps in. */
 export function drawCard(kind: CardKind, packs: string[], avoid: string[] = []): Held | undefined {
-  const pool = STORY_CARDS.filter((c) => c.kind === kind && (c.deck === 'core' || packs.includes(c.deck)))
+  const mixed = STORY_CARDS.filter((c) => c.kind === kind && inMix(c, packs))
+  const pool = mixed.length ? mixed : STORY_CARDS.filter((c) => c.kind === kind && c.deck === 'core')
   const fresh = pool.filter((c) => !avoid.includes(c.id))
   const from = fresh.length ? fresh : pool
   const card = from[Math.floor(Math.random() * from.length)]
