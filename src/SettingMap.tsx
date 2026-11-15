@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react'
 import { useImages } from './imageStore'
-import { buildMap, type Glyph } from './mapgen'
+import { buildMap, washFor, type Glyph } from './mapgen'
 import { titleCase } from './names'
 import type { Setting } from './setting'
 
@@ -30,6 +30,7 @@ const go = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView(
 
 export function SettingMap({ s }: { s: Setting }) {
   const links = useImages((x) => x.links)
+  const tints = useImages((x) => x.tints)
   // Renaming changes the lettering but never the land, so the drawing is redone only when names change.
   const map = useMemo(() => buildMap(s), [s.id, s.seed, s.names])
   const t = THEMES[map.theme]
@@ -81,7 +82,8 @@ export function SettingMap({ s }: { s: Setting }) {
         {/* The land: a wash for each region, with faint borders between them. */}
         {map.regions.map((r) => <path key={r.id} d={r.d} fill={t.paper} />)}
         {map.regions.map((r) => (
-          <path key={r.id} className="region" d={r.d} fill={r.colour} fillOpacity=".8" stroke={t.faint} strokeWidth=".9" strokeDasharray="5 4" onClick={() => go(r.id)}>
+          // A place with a picture takes its colour from the picture; the rest keep their terrain's.
+          <path key={r.id} className="region" d={r.d} fill={tints[`${s.id}:${r.id}`] ? washFor(tints[`${s.id}:${r.id}`], map.theme) : r.colour} fillOpacity=".8" stroke={t.faint} strokeWidth=".9" strokeDasharray="5 4" onClick={() => go(r.id)}>
             <title>{r.name} — {r.terrain}</title>
           </path>
         ))}
@@ -144,7 +146,7 @@ export function SettingMap({ s }: { s: Setting }) {
         <rect x="14" y="14" width={map.w - 28} height={map.h - 28} fill="none" stroke={t.ink} strokeWidth=".8" pointerEvents="none" />
       </svg>
       <figcaption>
-        <span className="hint">Dotted lines join places that a faction, a person or a story connects. Click a place or a site to read about it.</span>
+        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. Click a place or a site to read about it.</span>
         <button onClick={save}>Save map</button>
       </figcaption>
     </figure>

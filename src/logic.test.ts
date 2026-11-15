@@ -622,3 +622,24 @@ describe('drawn map', async () => {
     expect(M.glyphFor('Steppe')).toBe('tuft')
   })
 })
+
+describe('region colour from a picture', async () => {
+  const { tintOf } = await import('./imageStore')
+  const M = await import('./mapgen')
+  it('reads the overall colour of a picture, favouring vivid pixels over grey', () => {
+    const px = (...colours: [number, number, number][]) => colours.flatMap((c) => [...c, 255])
+    expect(tintOf(px([200, 40, 40], [200, 40, 40]))).toBe('#c82828')
+    expect(tintOf([])).toBe('#808080')
+    // One vivid green pixel outweighs one grey one.
+    const mixed = tintOf(px([128, 128, 128], [20, 200, 20]))
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(mixed.slice(i, i + 2), 16))
+    expect(g).toBeGreaterThan(170)
+    expect(r).toBeLessThan(60)
+    expect(b).toBe(r)
+  })
+  it('turns that colour into a wash for either theme', () => {
+    expect(M.washFor('#c82828', 'parchment')).toMatch(/^rgb\(\d+ \d+ \d+\)$/)
+    expect(M.washFor('#c82828', 'parchment')).not.toBe(M.washFor('#c82828', 'blueprint'))
+    expect(M.washFor('#c82828', 'parchment')).not.toBe(M.washFor('#2828c8', 'parchment'))
+  })
+})

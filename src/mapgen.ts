@@ -125,10 +125,15 @@ const r1 = (n: number) => Math.round(n * 10) / 10
 const pathOf = (pts: P[]) => `M${pts.map(([x, y]) => `${r1(x)} ${r1(y)}`).join('L')}Z`
 
 /** Soften a colour toward the paper, so regions read as washes and not as blocks. */
-function wash(hex: string, amount: number, paper: [number, number, number]): string {
+export function wash(hex: string, amount: number, paper: [number, number, number]): string {
   const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
   return `rgb(${c.map((v, i) => Math.round(v * amount + paper[i] * (1 - amount))).join(' ')})`
 }
+
+export const PAPER: Record<MapData['theme'], [number, number, number]> = { parchment: [233, 220, 192], blueprint: [18, 42, 68] }
+
+/** The wash for a region in a given colour: its terrain's by default, or one taken from its picture. */
+export const washFor = (hex: string, theme: MapData['theme']) => wash(hex, theme === 'blueprint' ? 0.35 : 0.5, PAPER[theme])
 
 const MILES: Record<string, [number, string]> = { region: [120, '10 miles'], country: [120, '50 miles'], continent: [120, '200 miles'] }
 
@@ -167,7 +172,6 @@ export function buildMap(s: Setting): MapData {
   }
   const push = ([x, y]: P): P => [x + warp(dx, x, y), y + warp(dy, x, y)]
   const theme = s.answers.genres[0] === 'scifi' ? 'blueprint' : 'parchment'
-  const paper: [number, number, number] = theme === 'blueprint' ? [18, 42, 68] : [233, 220, 192]
 
   // How much room each place takes: busier places — more sites, powers and people — are larger, with a
   // little chance on top. A border between two places sits nearer the smaller one.
@@ -260,7 +264,7 @@ export function buildMap(s: Setting): MapData {
 
     return {
       id, name: s.names[id], terrain, d: pathOf(fine), points: fine, x: r1(cx), y: r1(cy),
-      colour: wash(base, theme === 'blueprint' ? 0.35 : 0.5, paper), glyph, symbols: symbols.sort((a, b) => a.y - b.y), sites,
+      colour: washFor(base, theme), glyph, symbols: symbols.sort((a, b) => a.y - b.y), sites,
     }
   })
 

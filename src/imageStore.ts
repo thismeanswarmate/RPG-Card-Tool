@@ -24,6 +24,33 @@ const tx = async <T,>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => 
   })
 }
 
+/**
+ * The colour a picture leaves as an impression: the average of its pixels, with vivid ones counting for
+ * more than grey ones so that a few strong colours are not drowned by a dull sky or shadow.
+ */
+export function tintOf(rgba: ArrayLike<number>): string {
+  let r = 0, g = 0, b = 0, total = 0
+  for (let i = 0; i + 3 < rgba.length; i += 4) {
+    const [pr, pg, pb] = [rgba[i], rgba[i + 1], rgba[i + 2]]
+    const weight = 0.25 + (Math.max(pr, pg, pb) - Math.min(pr, pg, pb)) / 255
+    r += pr * weight; g += pg * weight; b += pb * weight; total += weight
+  }
+  if (!total) return '#808080'
+  return `#${[r, g, b].map((v) => Math.round(v / total).toString(16).padStart(2, '0')).join('')}`
+}
+
+/** Shrink a picture to a few dozen pixels and read its tint. Returns nothing where that cannot be done. */
+async function readTint(blob: Blob): Promise<string | undefined> {
+  try {
+    const bitmap = await createImageBitmap(blob)
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 24
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(bitmap, 0, 0, 24, 24)
+    return tintOf(ctx.getImageData(0, 0, 24, 24).data)
+  } catch { return undefined }
+}
+
 export interface Wanted extends ImageJob { key: string; label: string }
 type Status = 'idle' | 'working' | 'busy' | 'error'
 
@@ -37,6 +64,8 @@ interface Images {
   made: number
   /** Object links for the pictures loaded so far, by key. */
   links: Record<string, string>
+  /** The overall colour of each loaded picture, by key. */
+  tints: Record<string, string>
   setUrl(url: string): void
   setSteps(steps: number): void
   test(): Promise<void>
@@ -60,6 +89,7 @@ export const useImages = create<Images>()((set, get) => {
     const old = get().links[key]
     if (old) URL.revokeObjectURL(old)
     set((s) => ({ links: { ...s.links, [key]: URL.createObjectURL(blob) } }))
+    void readTint(blob).then((tint) => { if (tint && get().links[key]) set((s) => ({ tints: { ...s.tints, [key]: tint } })) })
   }
 
   /** Work through the list one picture at a time, stepping aside whenever ComfyUI has other work. */
@@ -106,6 +136,7 @@ export const useImages = create<Images>()((set, get) => {
     current: null,
     made: 0,
     links: {},
+    tints: {},
     setUrl: (url) => { set({ url: url.trim() || defaultComfyUrl() }); keep(get()) },
     setSteps: (steps) => { set({ steps: Math.min(60, Math.max(4, Math.round(steps) || 25)) }); keep(get()) },
     test: async () => {
@@ -144,7 +175,7 @@ export const useImages = create<Images>()((set, get) => {
     remove: async (key) => {
       const old = get().links[key]
       if (old) URL.revokeObjectURL(old)
-      set((s) => { const links = { ...s.links }; delete links[key]; return { links } })
+      set((s) => { const links = { ...s.links }, tints = { ...s.tints }; delete links[key]; delete tints[key]; return { links, tints } })
       try { await tx('readwrite', (st) => st.delete(key)) } catch { /* already gone */ }
     },
     removeAll: async (prefix) => {
