@@ -99,7 +99,7 @@ function ImagePanel({ s }: { s: SettingData }) {
         </p>
         <p className="hint">
           {isDirect(im.url)
-            ? <>This page talks to ComfyUI directly, so ComfyUI has to be told to accept it. {allowHint()} The address above must start with http://, not https://.</>
+            ? <>This page talks to ComfyUI directly, so ComfyUI has to be told to accept it. {allowHint()} For ComfyUI on this computer the address starts with http://; a secure address that forwards to it, such as one from a private network, starts with https://.</>
             : <>Requests go through this app’s own server, so ComfyUI needs no changes.</>}
         </p>
       </div>

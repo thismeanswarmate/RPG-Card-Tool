@@ -35,6 +35,8 @@ in the browser.
   told to allow. In ComfyUI Desktop, open Settings → Server-Config, put the site's address (for example
   `https://thismeanswarmate.github.io`, with no path) in "Enable CORS header", and restart ComfyUI. The Pictures panel shows the exact
   address to enter. The browser may also ask for permission to reach the local network. A page opened as a file is always blocked.
+- **From another device, such as a phone**: give ComfyUI a secure (`https://`) address that only your own devices can reach, for
+  example through a private network tool, and enter that address in the Pictures panel. The "Enable CORS header" setting is still needed.
 
 ## Development
 
