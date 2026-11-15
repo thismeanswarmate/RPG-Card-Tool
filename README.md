@@ -1,6 +1,8 @@
 # Storyloom
 
-Four card tools on one page, switched from the top menu.
+Five tools on one page, switched from the top menu.
+
+**Setting** is the front door. Answer five questions — size, genre, landscape, focus and depth — and it generates one connected setting from the Worlds, Lore and Stories decks: a map of named places, the factions and other powers at work, the people who live there, and stories waiting to happen. It is built in layers so each part points at the others: a faction's sacred place is a real spot on the map and its founder is one of the people. A built-in name generator names everything in a few related "tongues"; any name can be redrawn or typed over, and the change shows wherever the thing is mentioned. Settings are saved separately from the other tools, repeat exactly for the same seed, and export as Markdown.
 
 **Lore** grows a web of linked story elements — factions, figures, events, places, objects, materials and creatures. Each element takes a primary cue and up to four details; a detail can hold links, completed with a new cue or an element already in the web, and any link can be expanded into an element of its own. Optional Deities, Emblems and Names packs, a one-click web generator, and a written account of the whole web.
 

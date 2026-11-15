@@ -37,7 +37,7 @@ function sentence(cards: Cards, id: string, active: number, vars: Record<string,
 }
 
 /** One paragraph for the root hub and one for each Site under it, then a paragraph of links. */
-export function describe(board: Board, cards: Cards, root: string, links: Link[] = []): string[] {
+export function describe(board: Board, cards: Cards, root: string, links: Link[] = [], names: Record<string, string> = {}): string[] {
   if (!board[root] || !isHub(cards[root].type)) return []
   const members = subtree(board, root)
   const hubs = members.filter((id) => isHub(cards[id].type))
@@ -46,7 +46,7 @@ export function describe(board: Board, cards: Cards, root: string, links: Link[]
   const out = hubs.map((hub) => {
     const other = hubs.find((h) => h !== hub && cards[h].type === 'site')
     // The hub's own sentence gives its full name; the cards under it then use the short form.
-    const full = placeName(board, cards, hub)
+    const full = names[hub] ?? placeName(board, cards, hub)
     const vars = {
       place: `the ${cueText(cards, board[hub]).toLowerCase()}`,
       terrain,
@@ -69,6 +69,19 @@ export function describe(board: Board, cards: Cards, root: string, links: Link[]
     return `A thread runs between ${label(mine)} and ${label(theirs)}${where}${note ? `: ${note}` : ''}.`
   })
   return threads.length ? [...out, threads.join(' ')] : out
+}
+
+/** The sentence for one card tucked under a place, as it would appear in that place's description. */
+export function cardSentence(board: Board, cards: Cards, id: string): string {
+  const hub = board[id]?.parent
+  if (!hub || !board[hub]) return ''
+  const root = rootOf(board, hub)
+  const other = subtree(board, root).find((h) => h !== hub && cards[h].type === 'site')
+  return sentence(cards, id, board[id].active, {
+    place: `the ${cueText(cards, board[hub]).toLowerCase()}`,
+    terrain: cards[root].type === 'terrain' ? `the ${cueText(cards, board[root]).toLowerCase()}` : 'the surrounding country',
+    site: other && `the ${cueText(cards, board[other]).toLowerCase()}`,
+  })
 }
 
 /** What holds true everywhere, from the meta row. */

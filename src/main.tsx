@@ -6,6 +6,7 @@ import { Lore } from './Lore'
 import { Panel } from './Panel'
 import { People } from './People'
 import { ToolCtx, type Tool } from './ToolNav'
+import { Setting } from './Setting'
 import { Sidebar } from './Sidebar'
 import { Stories } from './Stories'
 import { titleOf } from './logic'
@@ -40,8 +41,8 @@ const savedMode = (): Mode => {
 const savedTool = (): Tool => {
   try {
     const t = localStorage.getItem('storyloom-tool')
-    return t === 'people' || t === 'lore' || t === 'stories' ? t : 'worlds'
-  } catch { return 'worlds' }
+    return t === 'worlds' || t === 'people' || t === 'lore' || t === 'stories' ? t : 'setting'
+  } catch { return 'setting' }
 }
 
 function App() {
@@ -52,7 +53,7 @@ function App() {
   }
   return (
     <ToolCtx.Provider value={{ tool, setTool }}>
-      {tool === 'people' ? <People /> : tool === 'lore' ? <Lore /> : tool === 'stories' ? <Stories /> : <Worlds />}
+      {tool === 'setting' ? <Setting /> : tool === 'people' ? <People /> : tool === 'lore' ? <Lore /> : tool === 'stories' ? <Stories /> : <Worlds />}
     </ToolCtx.Provider>
   )
 }

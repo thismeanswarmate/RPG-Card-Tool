@@ -12,7 +12,7 @@ const DOUBLED: CardType[] = ['site', 'epithet', 'trait', 'question']
 /** Size of the table viewport in pixels, kept up to date by the Table component. */
 export const viewport = { w: 1000, h: 700 }
 
-interface Data {
+export interface Data {
   init: boolean
   custom: CardDef[]
   disabled: string[]
@@ -207,9 +207,10 @@ function blob(n: number): [number, number][] {
  * microsettings that alternate between simple (one of everything) and complex (two Sites, Epithets and
  * Traits drawn, one or both kept).
  */
-export function generateWorld(s: Data, size: WorldSize) {
+export function generateWorld(s: Data, size: WorldSize, prepare?: (s: Data) => void) {
   Object.assign(s, blank(), { custom: s.custom, disabled: s.disabled, expansions: s.expansions, guide: { ...s.guide } })
   rebuild(s)
+  prepare?.(s)
   const cards = cardsOf(s)
   const cue = (id: string) => rand(cards[id].cues.length)
 

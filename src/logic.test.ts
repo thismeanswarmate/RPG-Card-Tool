@@ -359,3 +359,94 @@ describe('story prompts', async () => {
       }
   })
 })
+
+describe('names', async () => {
+  const N = await import('./names')
+  it('repeats for the same seed and differs for another', () => {
+    const run = (seed: string) => { const r = N.rngFrom(seed); return Array.from({ length: 8 }, () => r()) }
+    expect(run('ember-1')).toEqual(run('ember-1'))
+    expect(run('ember-1')).not.toEqual(run('ember-2'))
+    for (const v of run('x')) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThan(1) }
+  })
+  it('names every kind of thing in every tongue without repeating itself', () => {
+    const kinds = ['world', 'place', 'site', 'person', 'faction', 'deity', 'object', 'event', 'creature', 'material'] as const
+    N.TONGUES.forEach((_, tongue) => {
+      const rng = N.rngFrom(`t${tongue}`)
+      const taken = new Set<string>()
+      for (const kind of kinds)
+        for (let i = 0; i < 25; i++) {
+          const name = N.makeName({ kind, tongue, base: 'bell tower', home: 'Marrowick', genres: ['fantasy'] }, rng, taken)
+          expect(name, `${kind} in tongue ${tongue}`).toMatch(/^[A-Za-z]/)
+          expect(name).not.toMatch(/undefined|  /)
+        }
+      expect(taken.size).toBeGreaterThan(180)
+    })
+    expect(N.tonguesFor(['scifi'], 3, N.rngFrom('a')).map((i) => N.TONGUES[i].id)).toEqual(['star'])
+    expect(N.tonguesFor(['fantasy', 'horror'], 3, N.rngFrom('a'))).toHaveLength(3)
+  })
+})
+
+describe('settings', async () => {
+  const G = await import('./setting')
+  const answers = (over: Partial<import('./setting').Answers> = {}) => ({ ...G.DEFAULT_ANSWERS, ...over })
+  const strip = (s: import('./setting').Setting) => ({ ...s, id: '', created: 0 })
+
+  it('is the same setting for the same seed and answers', () => {
+    expect(strip(G.generateSetting(answers(), 'quill-204'))).toEqual(strip(G.generateSetting(answers(), 'quill-204')))
+    expect(G.generateSetting(answers(), 'quill-205').names).not.toEqual(G.generateSetting(answers(), 'quill-204').names)
+  })
+  it('ties every layer to the others, at every size and theme', () => {
+    const cases = [
+      answers({ size: 'region', depth: 'sketch', genres: ['horror'], lands: ['coast'], focus: [] }),
+      answers(),
+      answers({ size: 'continent', depth: 'rich', genres: ['fantasy', 'scifi'], lands: ['temperate', 'frost', 'dry'], focus: ['power', 'secrets', 'adventure', 'everyday', 'faith'] }),
+      answers({ size: 'country', genres: [], lands: ['frost'], focus: ['faith'] }),
+    ]
+    cases.forEach((a, n) => {
+      const s = G.generateSetting(a, `case-${n}`)
+      const roots = G.rootsOf(s)
+      const [min, max] = { region: [5, 7], country: [9, 14], continent: [14, 20] }[a.size]
+      expect(roots.length).toBeGreaterThanOrEqual(min)
+      expect(roots.length).toBeLessThanOrEqual(max)
+      if (!a.lands.includes('temperate')) expect(roots.some((r) => cards[r] === undefined)).toBe(true)
+
+      const ids = new Set([...Object.keys(s.board), ...s.entities.map((e) => e.id), ...s.people.map((c) => c.id), 'world'])
+      const named = Object.values(s.names).map((x) => x.toLowerCase())
+      expect(new Set(named).size).toBe(named.length)
+      for (const r of roots) expect(s.names[r]).toBeTruthy()
+      for (const e of [...s.entities, ...s.people]) {
+        expect(s.names[e.id], e.id).toBeTruthy()
+        expect(e.details.length).toBeGreaterThan(0)
+        for (const d of e.details) for (const l of d.links) { expect(ids.has(l.node!), `${e.id} → ${l.node}`).toBe(true); expect(l.node).not.toBe(e.id) }
+      }
+      const factions = s.entities.filter((e) => e.kind === 'faction')
+      expect(factions.length).toBeGreaterThanOrEqual(2)
+      for (const f of factions) {
+        expect(s.people.some((c) => c.faction === f.id), `${f.id} has a member`).toBe(true)
+        expect(f.details.some((d) => d.links.some((l) => l.kind === 'faction')), `${f.id} has a rival`).toBe(true)
+        expect(s.board[f.home!]).toBeTruthy()
+      }
+      for (const c of s.people) expect(s.board[c.home]).toBeTruthy()
+      for (const h of s.hooks) for (const l of h.lines) { expect(ids.has(l.who)).toBe(true); expect(ids.has(l.target)).toBe(true); expect(l.target).not.toBe(l.who) }
+      for (const r of roots) {
+        const v = G.placeView(s, r)
+        expect(v.prose[0]).toContain(s.names[r])
+        expect(v.prose.join(' ')).toMatch(/\./)
+      }
+      const text = G.settingMarkdown(s)
+      expect(text).not.toMatch(/[{}]|undefined|  /)
+      for (const e of [...s.entities, ...s.people]) expect(text).toContain(s.names[e.id])
+      if (a.focus.includes('adventure')) expect(text).toContain('Quest — ')
+    })
+  })
+  it('renames a thing everywhere it is mentioned', () => {
+    const s = G.generateSetting(answers(), 'rename')
+    const f = s.entities.find((e) => e.kind === 'faction')!
+    const fresh = G.rename(s, f.id)
+    expect(fresh).not.toBe(s.names[f.id])
+    s.names[f.id] = 'the Zzyzx Test'
+    const member = s.people.find((c) => c.faction === f.id)!
+    expect(G.charText(s, member)[0]).toContain('the Zzyzx Test')
+    expect(G.settingMarkdown(s)).toContain('The Zzyzx Test')
+  })
+})
