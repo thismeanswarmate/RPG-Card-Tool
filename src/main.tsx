@@ -8,6 +8,7 @@ import { People } from './People'
 import { Perils } from './Perils'
 import { ToolCtx, type Tool } from './ToolNav'
 import { Setting } from './Setting'
+import { Settlements } from './Settlements'
 import { Sidebar } from './Sidebar'
 import { Stories } from './Stories'
 import { titleOf } from './logic'
@@ -42,7 +43,7 @@ const savedMode = (): Mode => {
 const savedTool = (): Tool => {
   try {
     const t = localStorage.getItem('storyloom-tool')
-    return t === 'worlds' || t === 'people' || t === 'lore' || t === 'stories' || t === 'perils' ? t : 'setting'
+    return t === 'worlds' || t === 'people' || t === 'lore' || t === 'stories' || t === 'perils' || t === 'settlements' ? t : 'setting'
   } catch { return 'setting' }
 }
 
@@ -54,7 +55,7 @@ function App() {
   }
   return (
     <ToolCtx.Provider value={{ tool, setTool }}>
-      {tool === 'setting' ? <Setting /> : tool === 'people' ? <People /> : tool === 'lore' ? <Lore /> : tool === 'stories' ? <Stories /> : tool === 'perils' ? <Perils /> : <Worlds />}
+      {tool === 'setting' ? <Setting /> : tool === 'people' ? <People /> : tool === 'lore' ? <Lore /> : tool === 'stories' ? <Stories /> : tool === 'perils' ? <Perils /> : tool === 'settlements' ? <Settlements /> : <Worlds />}
     </ToolCtx.Provider>
   )
 }

@@ -1,8 +1,10 @@
 # Storyloom
 
-Six tools on one page, switched from the top menu.
+Seven tools on one page, switched from the top menu.
 
 **Perils** builds a dangerous place by rolling on tables, in steps: a premise (theme, what stood there before, and the kind of place, surroundings and danger), then tables for the place itself, for where it stands, and for what makes it dangerous, with a personality for whoever is behind it when the danger can think. Roll everything at once, reroll single tables, pick results by hand and lock the ones to keep. The result is written up as a brief. Ten kinds of place, twelve surroundings and six kinds of danger, each with tables of its own.
+
+**Settlements** builds a trading post, village, town, city, capital or fortress town the same way, in five steps: foundations, people, rule and order, places, and trouble and talk. Each kind of settlement has tables of its own for what it is known for, how many live there and one thing only that kind has. The result is written up as a brief and given a name.
 
 **Setting** is the front door. Answer five questions — size, genre, landscape, focus and depth — and it generates one connected setting from the Worlds, Lore and Stories decks: a map of named places, the factions and other powers at work, the people who live there, and stories waiting to happen. It is built in layers so each part points at the others: a faction's sacred place is a real spot on the map and its founder is one of the people. A built-in name generator names everything in a few related "tongues"; any name can be redrawn or typed over, and the change shows wherever the thing is mentioned. The setting is drawn as an ink map on parchment (a blueprint for science fiction): each place is a region of land with its terrain's wash and symbols, sites are marked, and dotted routes join places that a faction, person or story connects. The map is made from the setting and its seed, so it always matches the text, and can be saved as an SVG. Settings are saved separately from the other tools, repeat exactly for the same seed, and export as Markdown.
 

@@ -734,3 +734,48 @@ describe('perils', async () => {
     ])
   })
 })
+
+describe('settlements', async () => {
+  const T = await import('./settlement')
+  it('has well-formed tables for every kind of settlement', () => {
+    const kinds = Object.keys(T.TYPES)
+    expect(kinds).toHaveLength(6)
+    kinds.forEach((_, i) => {
+      const steps = T.stepsFor({ type: i })
+      expect(steps.map((s) => s.title)).toEqual(['Foundations', 'People', 'Rule and order', 'Places', 'Trouble and talk'])
+      const tables = steps.flatMap((s) => s.tables)
+      expect(new Set(tables.map((tb) => tb.id)).size).toBe(tables.length)
+      for (const tb of tables) {
+        expect(tb.entries.length, tb.id).toBeGreaterThanOrEqual(4)
+        expect(new Set(tb.entries).size, tb.id).toBe(tb.entries.length)
+        if (/extra$|^market$|^history$|^event$/.test(tb.id)) for (const e of tb.entries) expect(e, tb.id).toMatch(/^[A-Z].*\.$/)
+        else for (const e of tb.entries) expect(e, tb.id).not.toMatch(/\.$/)
+      }
+    })
+    expect(T.stepsFor({}).map((s) => s.title)).toEqual(['Foundations'])
+    expect(T.brief('Anywhere', {})).toEqual([])
+  })
+  it('rolls a complete settlement and writes it up in whole sentences', () => {
+    for (let n = 0; n < 200; n++) {
+      const rolls = T.rollAll({})
+      for (const tb of T.stepsFor(rolls).flatMap((s) => s.tables)) expect(rolls[tb.id], tb.id).toBeLessThan(tb.entries.length)
+      const text = T.brief('Marrowick', rolls)
+      expect(text).toHaveLength(5)
+      expect(text[0]).toMatch(/^Marrowick is an? /)
+      for (const para of text) expect(para).toMatch(/^[A-Z].*\.$/)
+      expect(text.join(' ')).not.toMatch(/undefined|  |\.\.| ,|\. [a-z]| and \./)
+      expect(T.rollAll(rolls, ['type']).type).toBe(rolls.type)
+    }
+  })
+  it('reads as intended for a known set of rolls, and copes with gaps', () => {
+    const rolls = T.rollAll({}, [], () => 0)
+    expect(T.brief('Ashford', rolls)).toEqual([
+      'Ashford is a squalid trading post, barely a generation old. It began as a camp that never moved on and lies on a coast. It is known for furs and hides. Visitors are almost unknown.',
+      'It holds a dozen permanent residents. Its people are nearly all of one folk; most are destitute. Toward strangers they are hostile.',
+      'It is run by an elected mayor. The law is absent, and crime is almost unknown. It is defended by nothing. A single family controls every stall.',
+      'The market square is cobbled and crowded. The best-known inn is a low, smoky house with excellent stew. Shops of note include a bookbinder. There is also a bathhouse. The main place of worship is a plain wooden chapel, and people gather at the well.',
+      'A new leader took over within the year. A festival is days away. People say that the well has gone bad. The nearest danger is bandits on the road.',
+    ])
+    expect(T.brief('', { type: 1, crime: 2, gather: 0 })).toEqual(['This settlement is a village.', 'Crime is an everyday nuisance.', 'People gather at the well.'])
+  })
+})

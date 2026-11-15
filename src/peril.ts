@@ -7,11 +7,9 @@
 // which. Which tables apply depends on earlier rolls: the kind of place, the surroundings and the kind
 // of danger each bring their own.
 
-const t = (raw: string) => raw.split('|').map((x) => x.trim()).filter(Boolean)
+import { an, entries as t, reader, rollTables, type Rolls, type Step, type Table } from './roller'
 
-export interface Table { id: string; label: string; entries: string[] }
-export interface Step { title: string; blurb: string; tables: Table[] }
-export type Rolls = Record<string, number | undefined>
+export type { Rolls, Step, Table }
 
 export const KINDS: Record<string, { label: string; purpose: string[]; feature: string[] }> = {
   burial: {
@@ -297,27 +295,11 @@ export function stepsFor(rolls: Rolls): Step[] {
   return steps
 }
 
-/** Roll every table that applies and is not locked. Later tables depend on earlier ones, so it goes round until none is left. */
-export function rollAll(rolls: Rolls, locked: string[] = [], random: () => number = Math.random): Rolls {
-  const out: Rolls = { ...rolls }
-  const done = new Set<string>()
-  for (let guard = 0; guard < 60; guard++) {
-    const next = stepsFor(out).flatMap((s) => s.tables).find((tb) => !done.has(tb.id))
-    if (!next) break
-    done.add(next.id)
-    if (!locked.includes(next.id) || out[next.id] === undefined) out[next.id] = Math.floor(random() * next.entries.length)
-  }
-  return out
-}
-
-const an = (w: string) => `${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}`
+export const rollAll = (rolls: Rolls, locked: string[] = [], random: () => number = Math.random) => rollTables(stepsFor, rolls, locked, random)
 
 /** The place written up as a brief: one paragraph for each step, leaving out whatever has not been rolled. */
 export function brief(name: string, rolls: Rolls): string[] {
-  const tables = Object.fromEntries(stepsFor(rolls).flatMap((s) => s.tables).map((tb) => [tb.id, tb]))
-  const get = (id: string) => (rolls[id] === undefined ? undefined : tables[id]?.entries[rolls[id]!])
-  const say = (strings: TemplateStringsArray, ...values: (string | undefined)[]) =>
-    values.some((v) => v === undefined) ? '' : strings.reduce((s, part, i) => s + part + (values[i] ?? ''), '')
+  const { get, say } = reader(stepsFor, rolls)
   const kind = key(KINDS, rolls.kind), env = key(ENVIRONMENTS, rolls.env), danger = key(DANGERS, rolls.danger)
   const called = name.trim() || 'This place'
   const out: string[] = []

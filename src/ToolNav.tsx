@@ -1,9 +1,9 @@
 import { createContext, useContext } from 'react'
 
-export type Tool = 'setting' | 'worlds' | 'people' | 'lore' | 'stories' | 'perils'
+export type Tool = 'setting' | 'worlds' | 'people' | 'lore' | 'stories' | 'perils' | 'settlements'
 export const ToolCtx = createContext<{ tool: Tool; setTool: (t: Tool) => void }>({ tool: 'setting', setTool: () => {} })
 
-const TOOLS: [Tool, string][] = [['setting', 'Setting'], ['worlds', 'Worlds'], ['people', 'Characters'], ['lore', 'Lore'], ['stories', 'Stories'], ['perils', 'Perils']]
+const TOOLS: [Tool, string][] = [['setting', 'Setting'], ['worlds', 'Worlds'], ['people', 'Characters'], ['lore', 'Lore'], ['stories', 'Stories'], ['perils', 'Perils'], ['settlements', 'Settlements']]
 
 /** The brand and the switch between the tools, shown at the left of every header. */
 export function ToolNav() {
