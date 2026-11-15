@@ -122,6 +122,12 @@ select { font: inherit; color: inherit; background: var(--raised); border: 1px s
 .modal header, .deck-row { display: flex; justify-content: space-between; align-items: center; }
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
 
+.prose { display: flex; flex-direction: column; gap: 10px; line-height: 1.55; font-size: 14.5px; font-family: Georgia, 'Iowan Old Style', serif; user-select: text; }
+.prose section { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.prose h3 { font-family: system-ui, sans-serif; font-size: 16px; text-transform: none; letter-spacing: 0; color: var(--accent); margin: 0; }
+.modal.wide { width: min(680px, 100%); }
+.field { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+code { background: var(--bg); border-radius: 4px; padding: 0 4px; font-size: 12px; }
 .menu { display: contents; }
 .menu-btn, .tabs, .selbar { display: none; }
 html, body, #root { height: 100dvh; }

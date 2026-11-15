@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { autoEdge, composeName, cueAt, dropTarget, layout, peek, rootOf, shuffle, type Board, type Cards } from './logic'
+import { chronicle, chronicleText, describe as describeArea } from './describe'
 import { STARTER } from './starter'
 import { TYPES } from './types'
 
@@ -79,6 +80,47 @@ describe('placement helpers', () => {
   })
 })
 
+describe('descriptions', () => {
+  it('gives every starter cue a sentence that only uses known placeholders', () => {
+    for (const c of STARTER)
+      for (const q of c.cues) {
+        expect(q.desc, `${c.type}: ${q.text}`).toBeTruthy()
+        for (const m of q.desc!.matchAll(/\{(\w+)/g)) expect(['place', 'terrain', 'site']).toContain(m[1])
+        if (c.type === 'epithet') expect(q.desc).toMatch(/^(for|because|after) /)
+        else expect(q.desc).toMatch(/^[A-Z].*\.$/)
+        if (c.type === 'terrain' || c.type === 'site') expect(q.desc).toContain('{place}')
+      }
+  })
+  it('weaves a microsetting into prose that names its neighbours', () => {
+    const b = board()
+    b[E].active = 1
+    const text = describeArea(b, cards, T)
+    expect(text).toHaveLength(2)
+    expect(text[0]).toMatch(/^In the Marsh of Lanterns the ground/)
+    expect(text[0]).toContain('They say “of Lanterns” for the lamps hung at every door after dark.')
+    expect(text[0]).toContain('Two rivals once staked the marsh on a single wager')
+    expect(text[1]).toMatch(/^At the edge of the marsh, the lamp of the Lighthouse/)
+    expect(text.join(' ')).not.toMatch(/[{}]|undefined/)
+  })
+  it('uses the other site, or the fallback when there is none', () => {
+    const migration = 's-legacy-8' // Where two migrations met
+    const b = board()
+    b[migration] = { id: migration, active: 0, x: 0, y: 0, parent: T, edge: 2, order: 9 }
+    expect(describeArea(b, cards, T)[0]).toContain('different sides of the lighthouse.')
+    delete b[S]
+    expect(describeArea(b, cards, T)[0]).toContain('different sides of the main road.')
+  })
+  it('mentions links and copes with cards that have no description', () => {
+    const plain: Cards = { ...cards, x: { id: 'x', type: 'trait', deck: 'custom', cues: [{ text: 'Loves kites' }] } }
+    const b = board()
+    b.x = { id: 'x', active: 0, x: 0, y: 0, parent: T, edge: 3, order: 9 }
+    b['s-terrain-1'] = { id: 's-terrain-1', active: 0, x: 900, y: 0, order: 10 }
+    const text = describeArea(b, plain, T, [{ id: 'l', a: 'x', b: 's-terrain-1', note: 'kite season.' }])
+    expect(text[0]).toContain('Of the marsh today, people say this: loves kites.')
+    expect(text[2]).toBe('A thread runs between “Loves kites” and the Steppe: kite season.')
+  })
+})
+
 describe('world generator', async () => {
   const { blank, generateWorld, WORLD_SIZES } = await import('./store')
   for (const size of ['small', 'medium', 'large'] as const)
@@ -102,6 +144,9 @@ describe('world generator', async () => {
         expect(everywhere.length).toBe(STARTER.length)
         for (const a of roots) for (const b of roots) if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(380)
         for (const p of placed) expect(p.active).toBeLessThan(cards[p.id].cues.length)
+        const book = chronicle(s.placed, cards, s.links, s.meta)
+        expect(book).toHaveLength(roots.length + 1)
+        expect(chronicleText(book)).not.toMatch(/[{}]|undefined|  /)
       }
     })
 })

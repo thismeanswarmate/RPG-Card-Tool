@@ -1,3 +1,4 @@
+import { DESCRIPTIONS } from './descriptions'
 import type { CardDef, CardType, Cue } from './types'
 
 // Original starter deck written for Worldloom.
@@ -152,7 +153,10 @@ const omens: [string, string][][] = [
 ]
 
 const make = (type: CardType, rows: Cue[][]): CardDef[] =>
-  rows.map((cues, i) => ({ id: `s-${type}-${i}`, type, deck: 'starter', cues }))
+  rows.map((cues, i) => ({
+    id: `s-${type}-${i}`, type, deck: 'starter',
+    cues: cues.map((c) => ({ ...c, desc: DESCRIPTIONS[c.text] })),
+  }))
 const plain = (rows: string[][]) => rows.map((r) => r.map((text) => ({ text })))
 
 export const STARTER: CardDef[] = [

@@ -12,6 +12,15 @@ const LABELS: Record<CardType, string[]> = {
   omen: ['First event', 'Second event'],
 }
 
+const DESC_HINT: Record<CardType, string> = {
+  terrain: 'Description, e.g. “Across {place} the grass runs to the horizon.”',
+  site: 'Description, e.g. “The lamp of {place} can be seen across {terrain}.”',
+  epithet: 'Why the name, e.g. “for the lamps hung at every door”',
+  legacy: 'Description, e.g. “Mutineers founded {place} long ago.”',
+  trait: 'Description, e.g. “Every household in {place} keeps bees.”',
+  omen: 'Description, e.g. “A stranger has arrived in {place}.”',
+}
+
 const blank = (type: CardType): CardDef => ({
   id: `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
   type, deck: 'custom', cues: LABELS[type].map(() => ({ text: '' })),
@@ -26,7 +35,14 @@ export function Decks({ onClose }: { onClose: () => void }) {
   const valid = edit?.cues.every((c) => c.text.trim())
 
   const save = () => {
-    s.saveCustom({ ...edit!, cues: edit!.cues.map((c) => ({ text: c.text.trim(), ...(c.sub?.trim() ? { sub: c.sub.trim() } : {}) })) })
+    s.saveCustom({
+      ...edit!,
+      cues: edit!.cues.map((c) => ({
+        text: c.text.trim(),
+        ...(c.sub?.trim() ? { sub: c.sub.trim() } : {}),
+        ...(c.desc?.trim() ? { desc: c.desc.trim() } : {}),
+      })),
+    })
     setEdit(null)
   }
 
@@ -56,8 +72,14 @@ export function Decks({ onClose }: { onClose: () => void }) {
                 {edit.type === 'omen' && (
                   <input value={c.sub ?? ''} placeholder="Optional ways to read it" onChange={(e) => setCue(i, { sub: e.target.value })} />
                 )}
+                <input value={c.desc ?? ''} placeholder={DESC_HINT[edit.type]} onChange={(e) => setCue(i, { desc: e.target.value })} />
               </div>
             ))}
+            <p className="hint">
+              Descriptions are optional and are stitched into the written account of an area. They can mention the cards around
+              them: <code>{'{place}'}</code> is the Terrain or Site the card sits on, <code>{'{terrain}'}</code> the land it belongs
+              to, and <code>{'{site|the old road}'}</code> another Site nearby, or the words after the bar when there is none.
+            </p>
             <div className="actions">
               <button className="primary" disabled={!valid} onClick={save}>Save card</button>
               <button onClick={() => setEdit(null)}>Cancel</button>

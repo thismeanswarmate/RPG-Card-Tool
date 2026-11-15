@@ -14,6 +14,8 @@ export const TYPE_INFO: Record<CardType, { label: string; cues: number; glyph: s
 export interface Cue {
   text: string
   sub?: string
+  /** A sentence of prose for this cue; see describe.ts for the placeholders it may use. */
+  desc?: string
 }
 
 export interface CardDef {
