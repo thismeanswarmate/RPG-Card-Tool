@@ -356,3 +356,26 @@ html, body, #root { height: 100dvh; }
   .chips button { padding: 6px 12px; }
 }
 .roots .link { display: inline; }
+
+/* New setting: the two ways to begin, and the editing controls of a setting */
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.choice { display: flex; flex-direction: column; gap: 8px; text-align: left; padding: 18px; border-radius: 12px; background: var(--surface); line-height: 1.45; }
+.choice b { font-size: 18px; color: var(--accent); }
+.choice span { color: var(--muted); }
+.choice:hover { border-color: var(--accent); }
+.guide { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; line-height: 1.45; }
+.guide h3 { font-size: 16px; color: var(--accent); }
+.addbar, .edit-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.addbar { border-top: 1px dashed var(--line); padding-top: 8px; }
+.addbar > span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin-right: 4px; }
+.addbar button, .edit-row button, .addbar select, .edit-row select { padding: 3px 9px; font: inherit; color: inherit; background: var(--raised); border: 1px solid var(--line); border-radius: 6px; max-width: 100%; }
+.edit-row button { color: var(--muted); }
+.edit-row button:hover { color: var(--text); }
+.gaz-head .actions button.on { border-color: var(--accent); color: var(--accent); }
+.entry.built.settlement { border-left-color: #b98a4a; }
+.entry.built.peril { border-left-color: var(--omen); }
+.tables summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.tables summary small { margin-left: 6px; opacity: .8; }
+.tables[open] { display: flex; flex-direction: column; gap: 6px; }
+.rename.shown { opacity: 1; }
+@media (max-width: 700px) { .choices { grid-template-columns: 1fr; } }

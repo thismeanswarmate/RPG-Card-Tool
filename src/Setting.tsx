@@ -1,12 +1,18 @@
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { allowHint, isDirect } from './comfy'
 import { ART, imageIds, imageSpec } from './imagePrompts'
 import { useImages } from './imageStore'
+import { KIND_LABEL, type Kind } from './lore'
 import { titleCase } from './names'
+import { RollRows } from './Roller'
 import {
-  charText, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
-  type Answers, type Char, type Entity, type Setting as SettingData, type Spot,
+  builtKind, builtText, charText, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
+  type Answers, type Built, type Char, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
+import {
+  addBuilt, addPerson, addPlace, addPower, addSite, addStory, builtEdit, builtReroll, builtSteps, canTurn, goneWith, redrawPlace, remove,
+  removeStory, rerollStory, rewrite, setFaction, turn,
+} from './settingBuild'
 import { SettingMap } from './SettingMap'
 import { useSettings } from './settingStore'
 import { ToolNav } from './ToolNav'
@@ -16,7 +22,7 @@ const go = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView(
 const WORDS = 'ember harbour thistle lantern marrow sable quill tallow wren ash juniper flint'.split(' ')
 const randomSeed = () => `${WORDS[Math.floor(Math.random() * WORDS.length)]}-${Math.floor(100 + Math.random() * 900)}`
 
-function Questions() {
+function Questions({ back }: { back(): void }) {
   const create = useSettings((s) => s.create)
   const [a, setA] = useState<Answers>(DEFAULT_ANSWERS)
   const [seed, setSeed] = useState('')
@@ -38,10 +44,10 @@ function Questions() {
   )
   return (
     <div className="wizard">
-      <h2>A new setting</h2>
+      <h2>Let me build it for you</h2>
       <p className="hint">
-        Answer five questions and get one connected setting: a map of named places, the powers at work in it, the people who live there
-        and the stories waiting to happen. Each part refers to the others.
+        Answer five questions and get one connected setting: a map of named places, the powers at work in it, the people who live there,
+        its settlements and dangerous places, and the stories waiting to happen. Each part refers to the others, and all of it can be changed afterwards.
       </p>
       {group('size', false)}
       {group('genres', true)}
@@ -52,8 +58,147 @@ function Questions() {
         <legend>Seed <small>Optional. The same seed and answers always give the same setting.</small></legend>
         <input value={seed} onChange={(e) => setSeed(e.target.value)} placeholder="Leave empty for a random one" />
       </fieldset>
-      <button className="primary big" onClick={() => create(a, seed.trim() || randomSeed())}>Generate setting</button>
+      <div className="actions">
+        <button className="primary big" onClick={() => create(a, seed.trim() || randomSeed())}>Generate setting</button>
+        <button onClick={back}>Back</button>
+      </div>
     </div>
+  )
+}
+
+/** The two things a hand-built setting needs to know before its first place: which cards and names to draw on. */
+function ManualStart({ back }: { back(): void }) {
+  const create = useSettings((s) => s.createManual)
+  const [genres, setGenres] = useState<string[]>(DEFAULT_ANSWERS.genres)
+  const [lands, setLands] = useState<string[]>(DEFAULT_ANSWERS.lands)
+  const [title, setTitle] = useState('')
+  const group = (key: 'genres' | 'lands', value: string[], set: (v: string[]) => void) => (
+    <fieldset className="question">
+      <legend>{QUESTIONS[key].label}<small> Pick any that apply</small></legend>
+      <div className="chips">
+        {Object.entries(QUESTIONS[key].options).map(([v, label]) => (
+          <button key={v} className={value.includes(v) ? 'on' : ''} aria-pressed={value.includes(v)}
+            onClick={() => set(value.includes(v) ? value.filter((x) => x !== v) : [...value, v])}>{label}</button>
+        ))}
+      </div>
+    </fieldset>
+  )
+  return (
+    <div className="wizard">
+      <h2>I’ll build it</h2>
+      <p className="hint">
+        You add the pieces one at a time: a place, then what is found there, then the next place. These two answers decide which lands,
+        sites and names the pieces are drawn from.
+      </p>
+      {group('genres', genres, setGenres)}
+      {group('lands', lands, setLands)}
+      <fieldset className="question">
+        <legend>Name <small>Optional. Leave empty and one is made up; it can be changed later.</small></legend>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="The name of your setting" />
+      </fieldset>
+      <div className="actions">
+        <button className="primary big" onClick={() => create(genres, lands, title)}>Start building</button>
+        <button onClick={back}>Back</button>
+      </div>
+    </div>
+  )
+}
+
+/** The first choice for a new setting: have it generated whole, or build it piece by piece. */
+function NewSetting() {
+  const [mode, setMode] = useState<'auto' | 'manual' | null>(null)
+  if (mode === 'auto') return <Questions back={() => setMode(null)} />
+  if (mode === 'manual') return <ManualStart back={() => setMode(null)} />
+  return (
+    <div className="wizard">
+      <h2>A new setting</h2>
+      <div className="choices">
+        <button className="choice" onClick={() => setMode('auto')}>
+          <b>Let me build it for you</b>
+          <span>Answer five questions and get a whole setting at once: places, powers, people, settlements, dangerous places and stories, all tied together. You can still change any of it afterwards.</span>
+        </button>
+        <button className="choice" onClick={() => setMode('manual')}>
+          <b>I’ll build it</b>
+          <span>Start with one place and fill it in step by step: its sites, the powers there, the people, a settlement, a danger. Then add the next place. Go back and change anything whenever you like.</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** Whether the setting on screen is being edited, which shows the buttons for adding, changing and removing. */
+const EditCtx = createContext(false)
+
+/** Add something to the setting and bring it into view. */
+function useAdd() {
+  const edit = useSettings((x) => x.edit)
+  return (make: (s: SettingData) => string | undefined) => {
+    let id: string | undefined
+    edit((d) => { id = make(d) })
+    if (id) setTimeout(() => go(id!), 60)
+  }
+}
+
+/** Remove something after asking, along with whatever goes with it and their pictures. */
+function useRemove(s: SettingData) {
+  const edit = useSettings((x) => x.edit)
+  const drop = useImages((x) => x.remove)
+  return (id: string) => {
+    const gone = goneWith(s, id).filter((g) => s.names[g])
+    const others = gone.length - 1
+    if (!confirm(`Remove ${s.names[id]}${others > 0 ? ` and the ${others} ${others === 1 ? 'thing' : 'things'} found there` : ''}? Mentions of ${others > 0 ? 'them' : 'it'} elsewhere go too.`)) return
+    for (const g of gone) drop(`${s.id}:${g}`)
+    edit((d) => remove(d, id))
+  }
+}
+
+const MORE: Kind[] = ['deity', 'event', 'object', 'creature', 'material']
+
+/** The buttons for adding to one spot: a site on the land, or powers, people and built places anywhere. */
+function AddBar({ s, home, land }: { s: SettingData; home: string; land?: boolean }) {
+  const add = useAdd()
+  if (!useContext(EditCtx)) return null
+  return (
+    <div className="addbar">
+      <span>Add {land ? `to ${s.names[home]}` : 'here'}</span>
+      {land && <button onClick={() => add((d) => addSite(d, home))}>+ Site</button>}
+      <button onClick={() => add((d) => addPower(d, 'faction', home))}>+ Faction</button>
+      <button onClick={() => add((d) => addPerson(d, home))}>+ Person</button>
+      <button onClick={() => add((d) => addBuilt(d, 'settlement', home))}>+ Settlement</button>
+      <button onClick={() => add((d) => addBuilt(d, 'peril', home))}>+ Dangerous place</button>
+      <select value="" aria-label="Add something else" onChange={(e) => { const kind = e.target.value as Kind; if (kind) add((d) => addPower(d, kind, home)) }}>
+        <option value="">+ More…</option>
+        {MORE.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
+      </select>
+    </div>
+  )
+}
+
+/** A settlement or dangerous place inside the setting: its brief, and when editing, its tables. */
+function BuiltBlock({ b, s }: { b: Built; s: SettingData }) {
+  const editing = useContext(EditCtx)
+  const edit = useSettings((x) => x.edit)
+  const drop = useRemove(s)
+  return (
+    <section id={`set-${b.id}`} className={`entry nested built ${b.tool}`}>
+      <h5><Name id={b.id} s={s} /> <small>{b.tool === 'settlement' ? 'settlement' : 'dangerous place'} · {builtKind(b)}</small></h5>
+      <div className="prose">{builtText(s, b).map((t, i) => <p key={i}>{t}</p>)}</div>
+      {editing && (
+        <>
+          <details className="tables">
+            <summary>Tables <small>Pick, reroll or lock each result</small></summary>
+            <RollRows steps={builtSteps(b)} rolls={b.rolls} locked={b.locked ?? []}
+              onSet={(table, i) => edit((d) => builtEdit(d, b.id, table, i))}
+              onRoll={(table) => edit((d) => builtEdit(d, b.id, table, 'roll'))}
+              onLock={(table) => edit((d) => builtEdit(d, b.id, table, 'lock'))} />
+          </details>
+          <div className="edit-row">
+            <button onClick={() => edit((d) => builtReroll(d, b.id))}>↻ Reroll unlocked</button>
+            <button onClick={() => drop(b.id)}>Remove</button>
+          </div>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -168,6 +313,27 @@ const Refs = ({ label, ids, s }: { label: string; ids: string[]; s: SettingData 
     </p>
   ) : null
 
+/** The buttons under a power, thing or person while editing: write it again, change where a person belongs, start a story, remove. */
+function EditRow({ id, s, person }: { id: string; s: SettingData; person?: Char }) {
+  const edit = useSettings((x) => x.edit)
+  const drop = useRemove(s)
+  if (!useContext(EditCtx)) return null
+  const factions = s.entities.filter((e) => e.kind === 'faction')
+  return (
+    <div className="edit-row">
+      <button onClick={() => edit((d) => rewrite(d, id))} title="Write the details again, so they can take in what has been added since">↻ Rewrite</button>
+      {person && factions.length > 0 && (
+        <select value={person.faction ?? ''} aria-label="Belongs to" onChange={(e) => edit((d) => setFaction(d, id, e.target.value || undefined))}>
+          <option value="">Belongs to no faction</option>
+          {factions.map((f) => <option key={f.id} value={f.id}>Belongs to {s.names[f.id]}</option>)}
+        </select>
+      )}
+      {person && <button onClick={() => edit((d) => { addStory(d, id) })}>+ Story</button>}
+      <button onClick={() => drop(id)}>Remove</button>
+    </div>
+  )
+}
+
 /** A power, thing or event, with whatever hangs from it nested beneath. */
 function EntityBlock({ e, s, children }: { e: Entity; s: SettingData; children?: React.ReactNode }) {
   return (
@@ -176,6 +342,7 @@ function EntityBlock({ e, s, children }: { e: Entity; s: SettingData; children?:
       <Picture id={e.id} s={s} />
       <div className="prose">{entityText(s, e).map((t, i) => <p key={i}>{t}</p>)}</div>
       <Refs label="Tied to" ids={tiesTo(s, e.id)} s={s} />
+      <EditRow id={e.id} s={s} />
       {children}
     </section>
   )
@@ -188,6 +355,7 @@ function PersonBlock({ c, s }: { c: Char; s: SettingData }) {
       <Picture id={c.id} s={s} />
       <div className="prose">{charText(s, c).map((t, i) => <p key={i}>{t}</p>)}</div>
       <Refs label="Tied to" ids={tiesTo(s, c.id).filter((id) => id !== c.faction)} s={s} />
+      <EditRow id={c.id} s={s} person={c} />
     </section>
   )
 }
@@ -204,12 +372,21 @@ function SpotBody({ sp, s }: { sp: Spot; s: SettingData }) {
       ))}
       {sp.things.map((e) => <EntityBlock key={e.id} e={e} s={s} />)}
       {sp.people.map((c) => <PersonBlock key={c.id} c={c} s={s} />)}
+      {sp.built.map((b) => <BuiltBlock key={b.id} b={b} s={s} />)}
+      <AddBar s={s} home={sp.id} land={!s.board[sp.id]?.parent} />
     </>
   )
 }
 
 function Gazetteer({ s }: { s: SettingData }) {
   const [copied, setCopied] = useState(false)
+  const [editing, setEditing] = useState(!!s.manual)
+  const edit = useSettings((x) => x.edit)
+  const add = useAdd()
+  const drop = useRemove(s)
+  const roots = rootsOf(s)
+  // The first place with nothing in it yet is the natural next step.
+  const bare = roots.find((r) => { const v = placeView(s, r); return [v.land, ...v.sites].every((sp) => !sp.powers.length && !sp.things.length && !sp.people.length && !sp.built.length) })
   const meta = worldProse(s)
   const load = useImages((x) => x.load)
   useEffect(() => { void load(`${s.id}:`) }, [s.id, load])
@@ -225,20 +402,36 @@ function Gazetteer({ s }: { s: SettingData }) {
     URL.revokeObjectURL(a.href)
   }
   return (
+    <EditCtx.Provider value={editing}>
     <div className="gazetteer">
       <header className="gaz-head">
         <h2><Name id="world" s={s} /></h2>
-        <p className="hint">{summary(s)} · seed “{s.seed}”</p>
+        <p className="hint">{summary(s)} · {s.manual ? 'built by hand' : `seed “${s.seed}”`}</p>
         <div className="actions">
+          <button className={editing ? 'on' : ''} aria-pressed={editing} onClick={() => setEditing(!editing)}>{editing ? 'Done editing' : 'Edit'}</button>
           <button onClick={copy}>{copied ? 'Copied' : 'Copy as text'}</button>
           <button onClick={download}>Download</button>
         </div>
       </header>
-      <ImagePanel s={s} />
-      <Picture id="world" s={s} />
-      <SettingMap s={s} />
+      {editing && (
+        <section className="guide">
+          <h3>{!roots.length ? 'Step 1: a place' : bare ? `Next: fill in ${s.names[bare]}` : 'Next: another place, or more detail'}</h3>
+          <p>
+            {!roots.length ? 'Every setting starts somewhere. Add a place and it arrives with a kind of land, a site, a name and a description.'
+              : bare ? 'Use the “Add” buttons under the place to give it a faction, some people, a settlement or a danger. Whatever you add is described in terms of what is already there.'
+                : 'Add the next place, or keep filling in the ones you have. “Rewrite” on anything lets it take in what you have added since, and every name can be redrawn or typed.'}
+          </p>
+          <div className="actions">
+            <button className={!roots.length || !bare ? 'primary' : ''} onClick={() => add(addPlace)}>+ Add {roots.length ? 'another' : 'the first'} place</button>
+            {bare && <button className="primary" onClick={() => go(bare)}>Go to {s.names[bare]}</button>}
+          </div>
+        </section>
+      )}
+      {roots.length > 0 && <ImagePanel s={s} />}
+      {roots.length > 0 && <Picture id="world" s={s} />}
+      {roots.length > 0 && <SettingMap s={s} />}
       <nav className="gaz-nav">
-        {rootsOf(s).map((r) => <button key={r} onClick={() => go(r)}>{s.names[r]}</button>)}
+        {roots.map((r) => <button key={r} onClick={() => go(r)}>{s.names[r]}</button>)}
       </nav>
 
       <section className="prose">
@@ -254,11 +447,24 @@ function Gazetteer({ s }: { s: SettingData }) {
             <h4><Name id={r} s={s} /> <small>{v.aka}</small></h4>
             <Picture id={r} s={s} />
             <div className="prose"><p>{v.land.text}</p></div>
+            {editing && (
+              <div className="edit-row">
+                <button onClick={() => edit((d) => redrawPlace(d, r))} title="Draw what it is called, what was there and what is afoot again">↻ Redraw description</button>
+                {canTurn(r) && <button onClick={() => edit((d) => turn(d, r))}>Change the land</button>}
+                <button onClick={() => drop(r)}>Remove place</button>
+              </div>
+            )}
             <SpotBody sp={v.land} s={s} />
             {v.sites.map((site) => (
               <section key={site.id} id={`set-${site.id}`} className="entry nested site">
                 <h5><Name id={site.id} s={s} /> <small>site</small></h5>
                 <div className="prose"><p>{site.text}</p></div>
+                {editing && (
+                  <div className="edit-row">
+                    {canTurn(site.id) && <button onClick={() => edit((d) => turn(d, site.id))}>Change the kind of site</button>}
+                    <button onClick={() => drop(site.id)}>Remove site</button>
+                  </div>
+                )}
                 <SpotBody sp={site} s={s} />
               </section>
             ))}
@@ -271,10 +477,22 @@ function Gazetteer({ s }: { s: SettingData }) {
       <details className="images">
         <summary>All stories <small>{s.hooks.length} under way</small></summary>
         <ul className="todo stories">
-          {s.hooks.map((h) => <li key={h.id}>{hookText(s, h)} <button className="link" onClick={() => go(h.lines[0].who)}>({s.names[h.at]})</button></li>)}
+          {s.hooks.map((h) => (
+            <li key={h.id}>
+              {hookText(s, h)} <button className="link" onClick={() => go(h.lines[0].who)}>({s.names[h.at]})</button>
+              {editing && (
+                <span className="rename shown">
+                  <button title="Draw this story again" aria-label="Draw this story again" onClick={() => edit((d) => rerollStory(d, h.id))}>↻</button>
+                  <button title="Remove this story" aria-label="Remove this story" onClick={() => edit((d) => removeStory(d, h.id))}>×</button>
+                </span>
+              )}
+            </li>
+          ))}
         </ul>
+        {editing && s.people.length === 0 && <p className="hint">Stories start from people: add a person, then use “+ Story” under them.</p>}
       </details>
     </div>
+    </EditCtx.Provider>
   )
 }
 
@@ -292,14 +510,14 @@ export function Setting() {
             <div key={x.id} className={`cast-row${x.id === st.current ? ' on' : ''}`}>
               <button className="cast-name" onClick={() => st.select(x.id)}>
                 {titleCase(upper(x.names.world))}
-                <small>{rootsOf(x).length} places · seed {x.seed}</small>
+                <small>{rootsOf(x).length} places · {x.manual ? 'built by hand' : `seed ${x.seed}`}</small>
               </button>
               <button title="Delete setting" aria-label="Delete setting" onClick={() => { if (confirm(`Delete ${x.names.world} and its pictures?`)) { void removeImages(`${x.id}:`); st.remove(x.id) } }}>×</button>
             </div>
           ))}
           <button className={current ? '' : 'primary'} onClick={() => st.select(null)}>+ New setting</button>
         </aside>
-        <main className="setting-main">{current ? <Gazetteer key={current.id} s={current} /> : <Questions />}</main>
+        <main className="setting-main">{current ? <Gazetteer key={current.id} s={current} /> : <NewSetting />}</main>
       </div>
     </div>
   )

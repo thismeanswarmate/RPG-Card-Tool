@@ -8,9 +8,12 @@
 
 import { cardSentence, chronicle, describe, placeName } from './describe'
 import { GLOSS, ROLE_GLOSS } from './glosses'
-import { cueText, rootOf, subtree, type Board } from './logic'
+import { cueText, rootOf, shuffle, subtree, type Board } from './logic'
 import { DETAIL, detailParts, detailsFor, newDetail, PRIMARY, slots, type DetailInst, type Kind } from './lore'
 import { makeName, rngFrom, titleCase, tonguesFor, type NameSpec, type Rng } from './names'
+import { kindLabel, brief as perilBrief, rollAll as rollPeril } from './peril'
+import type { Rolls } from './roller'
+import { brief as settlementBrief, rollAll as rollSettlement, typeLabel } from './settlement'
 import { blank, cardsOf, generateWorld, type WorldSize } from './store'
 import { STORY_CARDS } from './story'
 import type { Held } from './types'
@@ -59,7 +62,18 @@ export interface Setting {
   hooks: Hook[]
   /** The art direction for this setting's pictures; absent means it follows the genre. */
   art?: string
+  /** Settlements and dangerous places, each rolled on the tables of its own tool. */
+  built?: Built[]
+  /** Built by hand, one piece at a time, rather than generated from answers. */
+  manual?: boolean
 }
+
+/** A settlement or dangerous place within the setting: where it is, and what its tables rolled. */
+export interface Built { id: string; tool: 'settlement' | 'peril'; home: string; rolls: Rolls; locked?: string[] }
+export const builtKind = (b: Built) => (b.tool === 'settlement' ? typeLabel(b.rolls) ?? 'settlement' : kindLabel(b.rolls))
+export const builtText = (s: Setting, b: Built) =>
+  (b.tool === 'settlement' ? settlementBrief : perilBrief)(s.names[b.id].charAt(0).toUpperCase() + s.names[b.id].slice(1), b.rolls)
+
 
 const CARDS = cardsOf({ custom: [] })
 
@@ -81,11 +95,163 @@ function withSeed<T>(seed: string, fn: (rng: Rng) => T): T {
   try { return fn(rng) } finally { Math.random = original }
 }
 
+const nextId = (prefix: string, items: { id: string }[]) =>
+  `${prefix}${items.reduce((n, x) => Math.max(n, (parseInt(x.id.slice(prefix.length), 10) || 0) + 1), 0)}`
+
+/**
+ * The hands that add to a setting: naming, making powers and people, writing their details so that every
+ * link lands on something already there, and starting stories. The generator uses them in bulk and the
+ * hand-built mode one at a time. `budget.left` is how many new lesser things details may still call into being.
+ */
+export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) {
+  const { board, names, specs, entities, people, answers } = s
+  const pick = <T,>(a: T[]): T => a[Math.floor(rng() * a.length)]
+  const genres = answers.genres.length ? answers.genres : ['grounded']
+  const depth = DETAILS[answers.depth]
+  const deities = !!s.manual || answers.focus.includes('faith') || genres.includes('fantasy')
+  const packs = { deities, emblems: false, names: false }
+  const sitesOf = (root: string) => subtree(board, root).filter((id) => CARDS[id].type === 'site')
+  // The map is read often and changes seldom, so it is read again only when cards have come or gone.
+  let seen = { cards: -1, roots: [] as string[], sites: [] as string[] }
+  const map = () => {
+    const cards = Object.keys(board).length
+    if (cards !== seen.cards) {
+      const roots = Object.values(board).filter((p) => !p.parent).map((p) => p.id)
+      seen = { cards, roots, sites: roots.flatMap(sitesOf) }
+    }
+    return seen
+  }
+  const roots = () => map().roots
+  const sites = () => map().sites
+  const places = () => [...roots(), ...sites()]
+  const taken = new Set(Object.values(names).map((n) => n.toLowerCase()))
+  const tongueAt = (place?: string) => (place && specs[rootOf(board, place)]) ? specs[rootOf(board, place)].tongue : specs.world?.tongue ?? 0
+  const name = (id: string, spec: NameSpec, homeId?: string) => {
+    names[id] = makeName({ ...spec, home: homeId ? names[homeId] : undefined }, rng, taken)
+    specs[id] = { ...spec, homeId }
+  }
+  const storyDecks = ['core', ...genres.filter((g) => g !== 'grounded')]
+  const cues = (kind: string) => STORY_CARDS.filter((c) => c.kind === kind && storyDecks.includes(c.deck)).flatMap((c) => c.cues)
+  const roles = cues('character')
+
+  /** A person with a role and a home; their details come later, once there are powers to tie them to. */
+  const person = (home: string): Char => {
+    const fresh = roles.filter((r) => !people.some((c) => c.what === r))
+    const c: Char = { id: nextId('c', people), kind: 'figure', what: pick(fresh.length ? fresh : roles), home, local: false, details: [] }
+    name(c.id, { kind: 'person', tongue: tongueAt(home) }, rootOf(board, home))
+    people.push(c)
+    return c
+  }
+
+  const make = (kind: Kind, home?: string, from?: string): Entity => {
+    const fresh = PRIMARY[kind].filter((p) => !entities.some((e) => e.kind === kind && e.what === p))
+    const what = pick(fresh.length ? fresh : PRIMARY[kind])
+    const e: Entity = { id: nextId('e', entities), kind, what, home, details: [], ...(from ? { from } : {}) }
+    entities.push(e)
+    const nameKind = kind === 'figure' || kind === 'place' ? 'object' : kind
+    name(e.id, { kind: nameKind, tongue: tongueAt(home), base: what }, home && rootOf(board, home))
+    return e
+  }
+
+  const ofKind = (kind: Kind, self: Entity) => entities.filter((e) => e.kind === kind && e.id !== self.id)
+  /** Whether a link of this kind can be completed for an entity, creating something new if allowed. */
+  const can = (kind: Kind, self: Entity, create: boolean) =>
+    kind === 'place' ? places().length > 0
+      : kind === 'figure' ? people.some((c) => c.id !== self.id)
+        : kind === 'deity' && !deities ? false
+          : ofKind(kind, self).length > 0 || (create && kind !== 'faction' && budget.left > 0)
+  /**
+   * Complete one link. `text` is the detail it sits in and `used` the things that detail already names,
+   * so that one sentence never names the same thing twice or contradicts where someone lives or belongs.
+   */
+  const resolve = (kinds: Kind[], self: Entity, create: boolean, text: string, used: string[]) => {
+    const free = <T extends { id: string }>(a: T[]) => { const rest = a.filter((x) => !used.includes(x.id)); return rest.length ? rest : a }
+    // A detail is only chosen when all its links can be completed, but an earlier link in the same detail
+    // may have used up the last of the budget for new things. Then the link is completed anyway.
+    const open = kinds.filter((k) => can(k, self, create))
+    const kind = pick(open.length ? open : kinds.filter((k) => k !== 'deity' || deities))
+    if (kind === 'place') {
+      if (text.includes('never left') && self.home) return { kind, node: self.home }
+      const all = places()
+      const others = all.filter((p) => p !== self.home && !used.includes(p))
+      return { kind, node: pick(others.length ? others : all) }
+    }
+    if (kind === 'figure') {
+      const others = free(people.filter((c) => c.id !== self.id))
+      const own = others.filter((c) => c.faction === self.id)
+      return { kind, node: pick(own.length && rng() < 0.7 ? own : others).id }
+    }
+    let existing = free(ofKind(kind, self))
+    if (kind === 'faction' && self.kind === 'figure') {
+      // A person's ties to factions are to ones they do not belong to, unless they secretly lead their own.
+      const mine = (self as Char).faction
+      const outside = existing.filter((f) => f.id !== mine)
+      if (text.includes('leads') && mine && !used.includes(mine)) return { kind, node: mine }
+      if (outside.length) existing = outside
+    }
+    if (existing.length && (!create || kind === 'faction' || budget.left <= 0 || !open.length || rng() < 0.35)) return { kind, node: pick(existing).id }
+    budget.left--
+    return { kind, node: make(kind, self.home ?? pick(places()), self.id).id }
+  }
+  /** Write an entity's details afresh, each link pointing at something in the setting. */
+  const detail = (self: Entity, count: number, create: boolean) => {
+    const pool = detailsFor(self.kind, packs).filter((t) => {
+      const needs = slots(t)
+      const twoFactions = needs.filter((ks) => ks.length === 1 && ks[0] === 'faction').length > 1
+      return needs.every((ks) => ks.some((k) => can(k, self, create))) && !(twoFactions && ofKind('faction', self).length < 2)
+    })
+    const linked = pool.filter((t) => slots(t).length)
+    const chosen: string[] = []
+    while (chosen.length < count && chosen.length < pool.length) {
+      const t = pick(chosen.length === 0 && linked.length ? linked : pool)
+      if (!chosen.includes(t)) chosen.push(t)
+    }
+    self.details = chosen.map((t) => {
+      const d = newDetail(t)
+      for (const link of d.links) Object.assign(link, resolve(link.kinds, self, create, t, d.links.flatMap((l) => (l.node ? [l.node] : []))))
+      return d
+    })
+  }
+
+  const drives = cues('drive')
+  const obstacles = cues('obstacle')
+  const forPerson = drives.filter((d) => !THINGS_ONLY.has(d))
+  const rivalOf = (a: Char) => {
+    const others = people.filter((c) => c.id !== a.id)
+    const rivals = others.filter((c) => c.faction && c.faction !== a.faction)
+    return pick(rivals.length ? rivals : others)
+  }
+  /** The lines of a story for one person: after a thing, racing a rival for it, at odds with someone, or torn two ways. */
+  const story = (a: Char): HookLine[] => {
+    const things = [...sites(), ...roots(), ...entities.filter((e) => e.kind === 'object').map((e) => e.id)]
+    const roll = people.length > 1 ? rng() : 0
+    const x = pick(things)
+    return roll < 0.35 ? [{ who: a.id, drive: pick(drives), target: x, but: pick(obstacles) }]
+      : roll < 0.6 ? [{ who: a.id, drive: pick(drives), target: x, but: pick(obstacles) }, { who: rivalOf(a).id, drive: pick(drives), target: x, but: pick(obstacles) }]
+        : roll < 0.8 ? (() => { const b = rivalOf(a); return [{ who: a.id, drive: pick(forPerson), target: b.id, but: pick(obstacles) }, { who: b.id, drive: pick(forPerson), target: a.id, but: pick(obstacles) }] })()
+          : [{ who: a.id, drive: pick(drives), target: x, also: { drive: pick(forPerson), target: rivalOf(a).id } }]
+  }
+  const hook = (a: Char): Hook => {
+    const h: Hook = { id: nextId('h', s.hooks), at: rootOf(board, a.home), lines: story(a) }
+    s.hooks.push(h)
+    return h
+  }
+  /** A settlement or dangerous place, rolled in full and named for where it stands. */
+  const build = (tool: Built['tool'], home: string): Built => {
+    const built = (s.built ??= [])
+    const rolls = tool === 'settlement' ? rollSettlement({}, [], rng) : rollPeril({}, [], rng)
+    const b: Built = { id: nextId('b', built), tool, home, rolls }
+    built.push(b)
+    if (tool === 'settlement') name(b.id, { kind: 'place', tongue: tongueAt(home) })
+    else name(b.id, { kind: 'site', tongue: tongueAt(home), base: kindLabel(rolls) }, rootOf(board, home))
+    return b
+  }
+  return { pick, genres, depth, deities, roots, sitesOf, sites, places, name, tongueAt, person, make, detail, story, hook, build }
+}
+
 export function generateSetting(answers: Answers, seed: string): Setting {
   return withSeed(seed, (rng) => {
-    const pick = <T,>(a: T[]): T => a[Math.floor(rng() * a.length)]
     const scale = SCALE[answers.size]
-    const depth = DETAILS[answers.depth]
     const has = (f: string) => answers.focus.includes(f)
     const genres = answers.genres.length ? answers.genres : ['grounded']
     const rich = answers.depth === 'rich' ? 1 : answers.depth === 'sketch' ? -1 : 0
@@ -105,126 +271,39 @@ export function generateSetting(answers: Answers, seed: string): Setting {
       s.piles.terrain = [...spare.slice(0, Math.max(0, scale.min - themed.length)), ...themed]
     })
     const board = world.placed
-    const roots = Object.values(board).filter((p) => !p.parent).map((p) => p.id)
-    const sitesOf = (root: string) => subtree(board, root).filter((id) => CARDS[id].type === 'site')
-    const sites = roots.flatMap(sitesOf)
+    const s: Setting = { id: '', seed, answers, created: Date.now(), board, meta: world.meta, names: {}, specs: {}, entities: [], people: [], hooks: [], built: [] }
+    const budget = { left: scale.minor + rich * 3 + (has('faith') ? 1 : 0) + (has('secrets') ? 2 : 0) }
+    const w = weave(s, rng, budget)
+    const { pick, depth } = w
+    const roots = w.roots()
+    const sites = w.sites()
     const places = [...roots, ...sites]
+    const { entities, people } = s
 
     // Names: a few tongues, each spoken across a contiguous part of the map.
-    const names: Record<string, string> = {}
-    const specs: Setting['specs'] = {}
-    const taken = new Set<string>()
     const tongues = tonguesFor(genres, scale.tongues, rng)
     const cx = roots.reduce((n, r) => n + board[r].x, 0) / roots.length
     const cy = roots.reduce((n, r) => n + board[r].y, 0) / roots.length
     const byAngle = [...roots].sort((a, b) => Math.atan2(board[a].y - cy, board[a].x - cx) - Math.atan2(board[b].y - cy, board[b].x - cx))
     const tongueOf: Record<string, number> = {}
     byAngle.forEach((r, i) => { tongueOf[r] = tongues[Math.floor((i * tongues.length) / byAngle.length)] })
-    const tongueAt = (place?: string) => (place ? tongueOf[rootOf(board, place)] : pick(tongues))
-    const name = (id: string, spec: NameSpec, homeId?: string) => {
-      const full = { ...spec, home: homeId ? names[homeId] : undefined }
-      names[id] = makeName(full, rng, taken)
-      specs[id] = { ...spec, homeId }
-    }
-    name('world', { kind: 'world', tongue: tongues[0], genres })
+    w.name('world', { kind: 'world', tongue: tongues[0], genres })
     for (const r of roots) {
-      name(r, { kind: 'place', tongue: tongueOf[r] })
-      for (const s of sitesOf(r)) name(s, { kind: 'site', tongue: tongueOf[r], base: cueText(CARDS, board[s]).toLowerCase() }, r)
+      w.name(r, { kind: 'place', tongue: tongueOf[r] })
+      for (const site of w.sitesOf(r)) w.name(site, { kind: 'site', tongue: tongueOf[r], base: cueText(CARDS, board[site]).toLowerCase() }, r)
     }
-
-    const storyDecks = ['core', ...genres.filter((g) => g !== 'grounded')]
-    const cues = (kind: string) => STORY_CARDS.filter((c) => c.kind === kind && storyDecks.includes(c.deck)).flatMap((c) => c.cues)
 
     // 3 (begun early, because the powers need people to point at). People: a role from the story deck
     // and a home; their details are filled in once there are powers for them to be tied to.
-    const roles = cues('character')
-    const people: Char[] = []
-    for (let i = 0; i < Math.max(2, scale.people + rich * 2 + (has('secrets') ? 2 : 0)); i++) {
-      const home = pick(places)
-      const fresh = roles.filter((r) => !people.some((c) => c.what === r))
-      const c: Char = { id: `c${i}`, kind: 'figure', what: pick(fresh.length ? fresh : roles), home, local: false, details: [] }
-      name(c.id, { kind: 'person', tongue: tongueAt(home) }, rootOf(board, home))
-      people.push(c)
-    }
+    for (let i = 0; i < Math.max(2, scale.people + rich * 2 + (has('secrets') ? 2 : 0)); i++) w.person(pick(places))
 
     // 2. Powers: factions first, then the lesser things their details reach for.
-    const deities = has('faith') || genres.includes('fantasy')
-    const packs = { deities, emblems: false, names: false }
-    const entities: Entity[] = []
-    const used = new Set<string>()
-    const make = (kind: Kind, home?: string, from?: string): Entity => {
-      const fresh = PRIMARY[kind].filter((p) => !used.has(`${kind}:${p}`))
-      const what = pick(fresh.length ? fresh : PRIMARY[kind])
-      used.add(`${kind}:${what}`)
-      const e: Entity = { id: `e${entities.length}`, kind, what, home, details: [], ...(from ? { from } : {}) }
-      entities.push(e)
-      const nameKind = kind === 'figure' || kind === 'place' ? 'object' : kind
-      name(e.id, { kind: nameKind, tongue: tongueAt(home), base: what }, home && rootOf(board, home))
-      return e
-    }
     const factionCount = Math.min(PRIMARY.faction.length, scale.factions + (has('power') ? 1 : 0))
-    const factions = Array.from({ length: factionCount }, () => make('faction', pick(sites.length ? sites : roots)))
+    const factions = Array.from({ length: factionCount }, () => w.make('faction', pick(sites.length ? sites : roots)))
     people.forEach((c, i) => { if (i < factions.length || rng() < 0.5) c.faction = factions[i % factions.length].id })
 
-    let budget = scale.minor + rich * 3 + (has('faith') ? 1 : 0) + (has('secrets') ? 2 : 0)
-    const ofKind = (kind: Kind, self: Entity) => entities.filter((e) => e.kind === kind && e.id !== self.id)
-    /** Whether a link of this kind can be completed for an entity, creating something new if allowed. */
-    const can = (kind: Kind, self: Entity, create: boolean) =>
-      kind === 'place' || kind === 'figure' ? true
-        : kind === 'deity' && !deities ? false
-          : ofKind(kind, self).length > 0 || (create && kind !== 'faction' && budget > 0)
-    /**
-     * Complete one link. `text` is the detail it sits in and `taken` the things that detail already names,
-     * so that one sentence never names the same thing twice or contradicts where someone lives or belongs.
-     */
-    const resolve = (kinds: Kind[], self: Entity, create: boolean, text: string, taken: string[]) => {
-      const free = <T extends { id: string }>(a: T[]) => { const rest = a.filter((x) => !taken.includes(x.id)); return rest.length ? rest : a }
-      // A detail is only chosen when all its links can be completed, but an earlier link in the same detail
-      // may have used up the last of the budget for new things. Then the link is completed anyway.
-      const open = kinds.filter((k) => can(k, self, create))
-      const kind = pick(open.length ? open : kinds.filter((k) => k !== 'deity' || deities))
-      if (kind === 'place') {
-        if (text.includes('never left') && self.home) return { kind, node: self.home }
-        const others = places.filter((p) => p !== self.home && !taken.includes(p))
-        return { kind, node: pick(others.length ? others : places) }
-      }
-      if (kind === 'figure') {
-        const others = free(people.filter((c) => c.id !== self.id))
-        const own = others.filter((c) => c.faction === self.id)
-        return { kind, node: pick(own.length && rng() < 0.7 ? own : others).id }
-      }
-      let existing = free(ofKind(kind, self))
-      if (kind === 'faction' && self.kind === 'figure') {
-        // A person's ties to factions are to ones they do not belong to, unless they secretly lead their own.
-        const mine = (self as Char).faction
-        const outside = existing.filter((f) => f.id !== mine)
-        if (text.includes('leads') && mine && !taken.includes(mine)) return { kind, node: mine }
-        if (outside.length) existing = outside
-      }
-      if (existing.length && (!create || kind === 'faction' || budget <= 0 || !open.length || rng() < 0.35)) return { kind, node: pick(existing).id }
-      budget--
-      return { kind, node: make(kind, self.home ?? pick(places), self.id).id }
-    }
-    const detail = (self: Entity, count: number, create: boolean) => {
-      const pool = detailsFor(self.kind, packs).filter((t) => {
-        const needs = slots(t)
-        const twoFactions = needs.filter((ks) => ks.length === 1 && ks[0] === 'faction').length > 1
-        return needs.every((ks) => ks.some((k) => can(k, self, create))) && !(twoFactions && ofKind('faction', self).length < 2)
-      })
-      const linked = pool.filter((t) => slots(t).length)
-      const chosen: string[] = []
-      while (chosen.length < count && chosen.length < pool.length) {
-        const t = pick(chosen.length === 0 && linked.length ? linked : pool)
-        if (!chosen.includes(t)) chosen.push(t)
-      }
-      self.details = chosen.map((t) => {
-        const d = newDetail(t)
-        for (const link of d.links) Object.assign(link, resolve(link.kinds, self, create, t, d.links.flatMap((l) => (l.node ? [l.node] : []))))
-        return d
-      })
-    }
     for (const f of factions) {
-      detail(f, depth.major, true)
+      w.detail(f, depth.major, true)
       // Every faction needs a rival to push against.
       if (factions.length > 1 && !f.details.some((d) => d.links.some((l) => l.kind === 'faction'))) {
         const feud = newDetail(DETAIL.faction.find((t) => t.includes('feud'))!)
@@ -232,35 +311,23 @@ export function generateSetting(answers: Answers, seed: string): Setting {
         f.details = [...f.details.slice(0, depth.major - 1), feud]
       }
     }
-    for (let i = factions.length; i < entities.length; i++) detail(entities[i], depth.minor, false)
-    for (const c of people) detail(c, depth.minor, false)
+    for (let i = factions.length; i < entities.length; i++) w.detail(entities[i], depth.minor, false)
+    for (const c of people) w.detail(c, depth.minor, false)
 
     // 4. Stories: prompts whose every slot is someone or something already in the setting.
-    const drives = cues('drive')
-    const obstacles = cues('obstacle')
-    const forPerson = drives.filter((d) => !THINGS_ONLY.has(d))
-    const things = [...sites, ...roots, ...entities.filter((e) => e.kind === 'object').map((e) => e.id)]
-    const rivalOf = (a: Char) => {
-      const others = people.filter((c) => c.id !== a.id)
-      const rivals = others.filter((c) => c.faction && c.faction !== a.faction)
-      return pick(rivals.length ? rivals : others)
-    }
-    const hooks: Hook[] = Array.from({ length: scale.hooks + rich * 2 + (has('adventure') ? 3 : 0) }, (_, i) => {
-      const a = people[i % people.length]
-      const roll = rng()
-      const x = pick(things)
-      const lines: HookLine[] =
-        roll < 0.35 ? [{ who: a.id, drive: pick(drives), target: x, but: pick(obstacles) }]
-          : roll < 0.6 ? [{ who: a.id, drive: pick(drives), target: x, but: pick(obstacles) }, { who: rivalOf(a).id, drive: pick(drives), target: x, but: pick(obstacles) }]
-            : roll < 0.8 ? (() => { const b = rivalOf(a); return [{ who: a.id, drive: pick(forPerson), target: b.id, but: pick(obstacles) }, { who: b.id, drive: pick(forPerson), target: a.id, but: pick(obstacles) }] })()
-              : [{ who: a.id, drive: pick(drives), target: x, also: { drive: pick(forPerson), target: rivalOf(a).id } }]
-      return { id: `h${i}`, at: rootOf(board, a.home), lines }
-    })
+    const stories = scale.hooks + rich * 2 + (has('adventure') ? 3 : 0)
+    for (let i = 0; i < stories; i++) w.hook(people[i % people.length])
 
     // What is happening at home becomes the turning point for about half the people who live there.
     for (const c of people) c.local = !!omenAt(board, rootOf(board, c.home)) && rng() < 0.5
+    s.id = `s${Date.now().toString(36)}${Math.floor(rng() * 1e6).toString(36)}`
 
-    return { id: `s${Date.now().toString(36)}${Math.floor(rng() * 1e6).toString(36)}`, seed, answers, created: Date.now(), board, meta: world.meta, names, specs, entities, people, hooks }
+    // 5. Settlements and dangerous places, spread over the map so that no place gets two before every place has one.
+    const order = shuffle([...roots], rng)
+    const counts = { region: [2, 1], country: [3, 2], continent: [5, 3] }[answers.size]
+    for (let i = 0; i < counts[0] + (has('everyday') ? 1 : 0); i++) w.build('settlement', order[i % order.length])
+    for (let i = 0; i < counts[1] + (has('adventure') ? 1 : 0); i++) w.build('peril', order[(order.length - 1 - i + order.length * 8) % order.length])
+    return s
   })
 }
 
@@ -285,7 +352,7 @@ export const homeRoot = (s: Setting, place: string) => rootOf(s.board, place)
 /** A faction with what hangs from it: its members and the things its details brought into being. */
 export interface PowerNode { power: Entity; members: Char[]; things: Entity[] }
 /** A spot — the land itself or one site on it — with everything found there. */
-export interface Spot { id: string; text: string; powers: PowerNode[]; things: Entity[]; people: Char[] }
+export interface Spot { id: string; text: string; powers: PowerNode[]; things: Entity[]; people: Char[]; built: Built[] }
 
 export interface PlaceView {
   id: string
@@ -329,6 +396,7 @@ export function placeView(s: Setting, root: string): PlaceView {
       })),
       things: s.entities.filter((e) => e.kind !== 'faction' && e.home === id && !owned.get(e.id)),
       people: s.people.filter((c) => c.home === id && !c.faction),
+      built: (s.built ?? []).filter((b) => b.home === id),
     }
   }
   const [land, ...sites] = hubs.map(spot)
@@ -351,9 +419,9 @@ export function worldProse(s: Setting): { text: string[]; prompts: string[] } {
   const lands = [...new Set(roots.map((r) => terrainOf(s, r).toLowerCase()))]
   const factions = s.entities.filter((e) => e.kind === 'faction')
   const opening = [
-    `${titleCase(upper(s.names.world))} is ${SIZE_WORD[s.answers.size]} of ${count(roots.length)} places, taking in ${lands.length > 5 ? `${lands.slice(0, 5).join(', ')} and more besides` : listOf(lands)}.`,
-    factions.length ? `${upper(count(factions.length))} powers contend for it: ${listOf(factions.map((f) => s.names[f.id]))}.` : '',
-    `${upper(count(s.people.length))} people stand out in what follows, and ${count(s.hooks.length)} stories are already under way.`,
+    !roots.length ? `${titleCase(upper(s.names.world))} is waiting for its first place.` : `${titleCase(upper(s.names.world))} is ${s.manual ? 'a setting' : SIZE_WORD[s.answers.size]} of ${count(roots.length)} ${roots.length === 1 ? 'place' : 'places'}, taking in ${lands.length > 5 ? `${lands.slice(0, 5).join(', ')} and more besides` : listOf(lands)}.`,
+    factions.length ? `${upper(count(factions.length))} ${factions.length === 1 ? 'power holds sway in it' : 'powers contend for it'}: ${listOf(factions.map((f) => s.names[f.id]))}.` : '',
+    s.people.length || s.hooks.length ? `${upper(count(s.people.length))} ${s.people.length === 1 ? 'person stands' : 'people stand'} out in what follows, and ${count(s.hooks.length)} ${s.hooks.length === 1 ? 'story is' : 'stories are'} already under way.` : '',
   ].filter(Boolean).join(' ')
   const meta = chronicle({}, CARDS, [], s.meta)[0]
   return { text: [opening, ...(meta?.text ?? [])], prompts: meta?.prompts ?? [] }
@@ -478,6 +546,7 @@ export function settingMarkdown(s: Setting): string {
     }
     for (const e of sp.things) entity(e, depth)
     for (const c of sp.people) person(c, depth)
+    for (const b of sp.built) out.push(`${'#'.repeat(depth)} ${upper(s.names[b.id])} (${builtKind(b)})`, ...builtText(s, b))
   }
   out.push('## Places')
   for (const r of rootsOf(s)) {

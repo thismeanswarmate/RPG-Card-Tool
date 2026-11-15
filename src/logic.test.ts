@@ -779,3 +779,92 @@ describe('settlements', async () => {
     expect(T.brief('', { type: 1, crime: 2, gather: 0 })).toEqual(['This settlement is a village.', 'Crime is an everyday nuisance.', 'People gather at the well.'])
   })
 })
+
+describe('settings built by hand, and built places in generated ones', async () => {
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  const M = await import('./mapgen')
+  const clean = (text: string) => expect(text).not.toMatch(/undefined|NaN|\[object|  /)
+
+  it('puts settlements and dangerous places into a generated setting', () => {
+    const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, focus: ['adventure', 'everyday'] }, 'built')
+    expect(s.built!.filter((b) => b.tool === 'settlement')).toHaveLength(4)
+    expect(s.built!.filter((b) => b.tool === 'peril')).toHaveLength(3)
+    for (const b of s.built!) {
+      expect(s.board[b.home]).toBeTruthy()
+      expect(s.names[b.id]).toBeTruthy()
+      expect(G.builtText(s, b).length).toBeGreaterThanOrEqual(4)
+    }
+    const text = G.settingMarkdown(s)
+    for (const b of s.built!) expect(text).toContain(G.builtText(s, b)[0])
+    clean(text)
+  })
+
+  it('builds up piece by piece, draws a map at every size, and reads cleanly throughout', () => {
+    for (let n = 0; n < 25; n++) {
+      const genres = [['fantasy'], ['scifi'], ['horror'], [], ['fantasy', 'horror']][n % 5]
+      const s = B.newManual(genres, n % 2 ? ['frost'] : ['temperate', 'coast'], n % 3 ? '' : 'My World')
+      expect(s.manual).toBe(true)
+      clean(G.settingMarkdown(s))
+      for (let i = 0; i < 4; i++) {
+        const place = B.addPlace(s)!
+        expect(s.names[place]).toBeTruthy()
+        const map = M.buildMap(s)
+        expect(map.regions).toHaveLength(i + 1)
+        expect(Number.isFinite(map.w) && Number.isFinite(map.h) && map.w > 100 && map.h > 100).toBe(true)
+        expect(JSON.stringify(map)).not.toContain('null')
+        const site = G.placeView(s, place).sites[0]?.id ?? place
+        // Populate it: with nothing else in the setting yet, details simply have less to point at.
+        const made = [
+          B.addPower(s, 'faction', site), B.addPerson(s, site), B.addPower(s, 'object', place), B.addPerson(s, place),
+          B.addPower(s, (['deity', 'event', 'creature', 'material'] as const)[i], place),
+          B.addBuilt(s, 'settlement', place), B.addBuilt(s, 'peril', site),
+        ]
+        for (const id of made) expect(s.names[id], id).toBeTruthy()
+        expect(B.addStory(s, made[1])).toBeTruthy()
+        for (const id of made.slice(0, 5)) B.rewrite(s, id)
+        B.redrawPlace(s, place)
+        B.addSite(s, place)
+        clean(G.settingMarkdown(s))
+      }
+      expect(G.rootsOf(s)).toHaveLength(4)
+      expect(new Set([...s.entities, ...s.people, ...s.built!, ...s.hooks].map((x) => x.id)).size).toBe(s.entities.length + s.people.length + s.built!.length + s.hooks.length)
+      for (const d of [...s.entities, ...s.people].flatMap((e) => e.details)) for (const l of d.links) expect(s.names[l.node!], d.text).toBeTruthy()
+      for (const p of Object.values(s.board)) expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true)
+
+      // Take a place away: everything based there goes, and nothing left behind still mentions it.
+      const [first] = G.rootsOf(s)
+      const gone = B.goneWith(s, first)
+      expect(gone.length).toBeGreaterThan(5)
+      B.remove(s, first)
+      expect(G.rootsOf(s)).toHaveLength(3)
+      const left = JSON.stringify({ e: s.entities, p: s.people, h: s.hooks, b: s.built })
+      for (const id of gone) expect(left).not.toContain(`"${id}"`)
+      clean(G.settingMarkdown(s))
+      B.remove(s, s.people[0].id)
+      B.remove(s, s.entities[0].id)
+      B.rerollStory(s, s.hooks[0]?.id ?? '')
+      clean(G.settingMarkdown(s))
+      expect(M.buildMap(s).regions).toHaveLength(3)
+      expect(s.names[B.addPower(s, 'faction', G.rootsOf(s)[0])]).toBeTruthy()
+    }
+  })
+
+  it('edits the tables of a built place and keeps what it was told to keep', () => {
+    const s = B.newManual(['fantasy'], ['temperate'])
+    const place = B.addPlace(s)!
+    const id = B.addBuilt(s, 'settlement', place)
+    const b = s.built!.find((x) => x.id === id)!
+    B.builtEdit(s, id, 'type', 3)
+    expect(G.builtKind(b)).toBe('city')
+    expect(b.rolls['type.city.known']).toBeDefined()
+    expect(G.builtText(s, b)[0]).toMatch(/city/)
+    B.builtEdit(s, id, 'type', 'lock')
+    B.builtEdit(s, id, 'age', 'roll')
+    for (let i = 0; i < 10; i++) B.builtReroll(s, id)
+    expect(G.builtKind(b)).toBe('city')
+    const peril = B.addBuilt(s, 'peril', place)
+    B.builtEdit(s, peril, 'kind', 'roll')
+    expect(G.builtText(s, s.built!.find((x) => x.id === peril)!).length).toBeGreaterThan(2)
+  })
+})

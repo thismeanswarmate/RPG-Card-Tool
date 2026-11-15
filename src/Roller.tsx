@@ -15,6 +15,46 @@ interface Props {
   emptyBrief: string
 }
 
+interface RowsProps {
+  steps: Step[]
+  rolls: Rolls
+  locked: string[]
+  onSet(table: string, index: number | undefined): void
+  onRoll(table: string): void
+  onLock(table: string): void
+}
+
+/** The tables, step by step: each a row with its die, the result to pick, a reroll and a lock. */
+export function RollRows({ steps, rolls, locked, onSet, onRoll, onLock }: RowsProps) {
+  return (
+    <>
+      {steps.map((step) => (
+        <section key={step.title} className="step-block">
+          <h3>{step.title} <small>{step.blurb}</small></h3>
+          {step.tables.map((tb) => {
+            const value = rolls[tb.id]
+            const held = locked.includes(tb.id)
+            return (
+              <div key={tb.id} className={`roll${held ? ' locked' : ''}`}>
+                <span className="die" title={`${tb.entries.length}-sided die`}>d{tb.entries.length}<b>{value === undefined ? '–' : value + 1}</b></span>
+                <label>
+                  <span>{tb.label}</span>
+                  <select value={value ?? ''} disabled={held} onChange={(e) => onSet(tb.id, e.target.value === '' ? undefined : +e.target.value)}>
+                    <option value="">Not rolled</option>
+                    {tb.entries.map((entry, i) => <option key={i} value={i}>{i + 1}. {entry}</option>)}
+                  </select>
+                </label>
+                <button onClick={() => onRoll(tb.id)} disabled={held} title="Roll this table" aria-label={`Roll ${tb.label}`}>↻</button>
+                <button className={held ? 'on' : ''} aria-pressed={held} onClick={() => onLock(tb.id)} disabled={value === undefined}>{held ? 'Locked' : 'Lock'}</button>
+              </div>
+            )
+          })}
+        </section>
+      ))}
+    </>
+  )
+}
+
 /** The screen shared by the table-rolling tools: a saved list, the tables step by step, and the brief. */
 export function Roller({ useStore, stepsFor, brief, summary, plural, single, emptyBrief }: Props) {
   const s = useStore()
@@ -58,29 +98,7 @@ export function Roller({ useStore, stepsFor, brief, summary, plural, single, emp
             Each row is a table and its die. Roll them all at once, reroll one at a time, or pick a result yourself. Lock what you want to keep.
             Results that seem to clash are worth keeping: explaining them is where the {single} comes alive.
           </p>
-          {steps.map((step) => (
-            <section key={step.title} className="step-block">
-              <h3>{step.title} <small>{step.blurb}</small></h3>
-              {step.tables.map((tb) => {
-                const value = p.rolls[tb.id]
-                const locked = p.locked.includes(tb.id)
-                return (
-                  <div key={tb.id} className={`roll${locked ? ' locked' : ''}`}>
-                    <span className="die" title={`${tb.entries.length}-sided die`}>d{tb.entries.length}<b>{value === undefined ? '–' : value + 1}</b></span>
-                    <label>
-                      <span>{tb.label}</span>
-                      <select value={value ?? ''} disabled={locked} onChange={(e) => s.set(tb.id, e.target.value === '' ? undefined : +e.target.value)}>
-                        <option value="">Not rolled</option>
-                        {tb.entries.map((entry, i) => <option key={i} value={i}>{i + 1}. {entry}</option>)}
-                      </select>
-                    </label>
-                    <button onClick={() => s.roll(tb.id)} disabled={locked} title="Roll this table" aria-label={`Roll ${tb.label}`}>↻</button>
-                    <button className={locked ? 'on' : ''} aria-pressed={locked} onClick={() => s.toggleLock(tb.id)} disabled={value === undefined}>{locked ? 'Locked' : 'Lock'}</button>
-                  </div>
-                )
-              })}
-            </section>
-          ))}
+          <RollRows steps={steps} rolls={p.rolls} locked={p.locked} onSet={s.set} onRoll={s.roll} onLock={s.toggleLock} />
         </main>
 
         <aside className="portrait">

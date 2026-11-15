@@ -145,14 +145,15 @@ export function buildMap(s: Setting): MapData {
   const grid = raw.map(([x, y]): P => [x - minX + MARGIN, y - minY + MARGIN])
 
   // How far a region reaches: a little over half the usual distance to the nearest neighbour.
-  const gaps = grid.map((p, i) => Math.min(...grid.filter((_, j) => j !== i).map((q) => Math.hypot(p[0] - q[0], p[1] - q[1]))))
+  // A place alone on the map has no neighbour to measure against, so it is given the usual distance.
+  const gaps = grid.map((p, i) => Math.min(520 * SCALE * (grid.length > 1 ? Infinity : 1), ...grid.filter((_, j) => j !== i).map((q) => Math.hypot(p[0] - q[0], p[1] - q[1]))))
   const spacing = [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)] || 220
   // Nudge every centre off the grid it was laid out on, so that borders do not fall into a honeycomb.
   const pts = grid.map(([x, y]): P => {
     const a = rng() * Math.PI * 2, r = spacing * (0.08 + rng() * 0.16)
     return [x + Math.cos(a) * r, y + Math.sin(a) * r]
   })
-  const nearest = pts.map((p, i) => Math.min(...pts.filter((_, j) => j !== i).map((q) => Math.hypot(p[0] - q[0], p[1] - q[1]))))
+  const nearest = pts.map((p, i) => Math.min(pts.length > 1 ? Infinity : 520 * SCALE, ...pts.filter((_, j) => j !== i).map((q) => Math.hypot(p[0] - q[0], p[1] - q[1]))))
   const typical = [...nearest].sort((a, b) => a - b)[Math.floor(nearest.length / 2)] || 260
   const reach = Math.min(200, Math.max(110, typical * 0.9))
 
