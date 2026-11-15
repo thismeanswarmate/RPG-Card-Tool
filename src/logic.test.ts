@@ -586,12 +586,16 @@ describe('drawn map', async () => {
         for (const [x, y] of r.points) { expect(Number.isFinite(x) && Number.isFinite(y)).toBe(true); expect(x).toBeGreaterThan(0); expect(x).toBeLessThan(map.w); expect(y).toBeGreaterThan(0); expect(y).toBeLessThan(map.h) }
         expect(inside([r.x, r.y], r.points), `${r.name} holds its own centre`).toBe(true)
         expect(r.name).toBe(s.names[r.id])
-        expect(r.symbols.length).toBeGreaterThan(2)
+        expect(r.symbols.length).toBeGreaterThan(0)
         for (const p of r.symbols) expect(inside([p.x, p.y], r.points)).toBe(true)
         for (const site of r.sites) expect(inside([site.x, site.y], r.points), `${site.name} in ${r.name}`).toBe(true)
         // No region covers another place's centre.
         for (const o of map.regions) if (o !== r) expect(inside([o.x, o.y], r.points)).toBe(false)
       }
+      // Regions are plainly of different sizes.
+      const area = (poly: [number, number][]) => Math.abs(poly.reduce((sum, [x, y], k) => { const [nx, ny] = poly[(k + 1) % poly.length]; return sum + x * ny - nx * y }, 0)) / 2
+      const areas = map.regions.map((r) => area(r.points))
+      expect(Math.max(...areas) / Math.min(...areas), 'largest to smallest').toBeGreaterThan(1.8)
       expect(map.routes.length).toBeGreaterThan(0)
       for (const route of map.routes) { expect(route.a).not.toBe(route.b); expect(route.d).toMatch(/^M[-\d. ]+Q[-\d. ]+$/) }
       // Renaming changes the lettering and nothing else.

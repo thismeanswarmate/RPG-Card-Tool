@@ -60,7 +60,7 @@ export interface MapData {
 }
 
 const SCALE = 0.4
-const MARGIN = 245
+const MARGIN = 290
 
 /** Smooth noise in [0, 1) over the plane, different for each seed. */
 function noise(seed: number) {
@@ -127,7 +127,7 @@ export function buildMap(s: Setting): MapData {
   // How far a region reaches: a little over half the usual distance to the nearest neighbour.
   const nearest = pts.map((p, i) => Math.min(...pts.filter((_, j) => j !== i).map((q) => Math.hypot(p[0] - q[0], p[1] - q[1]))))
   const typical = [...nearest].sort((a, b) => a - b)[Math.floor(nearest.length / 2)] || 260
-  const reach = Math.min(170, Math.max(100, typical * 0.72))
+  const reach = Math.min(175, Math.max(105, typical * 0.78))
 
   const seed = Math.floor(rng() * 1e6)
   const edge = noise(seed), dx = noise(seed + 1), dy = noise(seed + 2)
@@ -135,15 +135,34 @@ export function buildMap(s: Setting): MapData {
   const theme = s.answers.genres[0] === 'scifi' ? 'blueprint' : 'parchment'
   const paper: [number, number, number] = theme === 'blueprint' ? [18, 42, 68] : [233, 220, 192]
 
+  // How much room each place takes: busier places — more sites, powers and people — are larger, with a
+  // little chance on top. A border between two places sits nearer the smaller one.
+  const busy = (root: string) => {
+    const within = new Set(subtree(s.board, root))
+    return subtree(s.board, root).filter((x) => CARDS[x].type === 'site').length * 0.3
+      + [...s.entities, ...s.people].filter((e) => e.home && within.has(e.home)).length * 0.14
+  }
+  const loads = roots.map(busy)
+  const mean = loads.reduce((a, b) => a + b, 0) / loads.length || 1
+  const weight = loads.map((v) => Math.min(1.75, Math.max(0.5, 0.55 + (0.5 * v) / mean + (rng() - 0.5) * 0.5)))
+
   const regions = roots.map((id, i): MapRegion => {
     const [cx, cy] = pts[i]
     // A rough blob, wider than tall, with an uneven edge.
     let poly: P[] = Array.from({ length: 44 }, (_, k) => {
       const a = (k / 44) * Math.PI * 2
-      const r = reach * (0.8 + 0.42 * edge(i * 7.3 + Math.cos(a) * 1.6 + 5, Math.sin(a) * 1.6 + 5))
+      const r = reach * weight[i] ** 0.85 * (0.8 + 0.42 * edge(i * 7.3 + Math.cos(a) * 1.6 + 5, Math.sin(a) * 1.6 + 5))
       return [cx + Math.cos(a) * r * 1.08, cy + Math.sin(a) * r * 0.94]
     })
-    pts.forEach((q, j) => { if (j !== i) poly = clip(poly, [(cx + q[0]) / 2, (cy + q[1]) / 2], [q[0] - cx, q[1] - cy]) })
+    pts.forEach((q, j) => {
+      if (j === i) return
+      // Where the border falls between the two centres. Each place has a radius that grows with its weight,
+      // and the border is the line of equal "power" between the two circles. Borders drawn by this rule
+      // always meet three at a point, so regions fit together with no gaps or overlaps.
+      const span = (q[0] - cx) ** 2 + (q[1] - cy) ** 2
+      const share = 0.5 + ((85 * weight[i]) ** 2 - (85 * weight[j]) ** 2) / (2 * span)
+      poly = clip(poly, [cx + (q[0] - cx) * share, cy + (q[1] - cy) * share], [q[0] - cx, q[1] - cy])
+    })
     // Many short steps along each edge, each pushed by the noise field.
     const fine: P[] = []
     poly.forEach((a, k) => {
@@ -164,7 +183,7 @@ export function buildMap(s: Setting): MapData {
       // Step round the centre until the site sits on its own land and clear of the place's lettering.
       const half = s.names[id].length * 5.4 + 14
       const lettered = (p: P) => Math.abs(p[0] - cx) < half + s.names[sid].length * 2.4 && p[1] > cy - 30 && p[1] < cy + 22
-      for (let tries = 0, r = 60; tries < 40; tries++, a += 0.45, r = Math.max(36, r - 1)) {
+      for (let tries = 0, r = 60; tries < 70; tries++, a += 0.45, r = Math.max(18, r - 1)) {
         spot = [cx + Math.cos(a) * r * 0.95, cy + Math.sin(a) * r + (Math.sin(a) >= 0 ? 16 : -10)]
         if (inside(spot, fine) && inside([spot[0], spot[1] + 14], fine) && !lettered(spot)) break
       }
