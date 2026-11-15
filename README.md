@@ -22,6 +22,18 @@ Omens under its edges, and arrange the resulting microsettings into a world map.
 - **Decks:** an original starter deck plus your own cards, added in the deck manager.
 - **Saving:** the world is kept in the browser and can be exported to or imported from a JSON file.
 
+## Pictures
+
+The Setting tool can make a picture of every place, power, thing and person, using [ComfyUI](https://www.comfy.org/) running on your own
+computer with the Qwen Image 2.1 model. Nothing is sent anywhere else. It makes one picture at a time, sends nothing while ComfyUI has
+other work in its queue, never touches jobs it did not submit, and asks ComfyUI to free its memory when a batch ends. Pictures are kept
+in the browser.
+
+- **Running the app on the same computer** (`npm run dev` or `npm run preview`): it works as is. Requests go through `/comfy`, which the
+  dev server passes on to `http://127.0.0.1:8188`.
+- **Opening the published site**: the page talks to `http://127.0.0.1:8188` directly, so ComfyUI has to be started with requests from
+  the site allowed (`--enable-cors-header https://<your-site>`), and the browser may ask for permission to reach the local network.
+
 ## Development
 
 ```

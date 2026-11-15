@@ -238,6 +238,19 @@ h2:hover .rename, h4:hover .rename, .named:hover .rename, .rename:focus-within {
 .refs > span:first-child { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
 .gazetteer .todo { margin: 0; padding-left: 18px; }
 .stories li { margin-bottom: 8px; font-size: 14px; }
+.images { background: var(--surface); border-radius: 10px; padding: 10px 14px; }
+.images summary { cursor: pointer; font-weight: 600; }
+.images summary small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+.images-body { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.images-body label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.images-body label input { flex: 1; max-width: 320px; }
+.images-body input[type=number] { max-width: 80px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.picture { display: flex; flex-direction: column; gap: 6px; }
+.picture img { max-width: 100%; max-height: 460px; border-radius: 8px; align-self: flex-start; background: var(--bg); }
+.pic-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pic-actions button, .pic-actions .button { font-size: 12px; padding: 3px 9px; }
+a.button { background: var(--raised); border: 1px solid var(--line); border-radius: 6px; color: inherit; text-decoration: none; }
+textarea.prompt { min-height: 180px; resize: vertical; font-size: 14px; line-height: 1.45; }
 .menu { display: contents; }
 .menu-btn, .tabs, .selbar { display: none; }
 html, body, #root { height: 100dvh; }

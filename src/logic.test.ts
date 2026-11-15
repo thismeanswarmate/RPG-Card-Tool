@@ -450,3 +450,36 @@ describe('settings', async () => {
     expect(G.settingMarkdown(s)).toContain('The Zzyzx Test')
   })
 })
+
+describe('pictures', async () => {
+  const G = await import('./setting')
+  const P = await import('./imagePrompts')
+  const C = await import('./comfy')
+
+  it('writes a prompt for every element, without invented names', () => {
+    const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, focus: ['faith', 'power'] }, 'pictures')
+    const ids = P.imageIds(s)
+    expect(ids).toHaveLength(1 + G.rootsOf(s).length + s.entities.length + s.people.length)
+    for (const id of ids) {
+      const spec = P.imageSpec(s, id)
+      expect(spec.prompt, id).toMatch(/^[A-Z].*No text or lettering\.$/)
+      expect(spec.prompt).not.toMatch(/undefined|something|\{|  /)
+      expect(spec.w % 32).toBe(0)
+      expect(spec.h % 32).toBe(0)
+      expect(spec.seed).toBe(P.imageSpec(s, id).seed)
+      if (id !== 'world') expect(spec.prompt, id).not.toContain(s.names[id].replace(/^the /, ''))
+    }
+    expect(P.imageSpec(s, s.people[0].id).h).toBeGreaterThan(P.imageSpec(s, s.people[0].id).w)
+    expect(P.imageSpec(s, G.rootsOf(s)[0]).prompt).toMatch(/^A wide landscape view of /)
+    for (const id of ids) expect(P.imageSpec(s, id).prompt).not.toMatch(/\b(in|of) an? (\w+ )?(peaks|flats|badlands|highlands|canyonlands|dunes|caverns|caves|shoals|cliffs|islands|isles|fields|steps)\b/)
+  })
+  it('builds the text-to-image graph the way ComfyUI expects it', () => {
+    const g = C.graph({ prompt: 'a heron', w: 1344, h: 768, seed: 7, steps: 25 })
+    expect(g['1'].inputs.unet_name).toBe('qwen_image_2.1_int8_convrot.safetensors')
+    expect(g['3'].inputs).toMatchObject({ clip_name: 'qwen3vl_8b_int8_convrot.safetensors', type: 'qwen_image' })
+    expect(g['5'].inputs).toMatchObject({ prompt: 'a heron', negative_prompt: '', resolution: 0, clip: ['3', 0], vae: ['4', 0] })
+    expect(g['6'].inputs).toEqual({ width: 1344, height: 768, batch_size: 1 })
+    expect(g['7'].inputs).toMatchObject({ seed: 7, steps: 25, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1, positive: ['5', 0], negative: ['5', 1] })
+    expect(g['9'].inputs.images).toEqual(['8', 0])
+  })
+})

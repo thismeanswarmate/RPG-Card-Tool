@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { EXPANSION_COLORS } from './expansions'
+import { imageIds, imageSpec } from './imagePrompts'
+import { useImages } from './imageStore'
 import { titleCase } from './names'
 import {
   charText, DEFAULT_ANSWERS, entityText, homeRoot, hookText, KIND_ORDER, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, terrainOf, tiesTo, worldProse,
@@ -70,6 +72,73 @@ function Name({ id, s }: { id: string; s: SettingData }) {
   )
 }
 
+/** ComfyUI connection, the batch button and progress, tucked into one fold at the top of a setting. */
+function ImagePanel({ s }: { s: SettingData }) {
+  const im = useImages()
+  const missing = imageIds(s).filter((id) => !im.links[`${s.id}:${id}`])
+  const active = im.status === 'working' && (im.current || im.queue.length > 0)
+  const all = () => im.add(missing.map((id) => ({ key: `${s.id}:${id}`, label: s.names[id], ...imageSpec(s, id) })))
+  return (
+    <details className="images" open={im.status !== 'idle' || im.queue.length > 0}>
+      <summary>Pictures <small>{im.message || 'Made on your own computer with ComfyUI'}</small></summary>
+      <div className="images-body">
+        <label>ComfyUI address <input value={im.url} onChange={(e) => im.setUrl(e.target.value)} spellCheck={false} /></label>
+        <label>Steps <input type="number" min={4} max={60} value={im.steps} onChange={(e) => im.setSteps(+e.target.value)} /></label>
+        <div className="actions">
+          <button onClick={im.test} disabled={!!active}>Test connection</button>
+          <button className="primary" onClick={all} disabled={!missing.length}>
+            {im.status === 'busy' || im.status === 'error' ? 'Resume' : `Make all missing pictures (${missing.length})`}
+          </button>
+          {(active || im.queue.length > 0) && <button onClick={im.cancel}>Stop</button>}
+        </div>
+        {(im.current || im.queue.length > 0) && <p className="hint">{im.queue.length} waiting{im.current ? `, one in progress (${im.current.label})` : ''}. Each picture takes a few minutes.</p>}
+        <p className="hint">
+          Pictures are made by ComfyUI running on this computer and are kept in this browser. One is made at a time, nothing is sent while
+          ComfyUI has other work, and its memory is freed when the batch ends. If you opened this page from the web, not from a copy
+          running on your computer, ComfyUI must be set to allow requests from this site.
+        </p>
+      </div>
+    </details>
+  )
+}
+
+/** The picture for one element, with the buttons to make, redo, save or remove it. */
+function Picture({ id, s }: { id: string; s: SettingData }) {
+  const im = useImages()
+  const key = `${s.id}:${id}`
+  const src = im.links[key]
+  const waiting = im.current?.key === key || im.queue.some((j) => j.key === key)
+  const [editing, setEditing] = useState<string | null>(null)
+  const spec = imageSpec(s, id)
+  const make = (prompt = spec.prompt, fresh = false) =>
+    im.add([{ key, label: s.names[id], ...spec, prompt, seed: fresh ? Math.floor(Math.random() * 2 ** 31) : spec.seed }])
+  return (
+    <div className="picture">
+      {src && <img src={src} alt={`Picture of ${s.names[id]}`} loading="lazy" />}
+      <div className="pic-actions">
+        {waiting ? <span className="hint">{im.current?.key === key ? 'Making the picture…' : 'Waiting its turn…'}</span> : (
+          <>
+            <button onClick={() => make(spec.prompt, !!src)}>{src ? 'New picture' : 'Make picture'}</button>
+            <button onClick={() => setEditing(spec.prompt)}>Edit prompt…</button>
+            {src && <a className="button" href={src} download={`${s.names[id].replace(/\W+/g, '-').toLowerCase()}.png`}>Save</a>}
+            {src && <button onClick={() => im.remove(key)}>Remove</button>}
+          </>
+        )}
+      </div>
+      {editing !== null && (
+        <div className="modal-back" onClick={() => setEditing(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <header><h2>Prompt for {s.names[id]}</h2><button onClick={() => setEditing(null)}>Cancel</button></header>
+            <p className="hint">Describe the subject, then the setting, then the light, then the medium. Invented names are best left out.</p>
+            <textarea className="prompt" value={editing} onChange={(e) => setEditing(e.target.value)} />
+            <div className="actions"><button className="primary" disabled={!editing.trim()} onClick={() => { make(editing.trim(), true); setEditing(null) }}>Make picture</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const Refs = ({ label, ids, s }: { label: string; ids: string[]; s: SettingData }) =>
   ids.length ? (
     <p className="refs">
@@ -107,6 +176,8 @@ function Map({ s }: { s: SettingData }) {
 function Gazetteer({ s }: { s: SettingData }) {
   const [copied, setCopied] = useState(false)
   const meta = worldProse(s)
+  const load = useImages((x) => x.load)
+  useEffect(() => { void load(`${s.id}:`) }, [s.id, load])
   const copy = async () => {
     try { await navigator.clipboard.writeText(settingMarkdown(s)); setCopied(true); setTimeout(() => setCopied(false), 1500) }
     catch { alert('Copying is not available here — use Download instead.') }
@@ -128,6 +199,8 @@ function Gazetteer({ s }: { s: SettingData }) {
           <button onClick={download}>Download</button>
         </div>
       </header>
+      <ImagePanel s={s} />
+      <Picture id="world" s={s} />
       <Map s={s} />
       <nav className="gaz-nav">
         {['Places', 'Powers', 'People', 'Stories'].map((t) => <button key={t} onClick={() => go(t)}>{t}</button>)}
@@ -147,6 +220,7 @@ function Gazetteer({ s }: { s: SettingData }) {
         return (
           <article key={r} id={`set-${r}`} className="entry">
             <h4><Name id={r} s={s} /> <small>{v.aka}</small></h4>
+            <Picture id={r} s={s} />
             <div className="prose">{v.prose.map((t, i) => <p key={i}>{t}</p>)}</div>
             {v.sites.length > 0 && (
               <p className="refs"><span>Sites</span>{v.sites.map((id) => <span key={id} id={`set-${id}`} className="named"><Name id={id} s={s} /></span>)}</p>
@@ -167,6 +241,7 @@ function Gazetteer({ s }: { s: SettingData }) {
       {KIND_ORDER.flatMap((kind) => s.entities.filter((e) => e.kind === kind)).map((e) => (
         <article key={e.id} id={`set-${e.id}`} className={`entry lk-${e.kind}`}>
           <h4><Name id={e.id} s={s} /> <small>{e.kind === 'deity' ? e.what : `${e.kind} · ${e.what}`}</small></h4>
+          <Picture id={e.id} s={s} />
           <div className="prose"><p>{entityText(s, e)}</p></div>
           {e.home && <Refs label="Where" ids={[homeRoot(s, e.home)]} s={s} />}
           <Refs label="Tied to" ids={tiesTo(s, e.id)} s={s} />
@@ -177,6 +252,7 @@ function Gazetteer({ s }: { s: SettingData }) {
       {s.people.map((c) => (
         <article key={c.id} id={`set-${c.id}`} className="entry lk-figure">
           <h4><Name id={c.id} s={s} /> <small>{c.what}</small></h4>
+          <Picture id={c.id} s={s} />
           <div className="prose">{charText(s, c).map((t, i) => <p key={i}>{t}</p>)}</div>
           <Refs label="Where" ids={[homeRoot(s, c.home)]} s={s} />
           <Refs label="Tied to" ids={[...(c.faction ? [c.faction] : []), ...tiesTo(s, c.id).filter((id) => id !== c.faction)]} s={s} />
@@ -193,6 +269,7 @@ function Gazetteer({ s }: { s: SettingData }) {
 
 export function Setting() {
   const st = useSettings()
+  const removeImages = useImages((x) => x.removeAll)
   const current = st.settings.find((x) => x.id === st.current)
   return (
     <div className="app">
@@ -206,7 +283,7 @@ export function Setting() {
                 {titleCase(upper(x.names.world))}
                 <small>{rootsOf(x).length} places · seed {x.seed}</small>
               </button>
-              <button title="Delete setting" aria-label="Delete setting" onClick={() => confirm(`Delete ${x.names.world}?`) && st.remove(x.id)}>×</button>
+              <button title="Delete setting" aria-label="Delete setting" onClick={() => { if (confirm(`Delete ${x.names.world} and its pictures?`)) { void removeImages(`${x.id}:`); st.remove(x.id) } }}>×</button>
             </div>
           ))}
           <button className={current ? '' : 'primary'} onClick={() => st.select(null)}>+ New setting</button>
