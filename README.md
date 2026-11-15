@@ -1,6 +1,10 @@
 # Storyloom
 
-Two card tools on one page, switched from the top menu.
+Four card tools on one page, switched from the top menu.
+
+**Lore** grows a web of linked story elements — factions, figures, events, places, objects, materials and creatures. Each element takes a primary cue and up to four details; a detail can hold links, completed with a new cue or an element already in the web, and any link can be expanded into an element of its own. Optional Deities, Emblems and Names packs, a one-click web generator, and a written account of the whole web.
+
+**Stories** builds story prompts from Character, Drive, Subject, Obstacle and Trait cards, in five patterns from a single story seed to two characters on a collision course. Turn a card to its next cue, lock what you like and redraw the rest. Optional Fantasy, Science fiction and Horror packs, and a Dynamics pack that adds a bond between two characters and a question to answer.
 
 **Characters** builds a cast: each character draws one card for Role, Background, Motivation, Strength, Flaw, Turning point, Secret and Catalyst from a core deck plus Fantasy, Science fiction, Modern and Horror packs. Lock the cards you like, redraw the rest, add your own cards, and read the result as a written portrait.
 

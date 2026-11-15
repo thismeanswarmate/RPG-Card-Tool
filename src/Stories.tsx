@@ -1,0 +1,99 @@
+import { useState } from 'react'
+import { CARD, KIND_INFO, PACKS, PATTERN, PATTERNS, slotsOf, write } from './story'
+import { useStories } from './storyStore'
+import { ToolNav } from './ToolNav'
+
+export function Stories() {
+  const s = useStories()
+  const [copied, setCopied] = useState(false)
+  const story = s.stories.find((x) => x.id === s.current)!
+  const pattern = PATTERN[story.pattern] ?? PATTERNS[0]
+  const defs = slotsOf(story.pattern, s.packs)
+  const prose = write(story)
+  const filled = defs.some((d) => story.slots[d.id])
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(prose.join('\n\n')); setCopied(true); setTimeout(() => setCopied(false), 1500) }
+    catch { alert('Copying is not available here — select the text instead.') }
+  }
+
+  return (
+    <div className="app">
+      <header className="topbar">
+        <ToolNav />
+        <div className="chips" role="group" aria-label="Optional packs">
+          {Object.entries(PACKS).map(([k, label]) => (
+            <button key={k} className={s.packs.includes(k) ? 'on' : ''} aria-pressed={s.packs.includes(k)} onClick={() => s.togglePack(k)}>{label}</button>
+          ))}
+        </div>
+      </header>
+      <div className="people">
+        <aside className="cast">
+          <h3>Stories</h3>
+          {s.stories.map((x) => {
+            const text = write(x)[0]
+            return (
+              <div key={x.id} className={`cast-row${x.id === s.current ? ' on' : ''}`}>
+                <button className="cast-name" onClick={() => s.select(x.id)}>
+                  {(PATTERN[x.pattern] ?? PATTERNS[0]).name}
+                  <small>{text ?? 'Nothing drawn yet'}</small>
+                </button>
+                <button title="Remove story" aria-label="Remove story" onClick={() => (!text || confirm('Remove this story?')) && s.remove(x.id)}>×</button>
+              </div>
+            )
+          })}
+          <button onClick={s.add}>+ New story</button>
+        </aside>
+
+        <main className="sheet">
+          <div className="sheet-head">
+            <select className="name" value={story.pattern} onChange={(e) => s.setPattern(e.target.value)} aria-label="Prompt pattern">
+              {PATTERNS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <button className="primary" onClick={s.generate}>{filled ? 'Redraw unlocked' : 'Draw a prompt'}</button>
+          </div>
+          <p className="hint">{pattern.blurb} Each card has several cues: <b>Turn</b> it to use the next one, or <b>Redraw</b> for a different card.</p>
+          <div className="slots">
+            {defs.map((def) => {
+              const held = story.slots[def.id]
+              const card = held && CARD[held.card]
+              return (
+                <section key={def.id} className={`pcard sk-${card?.kind ?? def.kind}${card ? '' : ' blank'}${held?.locked ? ' locked' : ''}`}>
+                  <header>
+                    <b>{def.label}</b>
+                    <small>{card ? KIND_INFO[card.kind].label : def.optional ? 'Optional' : KIND_INFO[def.kind].hint}</small>
+                  </header>
+                  <p>{card ? card.cues[held.active] : '—'}</p>
+                  {card && <small className="others">Also on this card: {card.cues.filter((_, i) => i !== held.active).join(' · ')}</small>}
+                  <footer>
+                    {card && <button onClick={() => s.turn(def.id)} disabled={held.locked}>Turn</button>}
+                    <button onClick={() => s.draw(def.id)} disabled={held?.locked}>{card ? 'Redraw' : 'Draw'}</button>
+                    {def.alt && <button onClick={() => s.draw(def.id, true)} disabled={held?.locked} title={`Use a ${KIND_INFO[def.alt].label} here instead, or switch back`}>⇄</button>}
+                    {card && <button className={held.locked ? 'on' : ''} aria-pressed={!!held.locked} onClick={() => s.toggleLock(def.id)}>{held.locked ? 'Locked' : 'Lock'}</button>}
+                    {card && <button onClick={() => s.clear(def.id)}>Clear</button>}
+                  </footer>
+                </section>
+              )
+            })}
+          </div>
+        </main>
+
+        <aside className="portrait">
+          <h3>Prompt</h3>
+          {prose.length ? (
+            <>
+              <div className="prose">{prose.map((t, i) => <p key={i}>{t}</p>)}</div>
+              <div className="actions"><button onClick={copy}>{copied ? 'Copied' : 'Copy text'}</button></div>
+            </>
+          ) : (
+            <p className="hint">Draw cards and they are read out here as a prompt. Take it literally or loosely — it is a starting point, not a plot.</p>
+          )}
+          <label className="notes">
+            Notes
+            <textarea value={story.notes} onChange={(e) => s.setNotes(e.target.value)} placeholder="Where does this go?" />
+          </label>
+        </aside>
+      </div>
+    </div>
+  )
+}

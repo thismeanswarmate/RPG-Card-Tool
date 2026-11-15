@@ -305,3 +305,57 @@ describe('lore web', async () => {
       }
   })
 })
+
+describe('story prompts', async () => {
+  const S = await import('./story')
+  const id = (kind: string, text: string) => {
+    const c = S.STORY_CARDS.find((x) => x.kind === kind && x.cues.includes(text))!
+    return { card: c.id, active: c.cues.indexOf(text) }
+  }
+
+  it('has whole cards, unique cues and something of every kind a pattern needs', () => {
+    const cues = S.STORY_CARDS.flatMap((c) => c.cues.map((q) => `${c.kind}:${q}`))
+    expect(new Set(cues).size).toBe(cues.length)
+    for (const c of S.STORY_CARDS) expect(c.cues).toHaveLength(S.KIND_INFO[c.kind].cues)
+    for (const c of S.STORY_CARDS.filter((x) => x.kind === 'subject')) for (const q of c.cues) expect(q).toMatch(/^(a|an|the) /)
+    for (const p of S.PATTERNS) for (const d of p.slots) expect(S.drawCard(d.kind, [])).toBeTruthy()
+    expect(S.drawCard('bond', [])).toBeUndefined()
+    expect(S.drawCard('bond', ['dynamics'])).toBeTruthy()
+  })
+  it('reads a seed and a two-character prompt as sentences', () => {
+    const seed = { id: 's', pattern: 'seed', notes: '', slots: {
+      who: id('character', 'heir'), whoT: id('trait', 'honest'), drive: id('drive', 'expose the truth about'),
+      what: id('subject', 'the last train'), whatT: id('trait', 'ancient'), but: id('obstacle', 'no one will believe them'),
+    } }
+    expect(S.write(seed)).toEqual(['An honest heir wants to expose the truth about the ancient last train, but no one will believe them.'])
+    const clash = { id: 'c', pattern: 'clash', notes: '', slots: {
+      a: id('character', 'forger'), aDrive: id('drive', 'steal'), x: id('subject', 'an old map'), xT: id('trait', 'stolen'),
+      b: id('character', 'archivist'), bT: id('trait', 'weary'), bDrive: id('drive', 'protect'), bBut: id('obstacle', 'they are being watched'),
+      bond: id('bond', 'estranged siblings'), ask: id('question', 'What would they never forgive?'),
+    } }
+    expect(S.write(clash)).toEqual([
+      'A forger wants to steal a stolen old map.',
+      'A weary archivist wants to protect the same old map, but they are being watched.',
+      'The two are estranged siblings.',
+      'About the forger: What would they never forgive?',
+    ])
+    expect(S.write({ id: 'e', pattern: 'seed', notes: '', slots: {} })).toEqual([])
+  })
+  it('fills every pattern without leaving required slots empty, and keeps locked cards', () => {
+    for (const p of S.PATTERNS)
+      for (const packs of [[], Object.keys(S.PACKS)]) {
+        const story = { id: 'x', pattern: p.id, notes: '', slots: {} as Record<string, import('./story').Held | undefined> }
+        S.fill(story, packs)
+        const defs = S.slotsOf(p.id, packs)
+        for (const d of defs) if (!d.optional) expect(story.slots[d.id], `${p.id} ${d.id}`).toBeTruthy()
+        const lead = story.slots[p.lead]!
+        lead.locked = true
+        const before = { ...lead }
+        S.fill(story, packs)
+        expect(story.slots[p.lead]).toEqual(before)
+        const text = S.write(story).join(' ')
+        expect(text).toMatch(/^[A-Z].*[.?]$/)
+        expect(text).not.toMatch(/undefined|…|  /)
+      }
+  })
+})
