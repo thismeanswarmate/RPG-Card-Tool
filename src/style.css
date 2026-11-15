@@ -383,3 +383,10 @@ html, body, #root { height: 100dvh; }
 .pick { display: inline-flex; flex-direction: column; gap: 2px; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; max-width: 100%; }
 .pick select { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text); max-width: 220px; }
 .edit-row { align-items: flex-end; }
+
+.draw { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 13px; }
+.draw-label { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; min-width: 92px; }
+.draw .opt { border-radius: 20px; padding: 2px 11px; color: var(--muted); text-align: left; }
+.draw .opt.on { background: color-mix(in srgb, var(--accent) 22%, var(--raised)); border-color: var(--accent); color: var(--text); }
+.draw .redraw { padding: 2px 8px; color: var(--muted); background: none; }
+@media (max-width: 700px) { .draw-label { min-width: 100%; } }

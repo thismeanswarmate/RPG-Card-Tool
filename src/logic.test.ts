@@ -916,14 +916,36 @@ describe('choosing the parts of a hand-built place from lists', async () => {
       }
       expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN/)
 
-      // What a power is, and a person's role.
-      const kinds = B.whatChoices(s, faction)
-      expect(kinds.length).toBeGreaterThan(5)
-      B.setWhat(s, faction, kinds.find((k) => k !== s.entities[0].what)!)
+      // A draw offers what its card held, and a redraw brings a different set.
+      for (const [type, size] of [['terrain', 1], ['epithet', 4], ['legacy', 4], ['trait', 4], ['omen', 2]] as const) {
+        const here = G.rootsOf(s)[0]
+        const [now] = B.aspectsOf(s, here, type)
+        const before = B.drawn(now)
+        expect(before).toHaveLength(size)
+        expect(before.map((c) => c.value)).toContain(B.chosen(s, now))
+        B.choose(s, here, type, 'random', now)
+        const [then] = B.aspectsOf(s, G.rootsOf(s)[0], type)
+        expect(then).not.toBe(now)
+        expect(B.drawn(then).map((c) => c.text)).not.toEqual(before.map((c) => c.text))
+      }
+      expect(s.names[G.rootsOf(s)[0]]).toBe(placeName)
+      expect(B.drawn(G.placeView(s, G.rootsOf(s)[0]).sites[0].id)).toHaveLength(2)
+
+      // What a power is and a person's role work the same way: a few options, pick one, or redraw.
+      for (const id of [faction, person]) {
+        const e = [...s.entities, ...s.people].find((x) => x.id === id)!
+        const options = B.whatOptions(s, id)
+        expect(options.length).toBeGreaterThan(1)
+        expect(options.length).toBeLessThanOrEqual(4)
+        expect(options).toContain(e.what)
+        B.setWhat(s, id, options.find((o) => o !== e.what)!)
+        expect(B.whatOptions(s, id)).toEqual(options)
+        B.redrawWhat(s, id)
+        expect(options).not.toContain(e.what)
+        expect(B.whatOptions(s, id)).toContain(e.what)
+      }
       expect(G.entityText(s, s.entities[0])[0]).toContain(s.entities[0].what)
-      const roles = B.whatChoices(s, person)
-      B.setWhat(s, person, roles[0])
-      expect(G.charText(s, s.people[0])[0]).toContain(roles[0])
+      expect(G.charText(s, s.people[0])[0]).toContain(s.people[0].what)
     }
   })
 })

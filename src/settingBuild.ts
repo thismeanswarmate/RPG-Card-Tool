@@ -5,6 +5,7 @@ import { cueText, autoEdge, rootOf, subtree } from './logic'
 import { PRIMARY, type Kind } from './lore'
 import { tonguesFor } from './names'
 import { kindLabel, rollAll as rollPeril, stepsFor as perilSteps } from './peril'
+import { STORY_CARDS } from './story'
 import { DEFAULT_ANSWERS, weave, type Built, type Char, type Entity, type Setting } from './setting'
 import { rollAll as rollSettlement, stepsFor as settlementSteps } from './settlement'
 import { cardsOf } from './store'
@@ -110,6 +111,8 @@ export function choices(s: Setting, type: CardType, current?: string): Choice[] 
     .sort((a, b) => a.text.replace(/^(of|the) /i, '').localeCompare(b.text.replace(/^(of|the) /i, '')))
 }
 export const chosen = (s: Setting, id: string) => `${id}:${s.board[id].active}`
+/** The options that came with one draw: as many as its card has, be that one, two or four. */
+export const drawn = (id: string): Choice[] => CARDS[id].cues.map((cue, i) => ({ value: `${id}:${i}`, text: cue.text }))
 /** What describes a place, by part: for each, the entries now in play (a generated place can have two of one part). */
 export const aspectsOf = (s: Setting, root: string, type: CardType) => subtree(s.board, root).filter((id) => CARDS[id].type === type)
 
@@ -125,7 +128,8 @@ function rekey(s: Setting, from: string, to: string) {
  */
 export function choose(s: Setting, root: string, type: CardType, value: string, current?: string) {
   if (value === 'random') {
-    const all = choices(s, type, current).filter((c) => !current || c.value !== chosen(s, current))
+    // A fresh draw is always a different card, so every option on offer changes.
+    const all = choices(s, type, current).filter((c) => !current || !c.value.startsWith(`${current}:`))
     if (!all.length) return
     value = all[rand(all.length)].value
   }
@@ -175,12 +179,28 @@ export function rewrite(s: Setting, id: string) {
   if (e) { const w = weave(s); w.detail(e, e.kind === 'faction' ? w.depth.major : w.depth.minor, false) }
 }
 
-/** What a power or thing of this kind could be, and the roles a person could have. */
-export const whatChoices = (s: Setting, id: string): string[] => {
+/** The story decks a setting draws its roles from. */
+const roleCards = (s: Setting) => {
+  const decks = ['core', ...s.answers.genres.filter((g) => g !== 'grounded')]
+  return STORY_CARDS.filter((c) => c.kind === 'character' && decks.includes(c.deck))
+}
+/** The kinds a power or thing can be, dealt out four to a draw. */
+const kindDraws = (kind: Kind) => Array.from({ length: Math.ceil(PRIMARY[kind].length / 4) }, (_, i) => PRIMARY[kind].slice(i * 4, i * 4 + 4))
+
+/** The draw a person's role or a thing's kind came from: the options that were on offer alongside it. */
+export function whatOptions(s: Setting, id: string): string[] {
   const e = find(s, id)
   if (!e) return []
-  const all = e.kind === 'figure' ? weave(s).roles : PRIMARY[e.kind]
-  return [...new Set([e.what, ...all])].sort((a, b) => a.localeCompare(b))
+  const draws = e.kind === 'figure' ? roleCards(s).map((c) => c.cues) : kindDraws(e.kind)
+  return draws.find((d) => d.includes(e.what)) ?? [e.what]
+}
+/** Draw again: a different set of options, one of which is taken. */
+export function redrawWhat(s: Setting, id: string) {
+  const e = find(s, id)
+  if (!e) return
+  const draws = (e.kind === 'figure' ? roleCards(s).map((c) => c.cues) : kindDraws(e.kind)).filter((d) => !d.includes(e.what))
+  const next = draws[rand(draws.length)]
+  if (next) setWhat(s, id, next[rand(next.length)])
 }
 /** Change what something is. Its name stays; draw another to match if wanted. */
 export function setWhat(s: Setting, id: string, what: string) {
