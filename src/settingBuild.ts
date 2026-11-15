@@ -6,7 +6,8 @@ import { PRIMARY, type Kind } from './lore'
 import { tonguesFor } from './names'
 import { KINDS as PERIL_KINDS, kindLabel, rollAll as rollPeril, stepsFor as perilSteps } from './peril'
 import { STORY_CARDS } from './story'
-import { decksOf, DEFAULT_ANSWERS, weave, type Built, type Char, type Entity, type Setting } from './setting'
+import { cardOf, draw as drawCard, fill as fillCards } from './cardTool'
+import { decksOf, DEFAULT_ANSWERS, DRAWN_DEF, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
 import { rollAll as rollSettlement, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
 import type { CardType } from './types'
@@ -259,10 +260,52 @@ export function builtReroll(s: Setting, id: string) {
   if (b) b.rolls = (b.tool === 'settlement' ? rollSettlement : rollPeril)(b.rolls, b.locked ?? [])
 }
 
+/** Add a race or the history to the world, or a culture to a place. A setting has one history. */
+export function addDrawn(s: Setting, tool: Drawn['tool'], home?: string): string | undefined {
+  if (tool === 'history' && s.drawn?.some((d) => d.tool === 'history')) return s.drawn.find((d) => d.tool === 'history')!.id
+  return weave(s).drawOne(tool, home && rootOf(s.board, home)).id
+}
+const drawnOf = (s: Setting, id: string) => s.drawn?.find((d) => d.id === id)
+const asItem = (d: Drawn) => ({ id: d.id, name: '', notes: '', sections: d.sections })
+/** Change one aspect: a number picks that option, 'draw' draws afresh, 'lock' holds or frees it, 'clear' leaves it out. */
+export function drawnEdit(s: Setting, id: string, section: number, aspect: string, change: number | 'draw' | 'lock' | 'clear') {
+  const d = drawnOf(s, id)
+  const slots = d?.sections[section]?.slots
+  if (!d || !slots) return
+  const def = DRAWN_DEF[d.tool]
+  const held = slots[aspect]
+  if (change === 'draw') slots[aspect] = drawCard(def, aspect, drawnPacks(s), d.sections.flatMap((x) => Object.values(x.slots).flatMap((h) => (h ? [h.card] : []))))
+  else if (change === 'clear') delete slots[aspect]
+  else if (!held) return
+  else if (change === 'lock') held.locked = !held.locked
+  else if (cardOf(def, held.card)?.cues[change] !== undefined) held.active = change
+}
+/** Draw every unlocked aspect again, of one section or of all. */
+export function drawnFill(s: Setting, id: string, section?: number) {
+  const d = drawnOf(s, id)
+  if (d) for (const i of section === undefined ? d.sections.map((_, k) => k) : [section]) fillCards(DRAWN_DEF[d.tool], asItem(d), i, drawnPacks(s))
+}
+export function addAge(s: Setting, id: string) {
+  const d = drawnOf(s, id)
+  const max = d && DRAWN_DEF[d.tool].sections?.max
+  if (!d || !max || d.sections.length >= max) return
+  d.sections.push({ slots: {} })
+  fillCards(DRAWN_DEF[d.tool], asItem(d), d.sections.length - 1, drawnPacks(s))
+}
+export function removeAge(s: Setting, id: string, section: number) {
+  const d = drawnOf(s, id)
+  if (d && d.sections.length > 1) d.sections.splice(section, 1)
+}
+/** Say which race mostly keeps a culture, or none. */
+export function setRace(s: Setting, id: string, race: string | undefined) {
+  const d = drawnOf(s, id)
+  if (d) { if (race) d.race = race; else delete d.race }
+}
+
 /** Everything that goes when one thing is removed: a place takes its sites and all that is based there. */
 export function goneWith(s: Setting, id: string): string[] {
   const gone = new Set(s.board[id] ? subtree(s.board, id) : [id])
-  for (const x of [...s.entities, ...s.people, ...(s.built ?? [])]) if (x.home && gone.has(x.home)) gone.add(x.id)
+  for (const x of [...s.entities, ...s.people, ...(s.built ?? []), ...(s.drawn ?? [])]) if (x.home && gone.has(x.home)) gone.add(x.id)
   return [...gone]
 }
 
@@ -273,6 +316,8 @@ export function remove(s: Setting, id: string) {
   s.entities = s.entities.filter((e) => !gone.has(e.id))
   s.people = s.people.filter((c) => !gone.has(c.id))
   s.built = (s.built ?? []).filter((b) => !gone.has(b.id))
+  s.drawn = (s.drawn ?? []).filter((d) => !gone.has(d.id))
+  for (const d of s.drawn) if (d.race && gone.has(d.race)) delete d.race
   s.hooks = s.hooks.filter((h) => !h.lines.some((l) => gone.has(l.who) || gone.has(l.target) || (l.also && gone.has(l.also.target))))
   for (const e of [...s.entities, ...s.people] as (Entity | Char)[]) {
     e.details = e.details.filter((d) => !d.links.some((l) => l.node && gone.has(l.node)))

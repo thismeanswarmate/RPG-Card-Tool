@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { cardOf, cardsOf, deckOn, text, type ToolDef } from './cardTool'
+import { cardOf, cardsOf, deckOn, text, type Section, type ToolDef } from './cardTool'
 import type { CardToolState } from './cardToolStore'
 import { DeckDialog, type DeckGroup } from './DeckDialog'
 import { ToolPicture } from './PictureBox'
@@ -11,6 +11,38 @@ interface Props {
   plural: string
   single: string
   blurb: string
+}
+
+interface RowsProps {
+  def: ToolDef
+  section: Section
+  onDraw(aspect: string): void
+  onPick(aspect: string, cue: number): void
+  onLock(aspect: string): void
+  onClear(aspect: string): void
+}
+
+/** The aspects of one section, each a row: the options that came up, a redraw, a lock, and for optional ones a way to drop it. */
+export function AspectRows({ def, section, onDraw, onPick, onLock, onClear }: RowsProps) {
+  return (
+    <>
+      {def.aspects.map((a) => {
+        const held = section.slots[a.id]
+        const card = held && cardOf(def, held.card)
+        return (
+          <div key={a.id} className={`draw row${held?.locked ? ' locked' : ''}`}>
+            <span className="draw-label" title={a.hint}>{a.label}</span>
+            {card?.cues.map((cue, k) => (
+              <button key={k} className={k === held!.active ? 'opt on' : 'opt'} aria-pressed={k === held!.active} disabled={held!.locked} onClick={() => onPick(a.id, k)}>{cue}</button>
+            ))}
+            <button className="redraw" disabled={held?.locked} onClick={() => onDraw(a.id)}>{held ? '↻ Redraw' : '+ Draw'}</button>
+            {held && <button className={`redraw${held.locked ? ' on' : ''}`} aria-pressed={!!held.locked} onClick={() => onLock(a.id)}>{held.locked ? 'Locked' : 'Lock'}</button>}
+            {held && a.optional && !held.locked && <button className="redraw" title={`Leave “${a.label}” out`} aria-label={`Leave ${a.label} out`} onClick={() => onClear(a.id)}>×</button>}
+          </div>
+        )
+      })}
+    </>
+  )
 }
 
 /** The screen shared by the card tools: a saved list, each aspect as a draw to pick from, and the result written out. */
@@ -85,21 +117,7 @@ export function CardTool({ def, useStore, plural, single, blurb }: Props) {
                   </span>
                 </h3>
               )}
-              {def.aspects.map((a) => {
-                const held = section.slots[a.id]
-                const card = held && cardOf(def, held.card)
-                return (
-                  <div key={a.id} className={`draw row${held?.locked ? ' locked' : ''}`}>
-                    <span className="draw-label" title={a.hint}>{a.label}</span>
-                    {card?.cues.map((cue, k) => (
-                      <button key={k} className={k === held!.active ? 'opt on' : 'opt'} aria-pressed={k === held!.active} disabled={held!.locked} onClick={() => s.pick(i, a.id, k)}>{cue}</button>
-                    ))}
-                    <button className="redraw" disabled={held?.locked} onClick={() => s.draw(i, a.id)}>{held ? '↻ Redraw' : '+ Draw'}</button>
-                    {held && <button className={`redraw${held.locked ? ' on' : ''}`} aria-pressed={!!held.locked} onClick={() => s.toggleLock(i, a.id)}>{held.locked ? 'Locked' : 'Lock'}</button>}
-                    {held && a.optional && !held.locked && <button className="redraw" title={`Leave “${a.label}” out`} aria-label={`Leave ${a.label} out`} onClick={() => s.clear(i, a.id)}>×</button>}
-                  </div>
-                )
-              })}
+              <AspectRows def={def} section={section} onDraw={(id) => s.draw(i, id)} onPick={(id, k) => s.pick(i, id, k)} onLock={(id) => s.toggleLock(i, id)} onClear={(id) => s.clear(i, id)} />
             </section>
           ))}
           {many && item.sections.length < many.max && <button onClick={s.addSection}>+ Add {/^[aeiou]/i.test(many.label) ? 'an' : 'a'} {many.label.toLowerCase()}</button>}

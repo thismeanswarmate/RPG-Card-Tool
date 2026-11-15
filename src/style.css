@@ -425,3 +425,9 @@ button.fold:hover { color: var(--text); }
 .entry.place .mini-row b { font-size: 17px; }
 .mini-row small { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
 .mini-row .open { color: var(--muted); }
+
+/* Races, cultures and the history inside a setting */
+.entry.drawn.dr-race { border-left-color: #c58b6a; }
+.entry.drawn.dr-culture { border-left-color: #6fa8a0; }
+.entry.drawn.dr-history { border-left-color: #a58ac4; }
+.entry.world-part > h5 { font-size: 18px; }

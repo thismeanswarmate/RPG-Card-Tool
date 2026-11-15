@@ -147,7 +147,7 @@ export const CULTURES: ToolDef = {
   id: 'cultures',
   packs: PACKS,
   picture: { lead: 'A scene of everyday life among a people, in their own street or home.', shape: 'wide' },
-  name: (taken) => `The ${word(taken)} ${pick(['folk', 'way', 'people', 'houses', 'towns', 'clans'])}`,
+  name: (taken) => `The ${word(taken)} ${pick(['folk', 'people', 'houses', 'towns', 'clans'])}`,
   aspects: [
     // "They prize … above all."
     { id: 'value', label: 'Prizes', hint: 'What they value most', cues: {

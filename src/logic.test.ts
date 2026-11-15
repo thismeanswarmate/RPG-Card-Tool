@@ -467,7 +467,7 @@ describe('pictures', async () => {
     const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, focus: ['faith', 'power'] }, 'pictures')
     const ids = P.imageIds(s)
     const siteCount = G.rootsOf(s).reduce((n, r) => n + G.placeView(s, r).sites.length, 0)
-    expect(ids).toHaveLength(1 + G.rootsOf(s).length + siteCount + s.entities.length + s.people.length + s.built!.length)
+    expect(ids).toHaveLength(1 + G.rootsOf(s).length + siteCount + s.entities.length + s.people.length + s.built!.length + s.drawn!.length)
     for (const id of ids) {
       const spec = P.imageSpec(s, id)
       expect(spec.prompt, id).toMatch(/^[A-Z].*No text or lettering\.$/)
@@ -1244,5 +1244,76 @@ describe('how a race looks', async () => {
     expect(E.text(T.RACES, item)[0]).toContain('Their eyes are pale grey. They say they')
     item.sections[0].slots.hair = { card: 'core:hair:0', active: 1 }
     expect(E.text(T.RACES, item)[0]).toContain('Their hair is white from birth and their eyes are pale grey.')
+  })
+})
+
+describe('races, cultures and history in a setting', async () => {
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  const P = await import('./imagePrompts')
+  it('generates them with the setting: races, a culture for some places, and a history in ages', () => {
+    for (const [size, races, cultures, ages] of [['region', 2, 2, 3], ['country', 2, 3, 4], ['continent', 3, 5, 5]] as const) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size }, `drawn-${size}`)
+      const of = (tool: string) => s.drawn!.filter((d) => d.tool === tool)
+      expect([of('race').length, of('culture').length, of('history').length]).toEqual([races, cultures, 1])
+      expect(of('history')[0].sections).toHaveLength(ages)
+      expect(new Set(of('culture').map((d) => d.home)).size).toBe(cultures)
+      for (const d of s.drawn!) {
+        expect(s.names[d.id], d.id).toBeTruthy()
+        const text = G.drawnText(s, d)
+        expect(text.length).toBeGreaterThanOrEqual(1)
+        for (const para of text) expect(para).toMatch(/^[A-Z].*\.$/)
+        expect(text.join(' ')).not.toMatch(/undefined|  |\.\./)
+        expect(P.imageSpec(s, d.id).prompt).not.toContain(s.names[d.id])
+        expect(P.imageIds(s)).toContain(d.id)
+      }
+      const culture = of('culture')[0]
+      expect(G.rootsOf(s)).toContain(culture.home)
+      expect(G.drawnText(s, culture)[0]).toContain(`It is the way of life in ${s.names[culture.home!]}.`)
+      expect(G.drawnText(s, culture)[0]).toContain(`Most who keep it are ${s.names[culture.race!].replace(/^the /, '')}.`)
+      expect(G.placeView(s, culture.home!).land.cultures.map((d) => d.id)).toContain(culture.id)
+      expect(s.names[of('race')[0].id]).toMatch(/^the /)
+      expect(s.names[culture.id]).toMatch(/^the .+ folk$/)
+      expect(s.names[of('history')[0].id]).toMatch(/^the Chronicle of /)
+      expect(G.rename(s, culture.id)).toMatch(/^the .+ folk$/)
+      const md = G.settingMarkdown(s)
+      for (const d of s.drawn!) expect(md).toContain(G.drawnText(s, d)[0])
+      expect(G.generateSetting({ ...G.DEFAULT_ANSWERS, size }, `drawn-${size}`).drawn).toEqual(s.drawn)
+    }
+  })
+  it('adds, edits and removes them by hand', () => {
+    const s = B.newManual(['fantasy'], ['temperate'])
+    const place = B.addPlace(s)!
+    const race = B.addDrawn(s, 'race')!
+    const culture = B.addDrawn(s, 'culture', G.placeView(s, place).sites[0].id)!
+    const history = B.addDrawn(s, 'history')!
+    expect(B.addDrawn(s, 'history')).toBe(history)
+    const get = (id: string) => s.drawn!.find((d) => d.id === id)!
+    expect([get(culture).home, get(culture).race]).toEqual([place, race])
+    // pick, lock, redraw, clear
+    B.drawnEdit(s, race, 0, 'skin', 2)
+    expect(get(race).sections[0].slots.skin!.active).toBe(2)
+    B.drawnEdit(s, race, 0, 'skin', 'lock')
+    const kept = { ...get(race).sections[0].slots.skin! }
+    for (let i = 0; i < 8; i++) B.drawnFill(s, race)
+    expect(get(race).sections[0].slots.skin).toEqual(kept)
+    const before = get(race).sections[0].slots.origin!.card
+    B.drawnEdit(s, race, 0, 'origin', 'draw')
+    expect(get(race).sections[0].slots.origin!.card).not.toBe(before)
+    B.drawnEdit(s, race, 0, 'life', 'draw'); B.drawnEdit(s, race, 0, 'life', 'clear')
+    expect(get(race).sections[0].slots.life).toBeUndefined()
+    // ages
+    B.addAge(s, history); expect(get(history).sections).toHaveLength(4)
+    B.removeAge(s, history, 0); expect(get(history).sections).toHaveLength(3)
+    B.addAge(s, race); expect(get(race).sections).toHaveLength(1)
+    // removing a race frees the cultures it kept; removing a place takes its culture
+    B.setRace(s, culture, undefined); B.setRace(s, culture, race)
+    B.remove(s, race)
+    expect(get(culture).race).toBeUndefined()
+    expect(G.drawnText(s, get(culture))[0]).not.toContain('Most who keep it')
+    expect(B.goneWith(s, place)).toContain(culture)
+    B.remove(s, place)
+    expect(s.drawn!.map((d) => d.id)).toEqual([history])
+    expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN/)
   })
 })

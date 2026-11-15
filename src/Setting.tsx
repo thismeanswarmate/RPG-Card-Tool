@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { AspectRows } from './CardTool'
 import { allowHint, isDirect } from './comfy'
 import { DeckDialog } from './DeckDialog'
 import { ART, imageIds, imageSpec } from './imagePrompts'
@@ -8,11 +9,11 @@ import { KIND_LABEL, type Kind } from './lore'
 import { titleCase } from './names'
 import { RollRows } from './Roller'
 import {
-  builtKind, builtText, charText, decksOf, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
-  type Answers, type Built, type Char, type Entity, type Setting as SettingData, type Spot,
+  builtKind, builtText, charText, decksOf, DRAWN_DEF, drawnKind, drawnText, worldDrawn, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
+  type Answers, type Built, type Char, type Drawn, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import {
-  addBuilt, addMention, addPerson, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, findMentions, mentionKind,
+  addAge, addBuilt, addDrawn, addMention, addPerson, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace,
   goneWith, redrawPlace, remove, removeStory, rerollStory, toggleDeck, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
 } from './settingBuild'
 import { siteKind } from './mapgen'
@@ -267,11 +268,64 @@ function AddBar({ s, home, land }: { s: SettingData; home: string; land?: boolea
       <button onClick={() => add((d) => addPerson(d, home))}>+ Person</button>
       <button onClick={() => add((d) => addBuilt(d, 'settlement', home))}>+ Settlement</button>
       <button onClick={() => add((d) => addBuilt(d, 'peril', home))}>+ Dangerous place</button>
+      <button onClick={() => add((d) => addDrawn(d, 'culture', home))}>+ Culture</button>
       <select value="" aria-label="Add something else" onChange={(e) => { const kind = e.target.value as Kind; if (kind) add((d) => addPower(d, kind, home)) }}>
         <option value="">+ More…</option>
         {MORE.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
       </select>
     </div>
+  )
+}
+
+/** A race, a culture or the history of the setting: written out, and when editing, its aspects to pick, redraw and lock. */
+function DrawnBlock({ d, s, top }: { d: Drawn; s: SettingData; top?: boolean }) {
+  const editing = useContext(EditCtx)
+  const edit = useSettings((x) => x.edit)
+  const drop = useRemove(s)
+  const def = DRAWN_DEF[d.tool]
+  const races = (s.drawn ?? []).filter((x) => x.tool === 'race')
+  const className = `entry ${top ? 'world-part' : 'nested'} drawn dr-${d.tool}`
+  if (useContext(FoldCtx).folded.has(d.id)) return <Mini id={d.id} s={s} what={drawnKind(d)} className={className} />
+  return (
+    <section id={`set-${d.id}`} className={className}>
+      <h5><FoldButton id={d.id} /><Name id={d.id} s={s} /> <small>{drawnKind(d)}</small></h5>
+      <Picture id={d.id} s={s} />
+      <Prose s={s} text={drawnText(s, d)} home={d.home} />
+      {editing && (
+        <>
+          <details className="tables">
+            <summary>Aspects <small>Pick, redraw or lock each one</small></summary>
+            {d.sections.map((section, i) => (
+              <section key={i} className="step-block">
+                {def.sections && (
+                  <h3>
+                    {def.sections.label} {i + 1}
+                    <span className="section-actions">
+                      <button onClick={() => edit((x) => drawnFill(x, d.id, i))}>↻ Redraw this {def.sections.label.toLowerCase()}</button>
+                      {d.sections.length > 1 && <button onClick={() => confirm(`Remove ${def.sections!.label.toLowerCase()} ${i + 1}?`) && edit((x) => removeAge(x, d.id, i))}>Remove</button>}
+                    </span>
+                  </h3>
+                )}
+                <AspectRows def={def} section={section}
+                  onDraw={(a) => edit((x) => drawnEdit(x, d.id, i, a, 'draw'))} onPick={(a, k) => edit((x) => drawnEdit(x, d.id, i, a, k))}
+                  onLock={(a) => edit((x) => drawnEdit(x, d.id, i, a, 'lock'))} onClear={(a) => edit((x) => drawnEdit(x, d.id, i, a, 'clear'))} />
+              </section>
+            ))}
+            {def.sections && d.sections.length < def.sections.max && <button onClick={() => edit((x) => addAge(x, d.id))}>+ Add an age</button>}
+          </details>
+          <div className="edit-row">
+            <button onClick={() => edit((x) => drawnFill(x, d.id))}>↻ Redraw unlocked</button>
+            {d.tool === 'culture' && races.length > 0 && (
+              <select value={d.race ?? ''} aria-label="Kept mostly by" onChange={(e) => edit((x) => setRace(x, d.id, e.target.value || undefined))}>
+                <option value="">Kept by no one race</option>
+                {races.map((r) => <option key={r.id} value={r.id}>Kept mostly by {s.names[r.id]}</option>)}
+              </select>
+            )}
+            <button onClick={() => drop(d.id)}>Remove</button>
+          </div>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -455,6 +509,7 @@ function SpotBody({ sp, s }: { sp: Spot; s: SettingData }) {
       {sp.things.map((e) => <EntityBlock key={e.id} e={e} s={s} />)}
       {sp.people.map((c) => <PersonBlock key={c.id} c={c} s={s} />)}
       {sp.built.map((b) => <BuiltBlock key={b.id} b={b} s={s} />)}
+      {sp.cultures.map((d) => <DrawnBlock key={d.id} d={d} s={s} />)}
       <AddBar s={s} home={sp.id} land={!s.board[sp.id]?.parent} />
     </>
   )
@@ -470,7 +525,7 @@ function Gazetteer({ s }: { s: SettingData }) {
   const keep = (next: Set<string>) => { setFolded(next); try { localStorage.setItem(foldKey, JSON.stringify([...next])) } catch { /* private window */ } }
   const fold = { folded, toggle: (id: string) => { const next = new Set(folded); if (!next.delete(id)) next.add(id); keep(next) } }
   useEffect(() => { unfoldAll = () => keep(new Set()); return () => { unfoldAll = null } })
-  const everything = () => [...rootsOf(s), ...Object.keys(s.board).filter((id) => s.board[id].parent && s.names[id]), ...s.entities.map((e) => e.id), ...s.people.map((c) => c.id), ...(s.built ?? []).map((b) => b.id)]
+  const everything = () => [...rootsOf(s), ...Object.keys(s.board).filter((id) => s.board[id].parent && s.names[id]), ...s.entities.map((e) => e.id), ...s.people.map((c) => c.id), ...(s.built ?? []).map((b) => b.id), ...(s.drawn ?? []).map((d) => d.id)]
   const edit = useSettings((x) => x.edit)
   const add = useAdd()
   const drop = useRemove(s)
@@ -534,6 +589,18 @@ function Gazetteer({ s }: { s: SettingData }) {
         {meta.text.map((t, i) => <p key={i}>{t}</p>)}
         {meta.prompts.length > 0 && <ul>{meta.prompts.map((t, i) => <li key={i}>{t}</li>)}</ul>}
       </section>
+
+      {/* What belongs to the world as a whole: its history, then its races. */}
+      {worldDrawn(s, 'history').map((d) => <DrawnBlock key={d.id} d={d} s={s} top />)}
+      {worldDrawn(s, 'race').map((d) => <DrawnBlock key={d.id} d={d} s={s} top />)}
+      {worldDrawn(s, 'culture').map((d) => <DrawnBlock key={d.id} d={d} s={s} top />)}
+      {editing && (
+        <div className="addbar">
+          <span>Add to the world</span>
+          <button onClick={() => add((d) => addDrawn(d, 'race'))}>+ Race</button>
+          {!worldDrawn(s, 'history').length && <button onClick={() => add((d) => addDrawn(d, 'history'))}>+ History</button>}
+        </div>
+      )}
 
       {rootsOf(s).map((r) => {
         const v = placeView(s, r)

@@ -4,7 +4,7 @@
 import { describe } from './describe'
 import { cueText, rootOf, subtree } from './logic'
 import { detailParts, type DetailInst } from './lore'
-import { builtKind, builtText, rootsOf, terrainOf, type Char, type Entity, type Setting } from './setting'
+import { builtKind, builtText, drawnText, rootsOf, terrainOf, type Char, type Entity, type Setting } from './setting'
 import { cardsOf } from './store'
 
 const CARDS = cardsOf({ custom: [] })
@@ -130,6 +130,15 @@ export function imageSpec(s: Setting, id: string): ImageSpec {
     const told = builtText({ ...s, names: { ...s.names, [id]: built.tool === 'settlement' ? 'the settlement' : 'the place' } }, built)[0] ?? ''
     return done(`A wide view of ${an(builtKind(built))} ${where(s, built.home)}${built.tool === 'peril' ? ', a dangerous place' : ''}. ${told}`, WIDE)
   }
+  const drawn = s.drawn?.find((d) => d.id === id)
+  if (drawn) {
+    // A race, culture or history: what its cards say, with its name and any other names taken out.
+    const plainNames = { ...s.names, [id]: drawn.tool === 'race' ? 'they' : drawn.tool === 'culture' ? 'this people' : 'this history', ...(drawn.race ? { [drawn.race]: 'one people' } : {}) }
+    const told = drawnText({ ...s, names: plainNames, board: drawn.tool === 'culture' ? {} : s.board }, drawn)
+    if (drawn.tool === 'race') return { ...done(`A portrait of one member of a people, head and shoulders, looking at the viewer. ${told[0] ?? ''}`, TALL), prompt: `A portrait of one member of a people, head and shoulders, looking at the viewer. ${told[0] ?? ''} ${worldClause(s.answers.genres, true)} ${tail}`.replace(/\s+/g, ' ').trim() }
+    if (drawn.tool === 'culture') return done(`A scene of everyday life among a people ${where(s, drawn.home)}, in their own street or home. ${told[0] ?? ''}`, WIDE)
+    return done(`A grand historical scene, as a mural might show it. ${told[1] ?? ''}`, WIDE)
+  }
   if (s.board[id]) {
     const terrain = terrainOf(s, id).toLowerCase()
     const sites = subtree(s.board, id).filter((x) => CARDS[x].type === 'site').map((x) => an(cueText(CARDS, s.board[x]).toLowerCase()))
@@ -162,7 +171,7 @@ export function imageSpec(s: Setting, id: string): ImageSpec {
 /** Everything in a setting that can have a picture, in reading order. */
 export const imageIds = (s: Setting) => [
   'world', ...rootsOf(s), ...Object.keys(s.board).filter((id) => s.board[id].parent && CARDS[id].type === 'site'),
-  ...s.entities.map((e) => e.id), ...s.people.map((c) => c.id), ...(s.built ?? []).map((b) => b.id),
+  ...s.entities.map((e) => e.id), ...s.people.map((c) => c.id), ...(s.built ?? []).map((b) => b.id), ...(s.drawn ?? []).map((d) => d.id),
 ]
 
 /** A prompt for something outside any setting, from its written description: the text, then a plain painterly look. */

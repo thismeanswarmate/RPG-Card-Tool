@@ -6,6 +6,8 @@
 // Everything is stored as structure — ids, cards and links — and turned into text when shown, so a
 // rename reaches every sentence that mentions the thing.
 
+import { fill as fillCards, text as cardText, type Section, type ToolDef } from './cardTool'
+import { CULTURES, HISTORY, RACES } from './cardTools'
 import { cardSentence, chronicle, describe, placeName } from './describe'
 import { GLOSS, ROLE_GLOSS } from './glosses'
 import { cueText, rootOf, shuffle, subtree, type Board } from './logic'
@@ -56,7 +58,7 @@ export interface Setting {
   /** Every named thing, by id: places and sites (their card ids), people, powers and the world itself. */
   names: Record<string, string>
   /** How each name was made, so it can be made again. */
-  specs: Record<string, NameSpec & { homeId?: string }>
+  specs: Record<string, NameSpec & { homeId?: string; /** Words the made name is set in, with {} where it goes: "the {} folk". */ frame?: string }>
   entities: Entity[]
   people: Char[]
   hooks: Hook[]
@@ -68,6 +70,28 @@ export interface Setting {
   manual?: boolean
   /** Which decks later additions draw on; absent means the ones the answers call for. */
   decks?: DeckChoice
+  /** The races of the world, the cultures of its places and its history, each drawn on the cards of its own tool. */
+  drawn?: Drawn[]
+}
+
+/** A race, a culture or the history of a setting. A culture belongs to a place and may be mostly of one race. */
+export interface Drawn { id: string; tool: 'race' | 'culture' | 'history'; home?: string; race?: string; sections: Section[] }
+export const DRAWN_DEF: Record<Drawn['tool'], ToolDef> = { race: RACES, culture: CULTURES, history: HISTORY }
+const FRAME: Record<Drawn['tool'], string> = { race: 'the {}', culture: 'the {} folk', history: 'the Chronicle of {}' }
+export const drawnKind = (d: Drawn) => (d.tool === 'history' ? `history · ${d.sections.length} ${d.sections.length === 1 ? 'age' : 'ages'}` : d.tool)
+/** The decks a setting's races, cultures and history draw on, in the form the card tools take. */
+export const drawnPacks = (s: Pick<Setting, 'answers' | 'decks' | 'manual'>) => {
+  const story = decksOf(s).story
+  return [...story.filter((d) => d in RACES.packs), ...(story.includes('core') ? [] : ['-core'])]
+}
+/** One of them written out, with a culture placed and peopled. */
+export function drawnText(s: Setting, d: Drawn): string[] {
+  const name = s.names[d.id] ?? ''
+  const out = cardText(DRAWN_DEF[d.tool], { id: d.id, name: name.charAt(0).toUpperCase() + name.slice(1), notes: '', sections: d.sections })
+  if (d.tool !== 'culture' || !out.length) return out
+  const where = d.home && s.board[d.home] ? `It is the way of life ${whereText(s, d.home)}.` : ''
+  const who = d.race && s.names[d.race] ? `Most who keep it are ${s.names[d.race].replace(/^the /, '')}.` : ''
+  return [[out[0], where, who].filter(Boolean).join(' '), ...out.slice(1)]
 }
 
 /** The decks a setting draws on: lands and sites, people and stories, and whether there are gods. */
@@ -267,7 +291,22 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
     else name(b.id, { kind: 'site', tongue: tongueAt(home), base: kindLabel(rolls) }, rootOf(board, home))
     return b
   }
-  return { pick, genres, depth, roles, deities, roots, sitesOf, sites, places, name, tongueAt, person, make, detail, story, hook, build }
+  /** A race, a culture for a place, or the history, drawn in full and named. */
+  const drawOne = (tool: Drawn['tool'], home?: string, ages = 3): Drawn => {
+    const list = (s.drawn ??= [])
+    const d: Drawn = { id: nextId('d', list), tool, sections: Array.from({ length: tool === 'history' ? ages : 1 }, () => ({ slots: {} })), ...(home ? { home } : {}) }
+    list.push(d)
+    const item = { id: d.id, name: '', notes: '', sections: d.sections }
+    d.sections.forEach((_, i) => fillCards(DRAWN_DEF[tool], item, i, drawnPacks(s), rng))
+    names[d.id] = FRAME[tool].replace('{}', makeName({ kind: 'place', tongue: tongueAt(home) }, rng, taken))
+    specs[d.id] = { kind: 'place', tongue: tongueAt(home), frame: FRAME[tool] }
+    if (tool === 'culture') {
+      const races = list.filter((x) => x.tool === 'race')
+      if (races.length) d.race = pick(races).id
+    }
+    return d
+  }
+  return { pick, genres, depth, roles, drawOne, deities, roots, sitesOf, sites, places, name, tongueAt, person, make, detail, story, hook, build }
 }
 
 export function generateSetting(answers: Answers, seed: string): Setting {
@@ -348,6 +387,13 @@ export function generateSetting(answers: Answers, seed: string): Setting {
     const counts = { region: [2, 1], country: [3, 2], continent: [5, 3] }[answers.size]
     for (let i = 0; i < counts[0] + (has('everyday') ? 1 : 0); i++) w.build('settlement', order[i % order.length])
     for (let i = 0; i < counts[1] + (has('adventure') ? 1 : 0); i++) w.build('peril', order[(order.length - 1 - i + order.length * 8) % order.length])
+
+    // 6. The races of the world, then the cultures of some of its places, then its history in ages.
+    const scope = { region: [2, 2, 3], country: [2, 3, 4], continent: [3, 5, 5] }[answers.size]
+    for (let i = 0; i < scope[0]; i++) w.drawOne('race')
+    const homes = shuffle([...roots], rng)
+    for (let i = 0; i < Math.min(scope[1] + (has('everyday') ? 1 : 0), homes.length); i++) w.drawOne('culture', homes[i])
+    w.drawOne('history', undefined, scope[2])
     return s
   })
 }
@@ -361,7 +407,8 @@ export function rename(s: Setting, id: string, rng: Rng = Math.random): string {
   const spec = s.specs[id]
   if (!spec) return s.names[id]
   const taken = new Set(Object.values(s.names).map((n) => n.toLowerCase()))
-  return makeName({ ...spec, home: spec.homeId ? s.names[spec.homeId] : undefined }, rng, taken)
+  const made = makeName({ ...spec, home: spec.homeId ? s.names[spec.homeId] : undefined }, rng, taken)
+  return spec.frame ? spec.frame.replace('{}', made) : made
 }
 
 export const rootsOf = (s: Setting) =>
@@ -373,7 +420,7 @@ export const homeRoot = (s: Setting, place: string) => rootOf(s.board, place)
 /** A faction with what hangs from it: its members and the things its details brought into being. */
 export interface PowerNode { power: Entity; members: Char[]; things: Entity[] }
 /** A spot — the land itself or one site on it — with everything found there. */
-export interface Spot { id: string; text: string; powers: PowerNode[]; things: Entity[]; people: Char[]; built: Built[] }
+export interface Spot { id: string; text: string; powers: PowerNode[]; things: Entity[]; people: Char[]; built: Built[]; cultures: Drawn[] }
 
 export interface PlaceView {
   id: string
@@ -418,6 +465,7 @@ export function placeView(s: Setting, root: string): PlaceView {
       things: s.entities.filter((e) => e.kind !== 'faction' && e.home === id && !owned.get(e.id)),
       people: s.people.filter((c) => c.home === id && !c.faction),
       built: (s.built ?? []).filter((b) => b.home === id),
+      cultures: (s.drawn ?? []).filter((d) => d.tool === 'culture' && d.home === id),
     }
   }
   const [land, ...sites] = hubs.map(spot)
@@ -550,6 +598,10 @@ export const summary = (s: Setting) => {
   ].filter(Boolean).join(' · ')
 }
 
+/** What belongs to the world as a whole: its history, its races, and any culture not tied to a place still on the map. */
+export const worldDrawn = (s: Setting, tool: Drawn['tool']) =>
+  (s.drawn ?? []).filter((d) => d.tool === tool && (tool !== 'culture' || !d.home || !s.board[d.home]))
+
 export const KIND_ORDER: Kind[] = ['faction', 'deity', 'event', 'object', 'creature', 'material']
 
 /** The whole setting as a Markdown document. */
@@ -568,7 +620,15 @@ export function settingMarkdown(s: Setting): string {
     for (const e of sp.things) entity(e, depth)
     for (const c of sp.people) person(c, depth)
     for (const b of sp.built) out.push(`${'#'.repeat(depth)} ${upper(s.names[b.id])} (${builtKind(b)})`, ...builtText(s, b))
+    for (const d of sp.cultures) out.push(`${'#'.repeat(depth)} ${upper(s.names[d.id])} (culture)`, ...drawnText(s, d))
   }
+  const history = worldDrawn(s, 'history')[0]
+  if (history) out.push(`## ${upper(s.names[history.id])}`, ...drawnText(s, history))
+  const races = worldDrawn(s, 'race')
+  if (races.length) out.push('## Races')
+  for (const d of races) out.push(`### ${upper(s.names[d.id])}`, ...drawnText(s, d))
+  // A culture whose place has gone is told with the world rather than lost.
+  for (const d of worldDrawn(s, 'culture')) out.push(`### ${upper(s.names[d.id])} (culture)`, ...drawnText(s, d))
   out.push('## Places')
   for (const r of rootsOf(s)) {
     const v = placeView(s, r)
