@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { GUIDE_STEPS, snapshot, useApi, useStore, WORLD_SIZES, type Mode, type WorldSize } from './store'
+import { guideSteps, snapshot, useApi, useStore, WORLD_SIZES, type Mode, type WorldSize } from './store'
 import { ToolNav } from './ToolNav'
-import { TYPE_INFO } from './types'
+import { TYPE_INFO, type CardType } from './types'
 
-const STEP_HELP = [
-  'Draw a Terrain to found a new microsetting.',
-  'Add a Site — a point of interest.',
-  'Give the place a nickname with an Epithet.',
-  'Add a Legacy from its past.',
-  'Add a Trait of its present.',
-  'Add an Omen for its future.',
-]
+const STEP_HELP: Record<CardType, string> = {
+  terrain: 'Draw a Terrain to found a new microsetting.',
+  site: 'Add a Site — a point of interest.',
+  epithet: 'Give the place a nickname with an Epithet.',
+  legacy: 'Add a Legacy from its past.',
+  trait: 'Add a Trait of its present.',
+  omen: 'Add an Omen for its future.',
+  question: 'Ask a Question about the people here.',
+  work: 'Draw a piece of Lore to write.',
+  twist: 'Add a Twist to the lore.',
+  quest: 'Pin a Quest on the place.',
+}
 
 const TABS: [Mode, string][] = [['custom', 'Custom'], ['auto', 'Auto']]
 
@@ -23,6 +27,7 @@ export function TopBar({ mode, onMode, onDecks }: { mode: Mode; onMode: (m: Mode
   }
   const file = useRef<HTMLInputElement>(null)
   const { guide } = s
+  const steps = guideSteps(s)
   const [menu, setMenu] = useState(false)
 
   useEffect(() => {
@@ -72,13 +77,13 @@ export function TopBar({ mode, onMode, onDecks }: { mode: Mode; onMode: (m: Mode
       {mode === 'custom' && guide.on && (
         <div className="guide">
           <div className="steps">
-            {GUIDE_STEPS.map((t, i) => (
+            {steps.map((t, i) => (
               <button key={t} className={`step ${t} ${i === guide.step ? 'on' : ''}`} onClick={() => s.setGuide({ step: i, drawn: false })}>
                 {TYPE_INFO[t].label}
               </button>
             ))}
           </div>
-          <span className="step-help">{guide.drawn ? 'Keep or discard the cards in your hand.' : STEP_HELP[guide.step]}</span>
+          <span className="step-help">{guide.drawn ? 'Keep or discard the cards in your hand.' : STEP_HELP[steps[guide.step] ?? 'terrain']}</span>
           <button className="primary" disabled={guide.drawn} onClick={s.guideDraw}>Draw</button>
           <label className="toggle" title="Draw two Sites, Epithets and Traits and keep one or both">
             <input type="checkbox" checked={guide.complex} onChange={(e) => s.setGuide({ complex: e.target.checked })} /> Complex

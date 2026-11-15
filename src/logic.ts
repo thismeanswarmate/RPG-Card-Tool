@@ -90,7 +90,8 @@ export function autoEdge(board: Board, cards: Cards, hub: string, card: CardDef,
   const h = board[hub]
   const blocked = h.parent ? ((h.edge ?? 0) + 2) % 4 : -1
   const pref: Edge[] =
-    card.type === 'epithet' ? (active === 0 ? [0, 2, 3, 1] : [2, 0, 3, 1]) : card.type === 'site' ? [1, 3, 2, 0] : [2, 3, 1, 0]
+    card.type === 'epithet' ? (active === 0 ? [0, 2, 3, 1] : [2, 0, 3, 1])
+      : card.type === 'site' ? [1, 3, 2, 0] : card.type === 'quest' ? [0, 3, 1, 2] : [2, 3, 1, 0]
   const count = (e: Edge) => kids.filter((k) => (k.edge ?? 0) === e).length
   return pref.filter((e) => e !== blocked).sort((a, b) => count(a) - count(b))[0]
 }

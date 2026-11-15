@@ -12,6 +12,7 @@ Omens under its edges, and arrange the resulting microsettings into a world map.
 - **Table:** drag cards, tuck them under a Terrain or Site edge, double-click to turn a card to its next cue, pan and zoom.
 - **World tools:** a sideboard of face-up cards, a world-wide meta row, discards, links between cards, and notes per microsetting.
 - **Written descriptions:** every cue carries a sentence, and the cards of a microsetting are woven into prose that names the places and sites around them. Select a card to read its area, or open the chronicle for the whole world.
+- **Expansions:** nine optional packs, all off until you switch them on in Decks. Three genre packs (fantasy, science fiction, horror) and three biome packs (frost, coast, desert) add more of the six basic card types. Three creative packs add new kinds of card: Quests, Questions about a place's people, and Lore with Twists. Tick Advanced to choose exactly which card types each pack contributes.
 - **Decks:** an original starter deck plus your own cards, added in the deck manager.
 - **Saving:** the world is kept in the browser and can be exported to or imported from a JSON file.
 

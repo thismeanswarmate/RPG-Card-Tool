@@ -1,4 +1,5 @@
 import { cueAt } from './logic'
+import { EXPANSION_COLORS } from './expansions'
 import { TERRAIN_COLORS } from './starter'
 import { TYPE_INFO, type CardDef, type Edge } from './types'
 
@@ -6,7 +7,7 @@ const EDGE = ['top', 'right', 'bottom', 'left']
 
 function terrainStyle(def: CardDef) {
   const name = def.cues[0].text
-  let pair = TERRAIN_COLORS[name]
+  let pair = TERRAIN_COLORS[name] ?? EXPANSION_COLORS[name]
   if (!pair) {
     let h = 0
     for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360
@@ -29,7 +30,7 @@ export function CardView({ def, active, edge, selected, onCue }: Props) {
   const info = TYPE_INFO[def.type]
   const pick = (i: number) => onCue && ((e: React.MouseEvent) => { e.stopPropagation(); onCue(i) })
 
-  if (def.cues.length === 1)
+  if (def.type === 'terrain')
     return (
       <div className={cls} style={terrainStyle(def)}>
         <span className="terrain-name">{def.cues[0].text}</span>
@@ -59,6 +60,15 @@ export function CardView({ def, active, edge, selected, onCue }: Props) {
     return (
       <div className={cls}>
         <div className={`band strip ${EDGE[edge]} on`}><span>{def.cues[active].text}</span></div>
+      </div>
+    )
+
+  if (def.cues.length === 1)
+    return (
+      <div className={`${cls} single`}>
+        <em className="glyph">{info.glyph}</em>
+        <b>{def.cues[0].text}</b>
+        {def.cues[0].sub && <i>{def.cues[0].sub}</i>}
       </div>
     )
 

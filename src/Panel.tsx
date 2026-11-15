@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { chronicle, chronicleText, describe } from './describe'
+import { chronicle, chronicleText, describe, metaPrompts, prompts } from './describe'
 import { cueText, rootOf, titleOf } from './logic'
 import { cardsOf, useStore, viewport } from './store'
 import { isHub, TYPE_INFO } from './types'
@@ -36,6 +36,7 @@ function Chronicle({ onClose }: { onClose: () => void }) {
             <section key={c.id}>
               <h3>{c.title}</h3>
               {c.text.map((t, i) => <p key={i}>{t}</p>)}
+              {c.prompts.length > 0 && <ul>{c.prompts.map((t, i) => <li key={i}>{t}</li>)}</ul>}
             </section>
           ))}
         </div>
@@ -76,6 +77,7 @@ export function Panel() {
           <>
             <h4>World-wide</h4>
             <ul>{s.meta.map((m) => <li key={m.card}>{cards[m.card].cues[m.active].text}</li>)}</ul>
+            {metaPrompts(cards, s.meta).length === 0 ? null : <p className="hint">Meta questions and lore apply to the whole world.</p>}
           </>
         )}
         <h4>How it works</h4>
@@ -92,6 +94,7 @@ export function Panel() {
   const def = cards[sel.id]
   const root = rootOf(s.placed, sel.id)
   const prose = describe(s.placed, cards, root, s.links)
+  const todo = prompts(s.placed, cards, root)
   const links = s.links.filter((l) => l.a === sel.id || l.b === sel.id)
 
   return (
@@ -100,7 +103,13 @@ export function Panel() {
       {prose.length > 0 ? (
         <>
           <div className="prose">{prose.map((t, i) => <p key={i}>{t}</p>)}</div>
-          <div className="actions"><CopyButton text={prose.join('\n\n')} /></div>
+          {todo.length > 0 && (
+            <>
+              <h4>To answer and write</h4>
+              <ul className="todo">{todo.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            </>
+          )}
+          <div className="actions"><CopyButton text={[...prose, ...todo.map((t) => `- ${t}`)].join('\n\n')} /></div>
         </>
       ) : (
         <p className="hint">Tuck this card under a Terrain or Site to work it into a description.</p>

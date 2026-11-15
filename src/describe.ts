@@ -15,6 +15,7 @@ const GENERIC: Record<CardType, string> = {
   legacy: 'Of the past of {place}, this much is told: {cue}.',
   trait: 'Of {place} today, people say this: {cue}.',
   omen: 'And now there is news in {place}: {cue}{sub}.',
+  question: '', work: '', twist: '', quest: '',
 }
 const ORDER: CardType[] = ['epithet', 'legacy', 'trait', 'omen']
 
@@ -51,7 +52,7 @@ export function describe(board: Board, cards: Cards, root: string, links: Link[]
       terrain,
       site: other && `the ${cueText(cards, board[other]).toLowerCase()}`,
     }
-    const kids = childrenOf(board, hub).filter((k) => !isHub(cards[k.id].type))
+    const kids = childrenOf(board, hub).filter((k) => ORDER.includes(cards[k.id].type))
     const rank = (k: Placed) => ORDER.indexOf(cards[k.id].type)
     return [
       sentence(cards, hub, board[hub].active, { ...vars, place: full }),
@@ -74,10 +75,39 @@ export function describe(board: Board, cards: Cards, root: string, links: Link[]
 export function describeMeta(cards: Cards, meta: Held[]): string {
   const vars = { place: 'this world', terrain: 'the world', site: undefined }
   const rank = (m: Held) => ORDER.indexOf(cards[m.card].type)
-  return [...meta].sort((a, b) => rank(a) - rank(b)).map((m) => sentence(cards, m.card, m.active, vars)).filter(Boolean).join(' ')
+  return meta.filter((m) => ORDER.includes(cards[m.card].type)).sort((a, b) => rank(a) - rank(b)).map((m) => sentence(cards, m.card, m.active, vars)).filter(Boolean).join(' ')
 }
 
-export interface Chapter { id: string; title: string; text: string[] }
+const promptFor = (cards: Cards, id: string, active: number, twists: string[] = []): string => {
+  const { type, cues } = cards[id]
+  const cue = cues[active]
+  if (type === 'quest') return `Quest — ${cue.text}: ${[cue.sub, ...(cue.asks ?? [])].filter(Boolean).join(' ')}`
+  if (type === 'question') return `Question — ${cue.text}`
+  if (type === 'work') return `Lore to write — ${[lowerFirst(cue.text), ...twists].join(', ')}.`
+  return ''
+}
+
+/** Things left to answer or write for an area, from the Quest, Question, Lore and Twist cards in it. */
+export function prompts(board: Board, cards: Cards, root: string): string[] {
+  if (!board[root]) return []
+  return subtree(board, root).filter((id) => isHub(cards[id].type)).flatMap((hub) => {
+    const kids = childrenOf(board, hub)
+    const twists = kids.filter((k) => cards[k.id].type === 'twist').map((k) => cueText(cards, k))
+    const works = kids.some((k) => cards[k.id].type === 'work')
+    return [
+      ...kids.map((k) => promptFor(cards, k.id, k.active, twists)),
+      ...(works ? [] : twists.map((t) => `Twist — ${t}.`)),
+    ].filter(Boolean)
+  })
+}
+
+/** The same for the meta row, where the prompts apply to the whole world. */
+export const metaPrompts = (cards: Cards, meta: Held[]) => {
+  const twists = meta.filter((m) => cards[m.card].type === 'twist').map((m) => cards[m.card].cues[m.active].text)
+  return meta.map((m) => promptFor(cards, m.card, m.active, twists)).filter(Boolean)
+}
+
+export interface Chapter { id: string; title: string; text: string[]; prompts: string[] }
 
 /** The whole world as prose: the meta first, then every microsetting from north-west to south-east. */
 export function chronicle(board: Board, cards: Cards, links: Link[], meta: Held[]): Chapter[] {
@@ -85,9 +115,10 @@ export function chronicle(board: Board, cards: Cards, links: Link[], meta: Held[
     .sort((a, b) => Math.round(a.y / 300) - Math.round(b.y / 300) || a.x - b.x)
   const world = describeMeta(cards, meta)
   return [
-    ...(world ? [{ id: 'meta', title: 'Across the whole world', text: [world] }] : []),
-    ...roots.map((r) => ({ id: r.id, title: upperFirst(placeName(board, cards, r.id)), text: describe(board, cards, r.id, links) })),
+    ...(world || metaPrompts(cards, meta).length ? [{ id: 'meta', title: 'Across the whole world', text: world ? [world] : [], prompts: metaPrompts(cards, meta) }] : []),
+    ...roots.map((r) => ({ id: r.id, title: upperFirst(placeName(board, cards, r.id)), text: describe(board, cards, r.id, links), prompts: prompts(board, cards, r.id) })),
   ]
 }
 
-export const chronicleText = (chapters: Chapter[]) => chapters.map((c) => `${c.title}\n\n${c.text.join('\n\n')}`).join('\n\n\n')
+export const chronicleText = (chapters: Chapter[]) =>
+  chapters.map((c) => [c.title, ...c.text, ...(c.prompts.length ? [c.prompts.map((p) => `- ${p}`).join('\n')] : [])].join('\n\n')).join('\n\n\n')

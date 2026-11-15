@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { cardsOf, useStore } from './store'
-import { TYPE_INFO, TYPES, type Held } from './types'
+import { cardsOf, extraTypes, useStore } from './store'
+import { BASE_TYPES, TYPE_INFO, TYPES, type Held } from './types'
 
 function Mini({ held, children }: { held: Held; children: React.ReactNode }) {
   const s = useStore()
@@ -27,7 +27,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <h3>Draw piles</h3>
-      {TYPES.map((t) => (
+      {[...BASE_TYPES, ...extraTypes(s)].map((t) => (
         <div key={t} className={`pile ${t}`}>
           <span className="chip">{TYPE_INFO[t].glyph}</span>
           <span className="pile-name" title={TYPE_INFO[t].blurb}>{TYPE_INFO[t].label}</span>

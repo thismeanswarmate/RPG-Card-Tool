@@ -2,12 +2,12 @@ import { createContext, useContext } from 'react'
 import { create, useStore as useZustand, type StoreApi } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { EXPANSION_CARDS, EXPANSIONS } from './expansions'
 import { STARTER } from './starter'
 import { autoEdge, childrenOf, freeSpot, layout, shuffle, SIZE, type Cards } from './logic'
-import { isHub, TYPES, type CardDef, type CardType, type Edge, type Held, type Link, type Placed } from './types'
+import { BASE_TYPES, EXTRA_TYPES, isHub, TYPES, type CardDef, type CardType, type Edge, type Held, type Link, type Placed } from './types'
 
-export const GUIDE_STEPS: CardType[] = ['terrain', 'site', 'epithet', 'legacy', 'trait', 'omen']
-const DOUBLED: CardType[] = ['site', 'epithet', 'trait']
+const DOUBLED: CardType[] = ['site', 'epithet', 'trait', 'question']
 
 /** Size of the table viewport in pixels, kept up to date by the Table component. */
 export const viewport = { w: 1000, h: 700 }
@@ -16,6 +16,8 @@ interface Data {
   init: boolean
   custom: CardDef[]
   disabled: string[]
+  /** Card types switched on for each expansion; an expansion that is absent here is off. */
+  expansions: Record<string, CardType[]>
   piles: Record<CardType, string[]>
   hand: Held[]
   discards: string[]
@@ -58,6 +60,8 @@ interface Actions {
   saveCustom(card: CardDef): void
   deleteCustom(id: string): void
   toggleDeck(deck: string): void
+  toggleExpansion(id: string): void
+  toggleExpansionType(id: string, type: CardType): void
   fit(): void
   generate(size: WorldSize): void
 }
@@ -75,7 +79,7 @@ export const WORLD_SIZES: Record<WorldSize, { label: string; min: number; max: n
 const emptyPiles = () => Object.fromEntries(TYPES.map((t) => [t, [] as string[]])) as Record<CardType, string[]>
 
 export const blank = (): Data => ({
-  init: true, custom: [], disabled: [], piles: emptyPiles(), hand: [], discards: [], side: null, meta: [],
+  init: true, custom: [], disabled: [], expansions: {}, piles: emptyPiles(), hand: [], discards: [], side: null, meta: [],
   placed: {}, links: [], notes: {}, view: { x: 0, y: 0, k: 1 }, selected: null, focus: null, linking: null,
   guide: { on: true, complex: false, step: 0, drawn: false }, seq: 1,
 })
@@ -83,9 +87,24 @@ export const blank = (): Data => ({
 let cache: { custom: CardDef[]; map: Cards } | null = null
 export function cardsOf(s: Pick<Data, 'custom'>): Cards {
   if (cache?.custom !== s.custom)
-    cache = { custom: s.custom, map: Object.fromEntries([...STARTER, ...s.custom].map((c) => [c.id, c])) }
+    cache = { custom: s.custom, map: Object.fromEntries([...STARTER, ...EXPANSION_CARDS, ...s.custom].map((c) => [c.id, c])) }
   return cache.map
 }
+
+type Decks = Pick<Data, 'custom' | 'disabled' | 'expansions'>
+
+/** Whether a card's deck, and for an expansion its card type, is switched on. */
+export const enabled = (s: Decks, c: CardDef) =>
+  c.deck === 'starter' || c.deck === 'custom' ? !s.disabled.includes(c.deck) : !!s.expansions[c.deck]?.includes(c.type)
+
+/** The extra card types in play, from expansions or custom cards. */
+export const extraTypes = (s: Decks): CardType[] => {
+  const all = Object.values(cardsOf(s))
+  return EXTRA_TYPES.filter((t) => all.some((c) => c.type === t && enabled(s, c)))
+}
+
+/** The guided steps: the six basics, then one step for each extra type in play. */
+export const guideSteps = (s: Decks): CardType[] => [...BASE_TYPES, ...extraTypes(s)]
 
 const inUse = (s: Data) =>
   new Set([
@@ -95,7 +114,7 @@ const inUse = (s: Data) =>
 
 export function rebuild(s: Data) {
   const used = inUse(s)
-  const all = Object.values(cardsOf(s)).filter((c) => !s.disabled.includes(c.deck) && !used.has(c.id))
+  const all = Object.values(cardsOf(s)).filter((c) => enabled(s, c) && !used.has(c.id))
   for (const t of TYPES) s.piles[t] = shuffle(all.filter((c) => c.type === t).map((c) => c.id))
 }
 
@@ -189,7 +208,7 @@ function blob(n: number): [number, number][] {
  * Traits drawn, one or both kept).
  */
 export function generateWorld(s: Data, size: WorldSize) {
-  Object.assign(s, blank(), { custom: s.custom, disabled: s.disabled, guide: { ...s.guide } })
+  Object.assign(s, blank(), { custom: s.custom, disabled: s.disabled, expansions: s.expansions, guide: { ...s.guide } })
   rebuild(s)
   const cards = cardsOf(s)
   const cue = (id: string) => rand(cards[id].cues.length)
@@ -199,6 +218,9 @@ export function generateWorld(s: Data, size: WorldSize) {
     if (keep) s.meta.push({ card: keep, active: cue(keep) })
     if (spare) s.discards.push(spare)
   }
+
+  const everywhere = pop(s, 'question')
+  if (everywhere) s.meta.push({ card: everywhere, active: cue(everywhere) })
 
   const { min, max } = WORLD_SIZES[size]
   const count = Math.min(min + rand(max - min + 1), s.piles.terrain.length)
@@ -230,6 +252,14 @@ export function generateWorld(s: Data, size: WorldSize) {
     for (const id of drawFor('legacy', false)) tuck(id, anyHub(), cue(id))
     for (const id of drawFor('trait', complex)) tuck(id, anyHub(), cue(id))
     for (const id of drawFor('omen', false)) tuck(id, terrain, cue(id))
+    // Extras, when an expansion brings them in: questions about the people, a piece of lore with its
+    // twist, and a quest pinned above about half the places.
+    for (const id of drawFor('question', complex)) tuck(id, anyHub(), cue(id))
+    for (const id of drawFor('work', false)) {
+      tuck(id, terrain, cue(id))
+      for (const t of drawFor('twist', false)) tuck(t, terrain, cue(t))
+    }
+    if (Math.random() < 0.5) for (const id of drawFor('quest', false)) tuck(id, terrain, 0)
     complex = !complex
   }
   fitView(s)
@@ -245,9 +275,13 @@ const makeStore = (name: string) => create<State>()(
       ...blank(),
       init: false,
 
-      reset: () => set((s) => { Object.assign(s, blank(), { custom: s.custom, disabled: s.disabled }); rebuild(s) }),
+      reset: () => set((s) => { Object.assign(s, blank(), { custom: s.custom, disabled: s.disabled, expansions: s.expansions }); rebuild(s) }),
 
-      load: (data) => set((s) => { Object.assign(s, blank(), data, { init: true, linking: null }); if (!data.piles) rebuild(s) }),
+      load: (data) => set((s) => {
+        Object.assign(s, blank(), data, { init: true, linking: null })
+        if (!data.piles) rebuild(s)
+        else s.piles = { ...emptyPiles(), ...s.piles }
+      }),
 
       draw: (type, n = 1) => set((s) => {
         for (let i = 0; i < n; i++) {
@@ -257,7 +291,7 @@ const makeStore = (name: string) => create<State>()(
       }),
 
       guideDraw: () => set((s) => {
-        const type = GUIDE_STEPS[s.guide.step]
+        const type = guideSteps(s)[s.guide.step] ?? 'terrain'
         const n = s.guide.complex && DOUBLED.includes(type) ? 2 : 1
         for (let i = 0; i < n; i++) {
           const id = pop(s, type)
@@ -267,7 +301,7 @@ const makeStore = (name: string) => create<State>()(
         s.guide.drawn = true
       }),
 
-      guideNext: () => set((s) => { s.guide.step = (s.guide.step + 1) % GUIDE_STEPS.length; s.guide.drawn = false }),
+      guideNext: () => set((s) => { s.guide.step = (s.guide.step + 1) % guideSteps(s).length; s.guide.drawn = false }),
 
       setGuide: (g) => set((s) => { Object.assign(s.guide, g) }),
 
@@ -365,7 +399,7 @@ const makeStore = (name: string) => create<State>()(
       saveCustom: (card) => set((s) => {
         const i = s.custom.findIndex((c) => c.id === card.id)
         if (i >= 0) s.custom[i] = card
-        else { s.custom.push(card); if (!s.disabled.includes(card.deck)) s.piles[card.type] = shuffle([...s.piles[card.type], card.id]) }
+        else { s.custom.push(card); if (enabled(s, card)) s.piles[card.type] = shuffle([...s.piles[card.type], card.id]) }
       }),
 
       deleteCustom: (id) => set((s) => {
@@ -379,6 +413,24 @@ const makeStore = (name: string) => create<State>()(
 
       toggleDeck: (deck) => set((s) => {
         s.disabled = s.disabled.includes(deck) ? s.disabled.filter((d) => d !== deck) : [...s.disabled, deck]
+        rebuild(s)
+      }),
+
+      toggleExpansion: (id) => set((s) => {
+        if (s.expansions[id]?.length) delete s.expansions[id]
+        else s.expansions[id] = [...(EXPANSIONS.find((e) => e.id === id)?.types ?? [])]
+        s.guide.step = 0
+        s.guide.drawn = false
+        rebuild(s)
+      }),
+
+      toggleExpansionType: (id, type) => set((s) => {
+        const on = s.expansions[id] ?? []
+        const next = on.includes(type) ? on.filter((t) => t !== type) : [...on, type]
+        if (next.length) s.expansions[id] = next
+        else delete s.expansions[id]
+        s.guide.step = 0
+        s.guide.drawn = false
         rebuild(s)
       }),
 
@@ -396,11 +448,30 @@ for (const api of Object.values(stores)) {
   if (!api.getState().init) api.getState().reset()
   // A world saved before the deck grew: shuffle the cards it has never seen into its piles.
   else (api.setState as (recipe: (s: State) => void) => void)((s) => {
+    s.piles = { ...emptyPiles(), ...s.piles }
     const known = new Set([...inUse(s), ...TYPES.flatMap((t) => s.piles[t])])
     for (const c of Object.values(cardsOf(s)))
-      if (!known.has(c.id) && !s.disabled.includes(c.deck)) s.piles[c.type] = shuffle([...s.piles[c.type], c.id])
+      if (!known.has(c.id) && enabled(s, c)) s.piles[c.type] = shuffle([...s.piles[c.type], c.id])
   })
 }
+
+// Decks, expansions and custom cards are one setting shared by both tabs: a change in either world is
+// copied to the other, whose draw piles are then reshuffled.
+const deckKeys = ['custom', 'disabled', 'expansions'] as const
+const sameDecks = (a: State, b: State) => deckKeys.every((k) => a[k] === b[k] || JSON.stringify(a[k]) === JSON.stringify(b[k]))
+const copyDecks = (from: Api, to: Api) => {
+  const src = from.getState()
+  if (sameDecks(src, to.getState())) return
+  ;(to.setState as (recipe: (s: State) => void) => void)((s) => {
+    Object.assign(s, { custom: src.custom, disabled: src.disabled, expansions: src.expansions })
+    s.guide.step = 0
+    s.guide.drawn = false
+    rebuild(s)
+  })
+}
+copyDecks(stores.custom, stores.auto)
+stores.custom.subscribe(() => copyDecks(stores.custom, stores.auto))
+stores.auto.subscribe(() => copyDecks(stores.auto, stores.custom))
 
 export const WorldCtx = createContext<Mode>('custom')
 export const useMode = () => useContext(WorldCtx)

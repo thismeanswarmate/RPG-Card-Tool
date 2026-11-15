@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { autoEdge, composeName, cueAt, dropTarget, layout, peek, rootOf, shuffle, type Board, type Cards } from './logic'
-import { chronicle, chronicleText, describe as describeArea } from './describe'
+import { chronicle, chronicleText, describe as describeArea, prompts as promptsFor } from './describe'
 import { STARTER } from './starter'
-import { TYPES } from './types'
+import { BASE_TYPES, TYPE_INFO, TYPES } from './types'
 
 const cards: Cards = Object.fromEntries(STARTER.map((c) => [c.id, c]))
 const T = 's-terrain-0' // Marsh
@@ -20,9 +20,8 @@ const board = (): Board => ({
 describe('starter deck', () => {
   it('has unique ids and the right cue count per type', () => {
     expect(new Set(STARTER.map((c) => c.id)).size).toBe(STARTER.length)
-    const counts = { terrain: 1, site: 2, epithet: 4, legacy: 4, trait: 4, omen: 2 }
-    for (const c of STARTER) expect(c.cues.length).toBe(counts[c.type])
-    for (const t of TYPES) expect(STARTER.some((c) => c.type === t)).toBe(true)
+    for (const c of STARTER) expect(c.cues.length).toBe(TYPE_INFO[c.type].cues)
+    for (const t of BASE_TYPES) expect(STARTER.some((c) => c.type === t)).toBe(true)
   })
   it('has no repeated cue text', () => {
     const all = STARTER.flatMap((c) => c.cues.map((q) => q.text.toLowerCase()))
@@ -192,5 +191,63 @@ describe('character cards', async () => {
     expect(cardText(lookup[bare.cards.secret]!, bare, lookup)).toBe('Were never truly trained as what they claim to be')
     expect(portrait(bare, lookup)).toEqual(['What almost no one knows is that they were never truly trained as what they claim to be.'])
     expect(portrait({ ...bare, cards: {} }, lookup)).toEqual([])
+  })
+})
+
+describe('expansions', async () => {
+  const { EXPANSION_CARDS, EXPANSIONS } = await import('./expansions')
+  const { blank, rebuild, generateWorld, enabled, extraTypes, guideSteps } = await import('./store')
+  const all: Cards = Object.fromEntries([...STARTER, ...EXPANSION_CARDS].map((c) => [c.id, c]))
+
+  it('are well formed and never repeat a cue from the starter deck', () => {
+    const texts = [...STARTER, ...EXPANSION_CARDS].flatMap((c) => c.cues.map((q) => q.text.toLowerCase()))
+    expect(new Set(texts).size).toBe(texts.length)
+    expect(new Set(EXPANSION_CARDS.map((c) => c.id)).size).toBe(EXPANSION_CARDS.length)
+    for (const c of EXPANSION_CARDS) {
+      const pack = EXPANSIONS.find((x) => x.id === c.deck)!
+      expect(pack.types).toContain(c.type)
+      expect(c.cues.length, c.id).toBe(TYPE_INFO[c.type].cues)
+      for (const q of c.cues) {
+        expect(q.text).toBeTruthy()
+        if (BASE_TYPES.includes(c.type)) expect(q.desc, q.text).toMatch(c.type === 'epithet' ? /^(for|because|after) / : /^[A-Z].*\.$/)
+        if (c.type === 'quest') expect(q.asks).toHaveLength(3)
+      }
+    }
+    for (const x of EXPANSIONS) for (const t of x.types) expect(EXPANSION_CARDS.some((c) => c.deck === x.id && c.type === t)).toBe(true)
+  })
+  it('are off by default and can be switched on one card type at a time', () => {
+    const s = blank()
+    rebuild(s)
+    expect(TYPES.flatMap((t) => s.piles[t])).toHaveLength(STARTER.length)
+    expect(guideSteps(s)).toEqual(BASE_TYPES)
+    s.expansions = { frost: ['terrain'], lore: ['work'] }
+    rebuild(s)
+    const added = TYPES.flatMap((t) => s.piles[t]).filter((id) => all[id].deck !== 'starter')
+    expect(added.length).toBeGreaterThan(0)
+    expect(added.every((id) => enabled(s, all[id]) && ['terrain', 'work'].includes(all[id].type))).toBe(true)
+    expect(extraTypes(s)).toEqual(['work'])
+    expect(guideSteps(s)).toEqual([...BASE_TYPES, 'work'])
+  })
+  it('feed the generator with questions, lore and quests', () => {
+    const s = blank()
+    s.expansions = Object.fromEntries(EXPANSIONS.map((x) => [x.id, x.types]))
+    generateWorld(s, 'small')
+    const kinds = new Set(Object.keys(s.placed).map((id) => all[id].type))
+    for (const t of ['question', 'work', 'twist']) expect(kinds.has(t as never), t).toBe(true)
+    expect(s.meta.some((m) => all[m.card].type === 'question')).toBe(true)
+    const book = chronicle(s.placed, all, s.links, s.meta)
+    expect(book.flatMap((c) => c.prompts).some((p) => p.startsWith('Lore to write — '))).toBe(true)
+    expect(chronicleText(book)).not.toMatch(/[{}]|undefined/)
+  })
+  it('lists what a place still needs answered or written', () => {
+    const b = board()
+    const tuck = (id: string, active: number) => { b[id] = { id, active, x: 0, y: 0, parent: T, edge: 2, order: 20 } }
+    tuck('quests-quest-0', 0); tuck('customs-question-0', 1); tuck('lore-work-0', 0); tuck('lore-twist-0', 1)
+    expect(promptsFor(b, all, T)).toEqual([
+      'Quest — The Empty Saddle: A horse has come home without its rider. Who was the rider, and where were they bound? What is in the saddlebags? Who would rather the rider were never found?',
+      'Question — What is never said aloud?',
+      'Lore to write — a lullaby, in exactly four lines.',
+    ])
+    expect(describeArea(b, all, T).join(' ')).not.toMatch(/lullaby|Saddle/)
   })
 })
