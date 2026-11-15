@@ -9,11 +9,11 @@ import { KIND_LABEL, type Kind } from './lore'
 import { titleCase } from './names'
 import { RollRows } from './Roller'
 import {
-  builtKind, builtText, charText, decksOf, DRAWN_DEF, drawnKind, drawnText, worldDrawn, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
+  ageNames, builtKind, builtText, charText, DATED, decksOf, DRAWN_DEF, drawnKind, drawnText, worldDrawn, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
   type Answers, type Built, type Char, type Drawn, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import {
-  addAge, addBuilt, addDrawn, addMention, addPerson, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace,
+  addAge, addBuilt, addDrawn, addMention, addPerson, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
   goneWith, redrawPlace, remove, removeStory, rerollStory, toggleDeck, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
 } from './settingBuild'
 import { siteKind } from './mapgen'
@@ -291,6 +291,7 @@ function DrawnBlock({ d, s, top }: { d: Drawn; s: SettingData; top?: boolean }) 
       <h5><FoldButton id={d.id} /><Name id={d.id} s={s} /> <small>{drawnKind(d)}</small></h5>
       <Picture id={d.id} s={s} />
       <Prose s={s} text={drawnText(s, d)} home={d.home} />
+      <Refs label={d.tool === 'history' ? 'Dating from it' : 'Tied to'} ids={tiesTo(s, d.id)} s={s} />
       {editing && (
         <>
           <details className="tables">
@@ -443,6 +444,10 @@ function EditRow({ id, s, what, person }: { id: string; s: SettingData; what: st
   const drop = useRemove(s)
   if (!useContext(EditCtx)) return null
   const factions = s.entities.filter((e) => e.kind === 'faction')
+  const races = (s.drawn ?? []).filter((d) => d.tool === 'race')
+  const cultures = (s.drawn ?? []).filter((d) => d.tool === 'culture')
+  const ages = ageNames(s)
+  const thing = person ? undefined : s.entities.find((e) => e.id === id)
   return (
     <>
     <div className="draw">
@@ -458,6 +463,24 @@ function EditRow({ id, s, what, person }: { id: string; s: SettingData; what: st
         <select value={person.faction ?? ''} aria-label="Belongs to" onChange={(e) => edit((d) => setFaction(d, id, e.target.value || undefined))}>
           <option value="">Belongs to no faction</option>
           {factions.map((f) => <option key={f.id} value={f.id}>Belongs to {s.names[f.id]}</option>)}
+        </select>
+      )}
+      {person && races.length > 0 && (
+        <select value={person.race ?? ''} aria-label="Race" onChange={(e) => edit((d) => setTie(d, id, 'race', e.target.value))}>
+          <option value="">Of no named race</option>
+          {races.map((r) => <option key={r.id} value={r.id}>One of {s.names[r.id]}</option>)}
+        </select>
+      )}
+      {(person || thing?.kind === 'faction') && cultures.length > 0 && (
+        <select value={(person ?? thing)?.culture ?? ''} aria-label="Culture" onChange={(e) => edit((d) => setTie(d, id, 'culture', e.target.value))}>
+          <option value="">{person ? 'Raised in no named culture' : 'Of no named culture'}</option>
+          {cultures.map((c) => <option key={c.id} value={c.id}>{person ? 'Raised among' : 'Founded among'} {s.names[c.id]}</option>)}
+        </select>
+      )}
+      {thing && DATED.includes(thing.kind) && ages.length > 0 && (
+        <select value={thing.age ?? ''} aria-label="Age" onChange={(e) => edit((d) => setTie(d, id, 'age', e.target.value))}>
+          <option value="">Of no particular age</option>
+          {ages.map((a, i) => <option key={i} value={i}>From {a}</option>)}
         </select>
       )}
       {person && <button onClick={() => edit((d) => { addStory(d, id) })}>+ Story</button>}

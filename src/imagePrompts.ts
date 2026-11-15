@@ -4,7 +4,7 @@
 import { describe } from './describe'
 import { cueText, rootOf, subtree } from './logic'
 import { detailParts, type DetailInst } from './lore'
-import { builtKind, builtText, drawnText, rootsOf, terrainOf, type Char, type Entity, type Setting } from './setting'
+import { builtKind, builtText, drawnText, raceLooks, rootsOf, terrainOf, type Char, type Entity, type Setting } from './setting'
 import { cardsOf } from './store'
 
 const CARDS = cardsOf({ custom: [] })
@@ -149,7 +149,7 @@ export function imageSpec(s: Setting, id: string): ImageSpec {
   if (person) {
     const faction = s.entities.find((e) => e.id === person.faction)
     return done(
-      `A portrait of ${an(person.what)}${faction ? `, a member of ${an(faction.what)}` : ''}, standing ${where(s, person.home)}. Head and shoulders, expressive face, looking at the viewer. Their story: ${hints(s, person.details)}.`,
+      `A portrait of ${an(person.what)}${faction ? `, a member of ${an(faction.what)}` : ''}, standing ${where(s, person.home)}. Head and shoulders, expressive face, looking at the viewer. ${raceLooks(s, person.race)} Their story: ${hints(s, person.details)}.`,
       TALL)
   }
   const e = s.entities.find((x: Entity) => x.id === id)

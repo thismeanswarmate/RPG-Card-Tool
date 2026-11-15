@@ -1317,3 +1317,93 @@ describe('races, cultures and history in a setting', async () => {
     expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN/)
   })
 })
+
+describe('everything tied to races, cultures and history', async () => {
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  const P = await import('./imagePrompts')
+  it('gives every person a race and a culture, and what has a past its age', () => {
+    for (const size of ['region', 'country', 'continent'] as const) for (let n = 0; n < 6; n++) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size, focus: ['power', 'faith'] }, `ties-${size}-${n}`)
+      const ids = (tool: string) => s.drawn!.filter((d) => d.tool === tool).map((d) => d.id)
+      const ages = G.ageNames(s)
+      expect(ages).toHaveLength(s.drawn!.find((d) => d.tool === 'history')!.sections.length)
+      for (const a of ages) expect(a).toMatch(/^the (Age of .+|\w+ age)$/)
+      for (const c of s.people) {
+        expect(ids('race')).toContain(c.race)
+        expect(ids('culture')).toContain(c.culture)
+        const text = G.charText(s, c)[0]
+        expect(text).toContain(`They are one of ${s.names[c.race!]}, raised among ${s.names[c.culture!]}.`)
+        expect(G.tiesTo(s, c.id)).toEqual(expect.arrayContaining([c.race, c.culture]))
+        expect(G.tiesTo(s, c.race!)).toContain(c.id)
+        // Someone who lives where a culture is kept was raised in it.
+        const local = s.drawn!.filter((d) => d.tool === 'culture' && d.home === G.homeRoot(s, c.home)).map((d) => d.id)
+        if (local.length) expect(local).toContain(c.culture)
+      }
+      for (const e of s.entities) {
+        if (G.DATED.includes(e.kind)) {
+          expect(e.age).toBeLessThan(ages.length)
+          expect(G.entityText(s, e)[0]).toContain(ages[e.age!])
+        } else expect(e.age).toBeUndefined()
+        if (e.kind === 'faction') expect(G.entityText(s, e)[0]).toMatch(new RegExp(`It was founded in ${ages[e.age!]}, among ${s.names[e.culture!]}\\.`))
+      }
+      const history = ids('history')[0]
+      expect(G.tiesTo(s, history).length).toBe(s.entities.filter((e) => e.age !== undefined).length)
+      const md = G.settingMarkdown(s)
+      expect(md).not.toMatch(/undefined|NaN|  /)
+      // A settlement in a place with a culture says whose it is.
+      const town = s.built!.find((b) => b.tool === 'settlement' && s.drawn!.some((d) => d.tool === 'culture' && d.home === G.homeRoot(s, b.home)))
+      if (town) expect(G.builtText(s, town)[1]).toMatch(/Most of them are of the .+ folk\.$/)
+      // A portrait is told how the person's race looks, without naming it.
+      const who = s.people[0]
+      const prompt = P.imageSpec(s, who.id).prompt
+      expect(prompt).toContain(G.raceLooks(s, who.race))
+      expect(G.raceLooks(s, who.race)).toMatch(/^Their people are .+\. They have skin .+; hair .+; eyes .+\./)
+      expect(prompt).not.toContain(s.names[who.race!])
+    }
+  })
+  it('ties things as they are added by hand, lets the ties be changed, and clears them when their end is removed', () => {
+    const s = B.newManual(['fantasy'], ['temperate'])
+    const place = B.addPlace(s)!
+    const early = B.addPerson(s, place)
+    const person = () => s.people.find((c) => c.id === early)!
+    expect([person().race, person().culture]).toEqual([undefined, undefined])
+    expect(G.charText(s, person())[0]).not.toMatch(/one of|raised among/)
+    const race = B.addDrawn(s, 'race')!
+    expect(person().race).toBe(race)
+    const culture = B.addDrawn(s, 'culture', place)!
+    const history = B.addDrawn(s, 'history')!
+    expect(person().culture).toBe(culture)
+    const guild = B.addPower(s, 'faction', place), relic = B.addPower(s, 'object', place), beast = B.addPower(s, 'creature', place)
+    const of = (id: string) => s.entities.find((e) => e.id === id)!
+    expect(of(guild).culture).toBe(culture)
+    expect(of(guild).age).toBeLessThan(3)
+    expect(of(relic).age).toBeLessThan(3)
+    expect([of(beast).age, of(beast).culture]).toEqual([undefined, undefined])
+    const late = B.addPerson(s, place)
+    expect(s.people.find((c) => c.id === late)!.culture).toBe(culture)
+
+    B.setTie(s, guild, 'age', '2'); B.setTie(s, relic, 'age', '0')
+    expect(G.entityText(s, of(guild))[0]).toContain(`It was founded in ${G.ageNames(s)[2]}, among ${s.names[culture]}.`)
+    B.removeAge(s, history, 0)
+    expect([of(guild).age, of(relic).age]).toEqual([1, undefined])
+    B.setTie(s, early, 'race', '')
+    expect(G.charText(s, person())[0]).toContain(`They were raised among ${s.names[culture]}.`)
+    B.setTie(s, early, 'race', race)
+    B.remove(s, culture)
+    expect([person().culture, of(guild).culture]).toEqual([undefined, undefined])
+    expect(G.charText(s, person())[0]).toContain(`They are one of ${s.names[race]}.`)
+    B.remove(s, race); B.remove(s, history)
+    expect([person().race, of(guild).age]).toEqual([undefined, undefined])
+    expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN|They are one of|raised among|It was founded/)
+  })
+})
+
+describe('ages are names, not offers', async () => {
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  it('does not mark a word inside the name of an age', () => {
+    const s = G.generateSetting(G.DEFAULT_ANSWERS, 'age-names')
+    for (const age of G.ageNames(s)) expect(B.findMentions(s, `It was founded in ${age}.`)).toEqual([`It was founded in ${age}.`])
+  })
+})

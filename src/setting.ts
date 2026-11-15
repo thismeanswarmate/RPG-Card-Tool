@@ -6,7 +6,7 @@
 // Everything is stored as structure — ids, cards and links — and turned into text when shown, so a
 // rename reaches every sentence that mentions the thing.
 
-import { fill as fillCards, text as cardText, type Section, type ToolDef } from './cardTool'
+import { cardOf, fill as fillCards, text as cardText, type Section, type ToolDef } from './cardTool'
 import { CULTURES, HISTORY, RACES } from './cardTools'
 import { cardSentence, chronicle, describe, placeName } from './describe'
 import { GLOSS, ROLE_GLOSS } from './glosses'
@@ -42,9 +42,13 @@ export interface Entity {
   details: DetailInst[]
   /** The power whose details first brought this thing into the setting. */
   from?: string
+  /** The culture a faction grew out of, or a person was raised in. */
+  culture?: string
+  /** Which age of the history a faction, event, object or deity dates from, counting from 0. */
+  age?: number
 }
 /** A person: a role from the story deck, described with details from the lore deck. */
-export interface Char extends Entity { kind: 'figure'; home: string; faction?: string; local: boolean }
+export interface Char extends Entity { kind: 'figure'; home: string; faction?: string; local: boolean; /** The race they belong to. */ race?: string }
 export interface HookLine { who: string; drive: string; target: string; but?: string; also?: { drive: string; target: string } }
 export interface Hook { id: string; at: string; lines: HookLine[] }
 
@@ -84,6 +88,27 @@ export const drawnPacks = (s: Pick<Setting, 'answers' | 'decks' | 'manual'>) => 
   const story = decksOf(s).story
   return [...story.filter((d) => d in RACES.packs), ...(story.includes('core') ? [] : ['-core'])]
 }
+const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth']
+const cueOf = (d: Drawn, section: number, aspect: string) => {
+  const held = d.sections[section]?.slots[aspect]
+  return held ? cardOf(DRAWN_DEF[d.tool], held.card)?.cues[held.active] : undefined
+}
+/** The ages of a setting's history, as they are spoken of: "the Age of Ash", or "the second age" for one with no name. */
+export function ageNames(s: Setting): string[] {
+  const history = s.drawn?.find((d) => d.tool === 'history')
+  return history ? history.sections.map((_, i) => (cueOf(history, i, 'name') ? `the Age of ${cueOf(history, i, 'name')}` : `the ${ORDINALS[i] ?? 'next'} age`)) : []
+}
+/** Which kinds of thing date from an age of the history. */
+export const DATED: Kind[] = ['faction', 'event', 'object', 'deity']
+/** How a race looks, in a sentence, for describing one of its members to a picture model. */
+export function raceLooks(s: Setting, race?: string): string {
+  const d = race ? s.drawn?.find((x) => x.id === race && x.tool === 'race') : undefined
+  if (!d) return ''
+  const g = (a: string) => cueOf(d, 0, a)
+  const looks = [g('skin') && `skin ${g('skin')}`, g('hair') && `hair ${g('hair')}`, g('eyes') && `eyes ${g('eyes')}`].filter(Boolean).join('; ')
+  return [g('form') && `Their people are ${g('form')}.`, looks && `They have ${looks}.`, g('features') && `Their people have ${g('features')}.`].filter(Boolean).join(' ')
+}
+
 /** One of them written out, with a culture placed and peopled. */
 export function drawnText(s: Setting, d: Drawn): string[] {
   const name = s.names[d.id] ?? ''
@@ -111,8 +136,13 @@ export function decksOf(s: Pick<Setting, 'answers' | 'decks' | 'manual'>): DeckC
 /** A settlement or dangerous place within the setting: where it is, and what its tables rolled. */
 export interface Built { id: string; tool: 'settlement' | 'peril'; home: string; rolls: Rolls; locked?: string[] }
 export const builtKind = (b: Built) => (b.tool === 'settlement' ? typeLabel(b.rolls) ?? 'settlement' : kindLabel(b.rolls))
-export const builtText = (s: Setting, b: Built) =>
-  (b.tool === 'settlement' ? settlementBrief : perilBrief)(s.names[b.id].charAt(0).toUpperCase() + s.names[b.id].slice(1), b.rolls)
+export function builtText(s: Setting, b: Built): string[] {
+  const out = (b.tool === 'settlement' ? settlementBrief : perilBrief)(s.names[b.id].charAt(0).toUpperCase() + s.names[b.id].slice(1), b.rolls)
+  // A settlement keeps the culture of the place it stands in.
+  const culture = b.tool === 'settlement' && s.board[b.home] ? s.drawn?.find((d) => d.tool === 'culture' && d.home === rootOf(s.board, b.home)) : undefined
+  if (culture && s.names[culture.id] && out.length > 1) out[1] = `${out[1]} Most of them are of ${s.names[culture.id]}.`
+  return out
+}
 
 
 const CARDS = cardsOf({ custom: [] })
@@ -306,7 +336,26 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
     }
     return d
   }
-  return { pick, genres, depth, roles, drawOne, deities, roots, sitesOf, sites, places, name, tongueAt, person, make, detail, story, hook, build }
+  /**
+   * Tie one thing to the races, cultures and history of the setting, where it is not tied already: a person
+   * gets a culture (the one of their home, if it has one) and a race (usually the one that keeps that
+   * culture); a faction gets a culture and an age; an event, object or deity gets an age.
+   */
+  const tie = (e: Entity) => {
+    const all = s.drawn ?? []
+    const cultures = all.filter((d) => d.tool === 'culture')
+    const races = all.filter((d) => d.tool === 'race')
+    const ages = all.find((d) => d.tool === 'history')?.sections.length ?? 0
+    const local = e.home ? cultures.filter((d) => d.home === rootOf(board, e.home!)) : []
+    if ((e.kind === 'figure' || e.kind === 'faction') && !e.culture && cultures.length) e.culture = pick(local.length ? local : cultures).id
+    if (e.kind === 'figure' && !(e as Char).race && races.length) {
+      const kept = all.find((d) => d.id === e.culture)?.race
+      ;(e as Char).race = kept && rng() < 0.8 ? kept : pick(races).id
+    }
+    if (DATED.includes(e.kind) && e.age === undefined && ages) e.age = Math.floor(rng() * ages)
+  }
+  const tieAll = () => { for (const e of [...entities, ...people]) tie(e) }
+  return { pick, genres, depth, roles, drawOne, tie, tieAll, deities, roots, sitesOf, sites, places, name, tongueAt, person, make, detail, story, hook, build }
 }
 
 export function generateSetting(answers: Answers, seed: string): Setting {
@@ -394,6 +443,8 @@ export function generateSetting(answers: Answers, seed: string): Setting {
     const homes = shuffle([...roots], rng)
     for (let i = 0; i < Math.min(scope[1] + (has('everyday') ? 1 : 0), homes.length); i++) w.drawOne('culture', homes[i])
     w.drawOne('history', undefined, scope[2])
+    // Everyone gets a race and a culture, and what has a past is given its age.
+    w.tieAll()
     return s
   })
 }
@@ -543,8 +594,16 @@ export function entityText(s: Setting, e: Entity): string[] {
     deity: `${name} is the ${e.what}${gloss}.${at ? ` The chief shrine stands ${at}.` : ''}`,
   }
   const short = e.kind === 'deity' ? 'The deity' : e.kind === 'material' ? `The ${e.what}` : `The ${e.what}`
+  const age = e.age === undefined ? undefined : ageNames(s)[e.age]
+  const among = e.culture && s.names[e.culture] ? `among ${s.names[e.culture]}` : ''
+  const dated: Record<string, string> = {
+    faction: age || among ? `It was founded ${[age && `in ${age}`, among].filter(Boolean).join(', ')}.` : '',
+    event: age ? `It happened in ${age}.` : '',
+    object: age ? `It was made in ${age}.` : '',
+    deity: age ? `It has been worshipped since ${age}.` : '',
+  }
   return [
-    intro[e.kind] ?? `${name} is ${an(e.what)}.`,
+    [intro[e.kind] ?? `${name} is ${an(e.what)}.`, dated[e.kind] ?? ''].filter(Boolean).join(' '),
     detailProse(s, e.details, 'It', short),
     // A feud is told once, from this side, even when the rival names it too.
     mentions(s, e.id, (other) => other.kind === 'faction' && e.details.some((d) => d.links.some((l) => l.node === other.id))),
@@ -556,10 +615,13 @@ export function charText(s: Setting, c: Char): string[] {
   const name = s.names[c.id]
   const gloss = ROLE_GLOSS[c.what]
   const intro = `${name} is ${an(c.what)}${gloss ? `, ${gloss}` : ''}. They live ${whereText(s, c.home)}${c.faction ? `, and belong to ${s.names[c.faction]}` : ''}.`
+  const race = c.race && s.names[c.race] ? `one of ${s.names[c.race]}` : ''
+  const raised = c.culture && s.names[c.culture] ? `raised among ${s.names[c.culture]}` : ''
+  const roots = race ? `They are ${race}${raised ? `, ${raised}` : ''}.` : raised ? `They were ${raised}.` : ''
   const wants = s.hooks.flatMap((h) => h.lines.filter((l) => l.who === c.id).map((l) => hookLine(s, l))).slice(0, 2).join(' ')
   const omen = c.local && omenAt(s.board, rootOf(s.board, c.home))
   return [
-    intro,
+    [intro, roots].filter(Boolean).join(' '),
     [detailProse(s, c.details, name, `The ${c.what}`), mentions(s, c.id)].filter(Boolean).join(' '),
     wants,
     omen ? `Meanwhile things are changing at home: ${lower(cardSentence(s.board, CARDS, omen))}` : '',
@@ -585,6 +647,14 @@ export function tiesTo(s: Setting, id: string): string[] {
   for (const e of [...s.entities, ...s.people]) if (e.id !== id && e.details.some((d) => d.links.some((l) => l.node === id))) out.add(e.id)
   for (const h of s.hooks) for (const l of h.lines) if (l.target === id || l.also?.target === id) out.add(l.who)
   if (s.entities.some((e) => e.id === id && e.kind === 'faction')) for (const c of s.people) if (c.faction === id) out.add(c.id)
+  // Race, culture and history tie both ways: a person shows theirs, and each of those shows who and what belongs to it.
+  const me = [...s.entities, ...s.people].find((e) => e.id === id) as Char | undefined
+  const history = s.drawn?.find((d) => d.tool === 'history')
+  for (const link of [me?.race, me?.culture, me?.age !== undefined ? history?.id : undefined]) if (link && s.names[link]) out.add(link)
+  for (const e of [...s.entities, ...s.people] as Char[]) if (e.race === id || e.culture === id || (history?.id === id && e.age !== undefined)) out.add(e.id)
+  const asDrawn = s.drawn?.find((d) => d.id === id)
+  if (asDrawn?.race && s.names[asDrawn.race]) out.add(asDrawn.race)
+  for (const d of s.drawn ?? []) if (d.race === id) out.add(d.id)
   out.delete(id)
   return [...out]
 }

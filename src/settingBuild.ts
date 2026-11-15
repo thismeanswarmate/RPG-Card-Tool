@@ -7,7 +7,7 @@ import { tonguesFor } from './names'
 import { KINDS as PERIL_KINDS, kindLabel, rollAll as rollPeril, stepsFor as perilSteps } from './peril'
 import { STORY_CARDS } from './story'
 import { cardOf, draw as drawCard, fill as fillCards } from './cardTool'
-import { decksOf, DEFAULT_ANSWERS, DRAWN_DEF, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
+import { ageNames, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
 import { rollAll as rollSettlement, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
 import type { CardType } from './types'
@@ -170,6 +170,7 @@ export function addPower(s: Setting, kind: Kind, home: string): string {
   const w = weave(s)
   const e = w.make(kind, home)
   w.detail(e, kind === 'faction' ? w.depth.major : w.depth.minor, false)
+  w.tie(e)
   return e.id
 }
 
@@ -179,6 +180,7 @@ export function addPerson(s: Setting, home: string): string {
   const local = s.entities.filter((e) => e.kind === 'faction' && e.home && rootOf(s.board, e.home) === rootOf(s.board, home))
   if (local.length && Math.random() < 0.6) c.faction = local[rand(local.length)].id
   w.detail(c, w.depth.minor, false)
+  w.tie(c)
   return c.id
 }
 
@@ -263,7 +265,20 @@ export function builtReroll(s: Setting, id: string) {
 /** Add a race or the history to the world, or a culture to a place. A setting has one history. */
 export function addDrawn(s: Setting, tool: Drawn['tool'], home?: string): string | undefined {
   if (tool === 'history' && s.drawn?.some((d) => d.tool === 'history')) return s.drawn.find((d) => d.tool === 'history')!.id
-  return weave(s).drawOne(tool, home && rootOf(s.board, home)).id
+  const w = weave(s)
+  const id = w.drawOne(tool, home && rootOf(s.board, home)).id
+  // Whatever has no race, culture or age yet is given one now that there is one to give.
+  w.tieAll()
+  return id
+}
+
+/** Set, or with no value clear, the race or culture of a person, the culture of a faction, or the age something dates from. */
+export function setTie(s: Setting, id: string, field: 'race' | 'culture' | 'age', value: string) {
+  const e = find(s, id) as (Entity & { race?: string }) | undefined
+  if (!e) return
+  if (value === '') delete e[field]
+  else if (field === 'age') e.age = +value
+  else e[field] = value
 }
 const drawnOf = (s: Setting, id: string) => s.drawn?.find((d) => d.id === id)
 const asItem = (d: Drawn) => ({ id: d.id, name: '', notes: '', sections: d.sections })
@@ -294,7 +309,13 @@ export function addAge(s: Setting, id: string) {
 }
 export function removeAge(s: Setting, id: string, section: number) {
   const d = drawnOf(s, id)
-  if (d && d.sections.length > 1) d.sections.splice(section, 1)
+  if (!d || d.sections.length < 2) return
+  d.sections.splice(section, 1)
+  // What dated from that age loses its date; what dated from a later one keeps its age.
+  if (d.tool === 'history') for (const e of s.entities) {
+    if (e.age === section) delete e.age
+    else if (e.age !== undefined && e.age > section) e.age--
+  }
 }
 /** Say which race mostly keeps a culture, or none. */
 export function setRace(s: Setting, id: string, race: string | undefined) {
@@ -318,6 +339,12 @@ export function remove(s: Setting, id: string) {
   s.built = (s.built ?? []).filter((b) => !gone.has(b.id))
   s.drawn = (s.drawn ?? []).filter((d) => !gone.has(d.id))
   for (const d of s.drawn) if (d.race && gone.has(d.race)) delete d.race
+  const history = s.drawn.some((d) => d.tool === 'history')
+  for (const e of [...s.entities, ...s.people] as (Entity & { race?: string })[]) {
+    if (e.race && gone.has(e.race)) delete e.race
+    if (e.culture && gone.has(e.culture)) delete e.culture
+    if (!history) delete e.age
+  }
   s.hooks = s.hooks.filter((h) => !h.lines.some((l) => gone.has(l.who) || gone.has(l.target) || (l.also && gone.has(l.also.target))))
   for (const e of [...s.entities, ...s.people] as (Entity | Char)[]) {
     e.details = e.details.filter((d) => !d.links.some((l) => l.node && gone.has(l.node)))
@@ -346,7 +373,9 @@ const TOO_COMMON = new Set(['order', 'watch', 'well', 'gate', 'map', 'rival', 'g
 
 function lexicon(s: Setting): Lexicon {
   // Made once for a setting as it stands, and again when its cards or names have changed.
-  const stamp = `${Object.keys(s.board).join()}|${Object.values(s.names).join()}|${JSON.stringify(s.decks ?? 0)}`
+  // The ages of the history count as names: "the Age of Lanterns" is not an offer of a lantern.
+  const ages = ageNames(s)
+  const stamp = `${Object.keys(s.board).join()}|${Object.values(s.names).join()}|${ages.join()}|${JSON.stringify(s.decks ?? 0)}`
   const known = lexicons.get(s)
   if (known?.stamp === stamp) return known
   const by = new Map<string, Mention>()
@@ -362,7 +391,7 @@ function lexicon(s: Setting): Lexicon {
   for (const kind of ['event', 'object', 'creature', 'material'] as Kind[]) for (const what of PRIMARY[kind]) put(what, { type: 'power', kind, what })
   for (const word of ['god', 'goddess', 'deity', 'saint']) put(word, { type: 'power', kind: 'deity' })
   const alt = (list: string[]) => list.sort((a, b) => b.length - a.length).map(escape).join('|')
-  const names = Object.values(s.names).filter((n) => n.length > 2)
+  const names = [...Object.values(s.names), ...ages].filter((n) => n.length > 2)
   const made: Lexicon = {
     by, stamp,
     words: new RegExp(`(?<![\\p{L}’'-])(${alt([...by.keys()])})(?:e?s)?(?![\\p{L}’'-])`, 'giu'),
@@ -405,8 +434,9 @@ export function addMention(s: Setting, m: Mention, home: string): string | undef
     return m.card
   }
   if (m.type === 'built') return w.build(m.tool, home, m.rolls).id
-  if (m.type === 'person') { const c = w.person(home, m.what); w.detail(c, w.depth.minor, false); return c.id }
+  if (m.type === 'person') { const c = w.person(home, m.what); w.detail(c, w.depth.minor, false); w.tie(c); return c.id }
   const e = w.make(m.kind, home, undefined, m.what)
   w.detail(e, m.kind === 'faction' ? w.depth.major : w.depth.minor, false)
+  w.tie(e)
   return e.id
 }
