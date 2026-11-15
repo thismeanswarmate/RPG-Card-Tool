@@ -1,6 +1,10 @@
-# Worldloom
+# Storyloom
 
-A browser tool for building story settings from cards. Draw a Terrain, tuck Sites, Epithets, Legacies, Traits and
+Two card tools on one page, switched from the top menu.
+
+**Characters** builds a cast: each character draws one card for Role, Background, Motivation, Strength, Flaw, Turning point, Secret and Catalyst from a core deck plus Fantasy, Science fiction, Modern and Horror packs. Lock the cards you like, redraw the rest, add your own cards, and read the result as a written portrait.
+
+**Worlds** is a browser tool for building story settings from cards. Draw a Terrain, tuck Sites, Epithets, Legacies, Traits and
 Omens under its edges, and arrange the resulting microsettings into a world map.
 
 - **Two tabs:** *Custom* is the hands-on table. *Auto* deals a whole world in one click: a meta row, then 5–20 microsettings (by map size) alternating simple and complex, which you can then edit like any other. Each tab keeps its own world.

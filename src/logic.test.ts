@@ -150,3 +150,47 @@ describe('world generator', async () => {
       }
     })
 })
+
+describe('character cards', async () => {
+  const { PERSON_CARDS, SLOTS, SLOT_INFO, GENRES, poolFor, portrait, cardText, withArticle } = await import('./people')
+  const { pick } = await import('./peopleStore')
+  const lookup = Object.fromEntries(PERSON_CARDS.map((c) => [c.id, c]))
+  const byText = (t: string) => PERSON_CARDS.find((c) => c.text.startsWith(t))!.id
+
+  it('has unique cards and a full pool for every slot in every genre', () => {
+    expect(new Set(PERSON_CARDS.map((c) => c.id)).size).toBe(PERSON_CARDS.length)
+    expect(new Set(PERSON_CARDS.map((c) => c.text)).size).toBe(PERSON_CARDS.length)
+    for (const g of Object.keys(GENRES))
+      for (const slot of SLOTS) {
+        const pool = poolFor(PERSON_CARDS, slot, [g])
+        expect(pool.length, `${g} ${slot}`).toBeGreaterThanOrEqual(10)
+        expect(pool.every((c) => (c.set === 'core') !== SLOT_INFO[slot].genre)).toBe(true)
+      }
+    for (const c of PERSON_CARDS.filter((c) => c.slot === 'motivation')) expect(c.text).toMatch(/^To /)
+  })
+  it('never redraws the same card when there is a choice', () => {
+    const id = byText('Hedge witch')
+    for (let i = 0; i < 50; i++) expect(pick(PERSON_CARDS, 'role', ['fantasy'], id)).not.toBe(id)
+  })
+  it('writes a portrait in which cards mention the role', () => {
+    const person = {
+      id: 'p', name: 'Odalys', locked: [], notes: '',
+      cards: {
+        role: byText('Asylum orderly'), background: byText('Came to the work of'), motivation: byText('To be left in peace'),
+        strength: byText('An ear for lies'), flaw: byText('A weakness for a wager'), turning: byText('Lost a duel on purpose'),
+        secret: byText('Were never truly trained as'), catalyst: byText('The fog has not lifted'),
+      },
+    }
+    expect(withArticle('Asylum orderly')).toBe('an asylum orderly')
+    expect(portrait(person, lookup)).toEqual([
+      'Odalys is an asylum orderly. They came to the work of an asylum orderly by accident and stayed.',
+      'More than anything, they want to be left in peace. Their gift is an ear for lies, and their flaw is a weakness for a wager.',
+      'Years ago they lost a duel on purpose. What almost no one knows is that they were never truly trained as an asylum orderly.',
+      'Now everything is about to change: the fog has not lifted in nine days.',
+    ])
+    const bare = { ...person, name: '', cards: { secret: person.cards.secret } }
+    expect(cardText(lookup[bare.cards.secret]!, bare, lookup)).toBe('Were never truly trained as what they claim to be')
+    expect(portrait(bare, lookup)).toEqual(['What almost no one knows is that they were never truly trained as what they claim to be.'])
+    expect(portrait({ ...bare, cards: {} }, lookup)).toEqual([])
+  })
+})

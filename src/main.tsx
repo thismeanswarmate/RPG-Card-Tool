@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { Decks } from './Decks'
 import { Hand } from './Hand'
 import { Panel } from './Panel'
+import { People } from './People'
+import { ToolCtx, type Tool } from './ToolNav'
 import { Sidebar } from './Sidebar'
 import { titleOf } from './logic'
 import { cardsOf, stores, useStore, WorldCtx, type Mode } from './store'
@@ -33,7 +35,24 @@ const savedMode = (): Mode => {
   try { return localStorage.getItem('worldloom-tab') === 'auto' ? 'auto' : 'custom' } catch { return 'custom' }
 }
 
+const savedTool = (): Tool => {
+  try { return localStorage.getItem('storyloom-tool') === 'people' ? 'people' : 'worlds' } catch { return 'worlds' }
+}
+
 function App() {
+  const [tool, setToolState] = useState<Tool>(savedTool)
+  const setTool = (t: Tool) => {
+    setToolState(t)
+    try { localStorage.setItem('storyloom-tool', t) } catch { /* private window */ }
+  }
+  return (
+    <ToolCtx.Provider value={{ tool, setTool }}>
+      {tool === 'people' ? <People /> : <Worlds />}
+    </ToolCtx.Provider>
+  )
+}
+
+function Worlds() {
   const [mode, setMode] = useState<Mode>(savedMode)
   const pickMode = (m: Mode) => {
     setMode(m)

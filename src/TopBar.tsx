@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { GUIDE_STEPS, snapshot, useApi, useStore, WORLD_SIZES, type Mode, type WorldSize } from './store'
+import { ToolNav } from './ToolNav'
 import { TYPE_INFO } from './types'
 
 const STEP_HELP = [
@@ -49,7 +50,7 @@ export function TopBar({ mode, onMode, onDecks }: { mode: Mode; onMode: (m: Mode
 
   return (
     <header className="topbar">
-      <h1>Worldloom</h1>
+      <ToolNav />
       <nav className="modes" aria-label="Mode">
         {TABS.map(([m, label]) => (
           <button key={m} className={m === mode ? 'on' : ''} aria-current={m === mode} onClick={() => onMode(m)}>{label}</button>

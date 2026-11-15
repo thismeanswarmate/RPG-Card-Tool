@@ -128,13 +128,53 @@ select { font: inherit; color: inherit; background: var(--raised); border: 1px s
 .modal.wide { width: min(680px, 100%); }
 .field { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 code { background: var(--bg); border-radius: 4px; padding: 0 4px; font-size: 12px; }
+.tools { display: flex; gap: 2px; }
+.tools button { border: none; background: none; color: var(--muted); padding: 5px 10px; border-radius: 6px 6px 0 0; font-weight: 600; border-bottom: 2px solid transparent; }
+.tools button.on { color: var(--text); border-bottom-color: var(--accent); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips button { border-radius: 20px; padding: 3px 12px; color: var(--muted); }
+.chips button.on { background: color-mix(in srgb, var(--accent) 22%, var(--raised)); border-color: var(--accent); color: var(--text); }
+
+.slot-role { --c: var(--site); } .slot-background { --c: var(--terrain); } .slot-motivation { --c: var(--epithet); } .slot-strength { --c: var(--trait); }
+.slot-flaw { --c: #b0527a; } .slot-turning { --c: var(--legacy); } .slot-secret { --c: #4a8f86; } .slot-catalyst { --c: var(--omen); }
+.people { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr) 330px; }
+.cast, .portrait { background: var(--surface); padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.cast { border-right: 1px solid var(--line); }
+.portrait { border-left: 1px solid var(--line); }
+.cast h3, .portrait h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.cast-row { display: flex; gap: 4px; }
+.cast-row > button:last-child { padding: 0 9px; }
+.cast-name { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; padding: 6px 10px; }
+.cast-name small { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cast-row.on .cast-name { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--raised)); }
+.sheet { overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.sheet-head { display: flex; gap: 10px; }
+.sheet-head .name { flex: 1; min-width: 0; font-size: 18px; font-weight: 600; padding: 8px 12px; }
+.sheet-head .primary { padding: 8px 16px; white-space: nowrap; }
+.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.pcard { background: var(--raised); border-radius: 10px; border-top: 5px solid var(--c); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; min-height: 150px;
+  box-shadow: 0 2px 6px rgb(0 0 0 / .35); }
+.pcard header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.pcard header b { color: var(--c); filter: brightness(1.35); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.pcard header small { color: var(--muted); font-size: 11.5px; text-align: right; }
+.pcard p { flex: 1; font-size: 15.5px; line-height: 1.35; }
+.pcard.blank p { color: var(--muted); }
+.pcard.locked { box-shadow: 0 0 0 2px var(--c), 0 2px 6px rgb(0 0 0 / .35); }
+.pcard footer { display: flex; gap: 6px; }
+.pcard footer button { font-size: 12px; padding: 3px 10px; }
+.pcard footer button.on { background: var(--c); border-color: var(--c); color: #fff; }
+.modal .field select { align-self: flex-start; }
+.modal .mini-cues span { color: var(--muted); }
+
 .menu { display: contents; }
 .menu-btn, .tabs, .selbar { display: none; }
 html, body, #root { height: 100dvh; }
 
 @media (max-width: 760px) {
   .topbar { gap: 6px 8px; padding: 6px 10px; }
-  .topbar h1 { font-size: 16px; }
+  .topbar h1 { display: none; }
+  .tools button { padding: 6px 8px; }
+  .modes button { padding: 4px 10px; }
   .menu-btn { display: block; margin-left: auto; }
   .spacer { display: none; }
   .guide { order: 5; }
@@ -171,5 +211,23 @@ html, body, #root { height: 100dvh; }
   .toast { width: max-content; max-width: 90%; text-align: center; font-size: 12.5px; }
   .empty p { max-width: 280px; }
   input, textarea { font-size: 16px; }
+  .people { display: block; overflow-y: auto; }
+  .cast, .portrait { border: none; overflow: visible; }
+  .cast { border-bottom: 1px solid var(--line); flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .cast h3 { width: 100%; }
+  .cast-name small { display: none; }
+  .sheet { overflow: visible; padding: 12px; }
+  .sheet-head { flex-wrap: wrap; }
+  .sheet-head .name { flex-basis: 100%; }
+  .sheet-head .primary { flex: 1; padding: 10px; }
+  .slots { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pcard { min-height: 130px; padding: 8px 10px 10px; }
+  .pcard p { font-size: 14px; }
+  .pcard header small { display: none; }
+  .pcard footer { flex-wrap: wrap; }
+  .pcard footer button { padding: 6px 9px; }
+  .portrait { border-top: 1px solid var(--line); padding-bottom: 30px; }
+  .chips { order: 5; width: 100%; }
+  .chips button { padding: 6px 12px; }
 }
 .roots .link { display: inline; }
