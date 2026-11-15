@@ -561,3 +561,53 @@ describe('art directions', async () => {
     expect(P.imageSpec({ ...s, art: 'photo' }, id).prompt).toContain('Warm low sunlight.')
   })
 })
+
+describe('drawn map', async () => {
+  const G = await import('./setting')
+  const M = await import('./mapgen')
+  const inside = (p: [number, number], poly: [number, number][]) => {
+    let hit = false
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j]
+      if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) hit = !hit
+    }
+    return hit
+  }
+  it('draws the same land for the same setting, with every place, site and symbol on its own ground', () => {
+    for (const size of ['region', 'country', 'continent'] as const) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size, lands: ['temperate', 'coast', 'frost'] }, `map-${size}`)
+      const map = M.buildMap(s)
+      expect(M.buildMap(s)).toEqual(map)
+      expect(map.regions.map((r) => r.id)).toEqual(G.rootsOf(s))
+      expect(map.theme).toBe('parchment')
+      for (const r of map.regions) {
+        expect(r.points.length).toBeGreaterThan(30)
+        expect(r.d).toMatch(/^M[-\d. L]+Z$/)
+        for (const [x, y] of r.points) { expect(Number.isFinite(x) && Number.isFinite(y)).toBe(true); expect(x).toBeGreaterThan(0); expect(x).toBeLessThan(map.w); expect(y).toBeGreaterThan(0); expect(y).toBeLessThan(map.h) }
+        expect(inside([r.x, r.y], r.points), `${r.name} holds its own centre`).toBe(true)
+        expect(r.name).toBe(s.names[r.id])
+        expect(r.symbols.length).toBeGreaterThan(2)
+        for (const p of r.symbols) expect(inside([p.x, p.y], r.points)).toBe(true)
+        for (const site of r.sites) expect(inside([site.x, site.y], r.points), `${site.name} in ${r.name}`).toBe(true)
+        // No region covers another place's centre.
+        for (const o of map.regions) if (o !== r) expect(inside([o.x, o.y], r.points)).toBe(false)
+      }
+      expect(map.routes.length).toBeGreaterThan(0)
+      for (const route of map.routes) { expect(route.a).not.toBe(route.b); expect(route.d).toMatch(/^M[-\d. ]+Q[-\d. ]+$/) }
+      // Renaming changes the lettering and nothing else.
+      const renamed = M.buildMap({ ...s, names: { ...s.names, [map.regions[0].id]: 'Testhaven' } })
+      expect(renamed.regions[0].name).toBe('Testhaven')
+      expect(renamed.regions[0].d).toBe(map.regions[0].d)
+    }
+    expect(M.buildMap(G.generateSetting({ ...G.DEFAULT_ANSWERS, genres: ['scifi'] }, 'blue')).theme).toBe('blueprint')
+  })
+  it('picks a fitting symbol for each kind of terrain', () => {
+    expect(M.glyphFor('Old Forest')).toBe('tree')
+    expect(M.glyphFor('Dragon Peaks')).toBe('peak')
+    expect(M.glyphFor('Tidal Marsh')).toBe('reed')
+    expect(M.glyphFor('Ice Shelf')).toBe('snow')
+    expect(M.glyphFor('Blighted Wood')).toBe('deadtree')
+    expect(M.glyphFor('Archipelago')).toBe('wave')
+    expect(M.glyphFor('Steppe')).toBe('tuft')
+  })
+})

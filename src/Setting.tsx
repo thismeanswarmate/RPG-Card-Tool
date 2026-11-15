@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react'
-import { EXPANSION_COLORS } from './expansions'
 import { allowHint, isDirect } from './comfy'
 import { ART, imageIds, imageSpec } from './imagePrompts'
 import { useImages } from './imageStore'
 import { titleCase } from './names'
 import {
-  charText, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, terrainOf, tiesTo, worldProse,
+  charText, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
   type Answers, type Char, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
+import { SettingMap } from './SettingMap'
 import { useSettings } from './settingStore'
-import { TERRAIN_COLORS } from './starter'
 import { ToolNav } from './ToolNav'
 
 const upper = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
@@ -166,32 +165,6 @@ const Refs = ({ label, ids, s }: { label: string; ids: string[]; s: SettingData 
     </p>
   ) : null
 
-function Map({ s }: { s: SettingData }) {
-  const roots = rootsOf(s)
-  const k = 0.3
-  const xs = roots.map((r) => s.board[r].x * k)
-  const ys = roots.map((r) => s.board[r].y * k)
-  const [x0, y0] = [Math.min(...xs) - 10, Math.min(...ys) - 10]
-  const [w, h] = [Math.max(...xs) - x0 + 160, Math.max(...ys) - y0 + 84]
-  return (
-    <svg className="map" viewBox={`0 0 ${w} ${h}`} style={{ maxWidth: w * 1.4 }} role="img" aria-label="Map of the setting">
-      <defs>
-        {roots.map((r) => {
-          const [a, b] = TERRAIN_COLORS[terrainOf(s, r)] ?? EXPANSION_COLORS[terrainOf(s, r)] ?? ['#667', '#445']
-          return <linearGradient key={r} id={`g-${r}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={a} /><stop offset="1" stopColor={b} /></linearGradient>
-        })}
-      </defs>
-      {roots.map((r) => (
-        <g key={r} transform={`translate(${s.board[r].x * k - x0}, ${s.board[r].y * k - y0})`} onClick={() => go(r)}>
-          <rect width="150" height="74" rx="10" fill={`url(#g-${r})`} />
-          <text x="75" y="33" className="map-name">{s.names[r]}</text>
-          <text x="75" y="52" className="map-kind">{terrainOf(s, r)}</text>
-        </g>
-      ))}
-    </svg>
-  )
-}
-
 /** A power, thing or event, with whatever hangs from it nested beneath. */
 function EntityBlock({ e, s, children }: { e: Entity; s: SettingData; children?: React.ReactNode }) {
   return (
@@ -260,7 +233,7 @@ function Gazetteer({ s }: { s: SettingData }) {
       </header>
       <ImagePanel s={s} />
       <Picture id="world" s={s} />
-      <Map s={s} />
+      <SettingMap s={s} />
       <nav className="gaz-nav">
         {rootsOf(s).map((r) => <button key={r} onClick={() => go(r)}>{s.names[r]}</button>)}
       </nav>

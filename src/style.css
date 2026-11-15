@@ -229,6 +229,12 @@ h2:hover .rename, h4:hover .rename, .named:hover .rename, .rename:focus-within {
 .map rect { stroke: rgb(255 255 255 / .18); }
 .map-name { fill: #fff; font-size: 13px; font-weight: 700; text-anchor: middle; paint-order: stroke; stroke: rgb(0 0 0 / .45); stroke-width: 3px; }
 .map-kind { fill: #fff; font-size: 9.5px; text-anchor: middle; letter-spacing: .08em; text-transform: uppercase; opacity: .9; }
+.atlas { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.atlas svg { width: 100%; height: auto; border-radius: 6px; box-shadow: 0 6px 24px rgb(0 0 0 / .5); display: block; }
+.atlas .region, .atlas .site, .atlas .place-label { cursor: pointer; }
+.atlas .region:hover { fill-opacity: 1; }
+.atlas figcaption { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.atlas figcaption button { flex: none; font-size: 12px; padding: 3px 10px; }
 .gaz-nav { display: flex; gap: 6px; flex-wrap: wrap; position: sticky; top: -20px; background: var(--bg); padding: 8px 0; z-index: 2; }
 .gz-band { font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); border-bottom: 1px solid var(--line); padding: 14px 0 6px; scroll-margin-top: 40px; }
 .entry { background: var(--surface); border-radius: 10px; border-left: 4px solid var(--c, var(--terrain)); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; scroll-margin-top: 50px; }
