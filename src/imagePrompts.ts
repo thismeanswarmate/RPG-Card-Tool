@@ -70,7 +70,7 @@ export const ART: Record<string, { label: string; medium: string; light?: string
   film: { label: 'Film still', medium: 'Cinematic film still, wide anamorphic frame, shallow depth of field, subtle film grain.', light: 'Dramatic directional light.' },
   noir: { label: 'Black and white', medium: 'High-contrast black and white photograph, film noir, heavy grain.', light: 'Hard light and deep black shadows.' },
   pixel: { label: 'Pixel art', medium: 'Detailed pixel art with a limited palette, crisp square pixels, no blur.', light: 'Clear simple lighting.' },
-  tapestry: { label: 'Embroidered tapestry', medium: 'Embroidered medieval tapestry, flat figures, woven texture, faded dyes, decorative border.', light: 'Flat, even light.' },
+  tapestry: { label: 'Embroidered tapestry', medium: 'Embroidered wall tapestry, flat figures, woven texture, faded dyes, decorative border.', light: 'Flat, even light.' },
 }
 
 export interface ImageSpec { prompt: string; w: number; h: number; seed: number }
@@ -128,7 +128,7 @@ export function imageSpec(s: Setting, id: string): ImageSpec {
   if (person) {
     const faction = s.entities.find((e) => e.id === person.faction)
     return done(
-      `A portrait of ${an(person.what)}${faction ? `, a member of ${an(faction.what)}` : ''}, standing ${where(s, person.home)}. Head and shoulders, expressive face, looking at the viewer. ${hints(s, person.details)}.`,
+      `A portrait of ${an(person.what)}${faction ? `, a member of ${an(faction.what)}` : ''}, standing ${where(s, person.home)}. Head and shoulders, expressive face, looking at the viewer. Their story: ${hints(s, person.details)}.`,
       TALL)
   }
   const e = s.entities.find((x: Entity) => x.id === id)
