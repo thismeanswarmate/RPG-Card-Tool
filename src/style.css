@@ -233,6 +233,17 @@ h2:hover .rename, h4:hover .rename, .named:hover .rename, .rename:focus-within {
 .gz-band { font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); border-bottom: 1px solid var(--line); padding: 14px 0 6px; scroll-margin-top: 40px; }
 .entry { background: var(--surface); border-radius: 10px; border-left: 4px solid var(--c, var(--terrain)); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; scroll-margin-top: 50px; }
 .entry h4 { font-size: 18px; margin: 0; }
+.entry.place { border-left-color: var(--terrain); gap: 12px; padding: 16px 18px; }
+.entry.place > h4 { font-size: 21px; }
+.entry.nested { background: color-mix(in srgb, var(--raised) 60%, var(--surface)); margin-left: 4px; padding: 12px 14px; box-shadow: none; }
+.entry.nested .entry.nested { background: var(--surface); }
+.entry.nested .entry.nested .entry.nested { background: color-mix(in srgb, var(--raised) 60%, var(--surface)); }
+.entry.site { border-left-color: var(--site); }
+.entry h5 { font-size: 15.5px; margin: 0; }
+.entry h5 small { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; text-transform: uppercase; letter-spacing: .06em; }
+.entry.nested .prose { font-size: 14px; }
+h5:hover .rename { opacity: 1; }
+.gaz-nav button { font-size: 12.5px; padding: 3px 9px; }
 .entry h4 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 6px; }
 .refs { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; align-items: baseline; }
 .refs > span:first-child { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
@@ -262,6 +273,8 @@ html, body, #root { height: 100dvh; }
   .setting { display: block; overflow-y: auto; }
   .setting-main { overflow: visible; padding: 14px 12px 50px; }
   .rename { opacity: 1; }
+  .entry.place { padding: 12px 10px; }
+  .entry.nested { margin-left: 0; padding: 10px 9px; }
   button.big { align-self: stretch; }
   .tools button { padding: 6px 7px; }
   .options { grid-template-columns: 1fr; }

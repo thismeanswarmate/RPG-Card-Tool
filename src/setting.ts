@@ -29,7 +29,15 @@ export const QUESTIONS = {
 
 export const DEFAULT_ANSWERS: Answers = { size: 'country', genres: ['fantasy'], lands: ['temperate'], focus: ['power', 'adventure'], depth: 'standard' }
 
-export interface Entity { id: string; kind: Kind; what: string; home?: string; details: DetailInst[] }
+export interface Entity {
+  id: string
+  kind: Kind
+  what: string
+  home?: string
+  details: DetailInst[]
+  /** The power whose details first brought this thing into the setting. */
+  from?: string
+}
 /** A person: a role from the story deck, described with details from the lore deck. */
 export interface Char extends Entity { kind: 'figure'; home: string; faction?: string; local: boolean }
 export interface HookLine { who: string; drive: string; target: string; but?: string; also?: { drive: string; target: string } }
@@ -144,11 +152,11 @@ export function generateSetting(answers: Answers, seed: string): Setting {
     const packs = { deities, emblems: false, names: false }
     const entities: Entity[] = []
     const used = new Set<string>()
-    const make = (kind: Kind, home?: string): Entity => {
+    const make = (kind: Kind, home?: string, from?: string): Entity => {
       const fresh = PRIMARY[kind].filter((p) => !used.has(`${kind}:${p}`))
       const what = pick(fresh.length ? fresh : PRIMARY[kind])
       used.add(`${kind}:${what}`)
-      const e: Entity = { id: `e${entities.length}`, kind, what, home, details: [] }
+      const e: Entity = { id: `e${entities.length}`, kind, what, home, details: [], ...(from ? { from } : {}) }
       entities.push(e)
       const nameKind = kind === 'figure' || kind === 'place' ? 'object' : kind
       name(e.id, { kind: nameKind, tongue: tongueAt(home), base: what }, home && rootOf(board, home))
@@ -192,7 +200,7 @@ export function generateSetting(answers: Answers, seed: string): Setting {
       }
       if (existing.length && (!create || kind === 'faction' || budget <= 0 || rng() < 0.35)) return { kind, node: pick(existing).id }
       budget--
-      return { kind, node: make(kind, self.home ?? pick(places)).id }
+      return { kind, node: make(kind, self.home ?? pick(places), self.id).id }
     }
     const detail = (self: Entity, count: number, create: boolean) => {
       const pool = detailsFor(self.kind, packs).filter((t) => {
@@ -271,31 +279,64 @@ export const rootsOf = (s: Setting) =>
 export const terrainOf = (s: Setting, root: string) => cueText(CARDS, s.board[root])
 export const homeRoot = (s: Setting, place: string) => rootOf(s.board, place)
 
+/** A faction with what hangs from it: its members and the things its details brought into being. */
+export interface PowerNode { power: Entity; members: Char[]; things: Entity[] }
+/** A spot — the land itself or one site on it — with everything found there. */
+export interface Spot { id: string; text: string; powers: PowerNode[]; things: Entity[]; people: Char[] }
+
 export interface PlaceView {
   id: string
   name: string
   aka: string
-  prose: string[]
+  /** The land, with everything that belongs to the place as a whole. */
+  land: Spot
+  sites: Spot[]
+  /** Members of factions based elsewhere who live here. */
+  visitors: Char[]
   todo: string[]
-  sites: string[]
-  people: Char[]
-  powers: Entity[]
-  hooks: Hook[]
 }
 
+/** The faction a thing hangs from: the one that brought it in, or failing that the first to mention it. */
+function ownerOf(s: Setting, e: Entity): string | undefined {
+  if (e.kind === 'faction') return undefined
+  const factions = s.entities.filter((f) => f.kind === 'faction')
+  if (e.from && factions.some((f) => f.id === e.from)) return e.from
+  return factions.find((f) => f.details.some((d) => d.links.some((l) => l.node === e.id)))?.id
+}
+
+/**
+ * One place as a tree: the land and each site, and under each the factions based there, with their
+ * members and things beneath them, then whatever else is found there and whoever lives there unattached.
+ */
 export function placeView(s: Setting, root: string): PlaceView {
+  const hubs = subtree(s.board, root).filter((id) => CARDS[id].type === 'terrain' || CARDS[id].type === 'site')
   const inside = new Set(subtree(s.board, root))
-  const book = chronicle({ [root]: s.board[root], ...Object.fromEntries([...inside].map((id) => [id, s.board[id]])) }, CARDS, [], [])
+  const paragraphs = describe(s.board, CARDS, root, [], s.names)
+  const book = chronicle(Object.fromEntries([...inside].map((id) => [id, s.board[id]])), CARDS, [], [])
+  const owned = new Map(s.entities.map((e) => [e.id, ownerOf(s, e)]))
+  const spot = (id: string, i: number): Spot => {
+    const powers = s.entities.filter((e) => e.kind === 'faction' && e.home === id)
+    return {
+      id,
+      text: [paragraphs[i] ?? '', mentions(s, id)].filter(Boolean).join(' '),
+      powers: powers.map((power) => ({
+        power,
+        members: s.people.filter((c) => c.faction === power.id),
+        things: s.entities.filter((e) => owned.get(e.id) === power.id),
+      })),
+      things: s.entities.filter((e) => e.kind !== 'faction' && e.home === id && !owned.get(e.id)),
+      people: s.people.filter((c) => c.home === id && !c.faction),
+    }
+  }
+  const [land, ...sites] = hubs.map(spot)
   return {
     id: root,
     name: s.names[root],
     aka: upper(placeName(s.board, CARDS, root)),
-    prose: [...describe(s.board, CARDS, root, [], s.names), present(s, inside)].filter(Boolean),
+    land,
+    sites,
+    visitors: s.people.filter((c) => inside.has(c.home) && c.faction && !inside.has(s.entities.find((e) => e.id === c.faction)?.home ?? '')),
     todo: book[0]?.prompts ?? [],
-    sites: [...inside].filter((id) => CARDS[id].type === 'site'),
-    people: s.people.filter((c) => inside.has(c.home)),
-    powers: s.entities.filter((e) => e.home && inside.has(e.home)),
-    hooks: s.hooks.filter((h) => h.at === root),
   }
 }
 
@@ -348,21 +389,6 @@ function mentions(s: Setting, id: string, skip: (other: Entity) => boolean = () 
   return out.slice(0, 4).join(' ')
 }
 
-const HERE: Partial<Record<Kind, string>> = {
-  event: 'took place here', object: 'is kept here', creature: 'is found here', material: 'comes from here', deity: 'has its chief shrine here',
-}
-
-/** The paragraph that closes a place: who is based there, who lives there, and what else belongs to it. */
-function present(s: Setting, inside: Set<string>): string {
-  const out: string[] = []
-  for (const f of s.entities.filter((e) => e.kind === 'faction' && e.home && inside.has(e.home))) out.push(`${upper(s.names[f.id])} is based ${whereText(s, f.home!).split(',')[0]}.`)
-  const locals = s.people.filter((c) => inside.has(c.home)).map((c) => `${s.names[c.id]} (${an(c.what)})`)
-  if (locals.length) out.push(`${locals.length === 1 ? 'Living here is' : 'Among those who live here are'} ${listOf(locals)}.`)
-  for (const e of s.entities.filter((x) => x.home && inside.has(x.home) && HERE[x.kind])) out.push(`${upper(s.names[e.id])} ${HERE[e.kind]}.`)
-  const said = [...inside].flatMap((id) => (s.board[id] && CARDS[id] && (CARDS[id].type === 'terrain' || CARDS[id].type === 'site') ? [mentions(s, id)] : [])).filter(Boolean)
-  return [...out, ...said].join(' ')
-}
-
 /** A power, thing or event as paragraphs: what it is and where, what is true of it, and what others say of it. */
 export function entityText(s: Setting, e: Entity): string[] {
   const name = upper(s.names[e.id])
@@ -376,11 +402,10 @@ export function entityText(s: Setting, e: Entity): string[] {
     material: `${name} is a kind of ${e.what}${gloss}${at ? `, got ${at}` : ''}.`,
     deity: `${name} is the ${e.what}${gloss}.${at ? ` The chief shrine stands ${at}.` : ''}`,
   }
-  const members = e.kind === 'faction' ? s.people.filter((c) => c.faction === e.id).map((c) => `${s.names[c.id]} (${an(c.what)})`) : []
   const short = e.kind === 'deity' ? 'The deity' : e.kind === 'material' ? `The ${e.what}` : `The ${e.what}`
   return [
     intro[e.kind] ?? `${name} is ${an(e.what)}.`,
-    [detailProse(s, e.details, 'It', short), members.length ? `Its people include ${listOf(members)}.` : ''].filter(Boolean).join(' '),
+    detailProse(s, e.details, 'It', short),
     // A feud is told once, from this side, even when the rival names it too.
     mentions(s, e.id, (other) => other.kind === 'faction' && e.details.some((d) => d.links.some((l) => l.node === other.id))),
   ].filter(Boolean)
@@ -440,20 +465,29 @@ export function settingMarkdown(s: Setting): string {
   const out: string[] = [`# ${titleCase(upper(s.names.world))}`, `_${summary(s)} · seed “${s.seed}”_`]
   const meta = worldProse(s)
   out.push('## Overview', ...meta.text, ...meta.prompts.map((p) => `- ${p}`))
+  const entity = (e: Entity, depth: number) => out.push(`${'#'.repeat(depth)} ${upper(s.names[e.id])} (${e.kind === 'deity' ? e.what : `${e.kind}: ${e.what}`})`, ...entityText(s, e))
+  const person = (c: Char, depth: number) => out.push(`${'#'.repeat(depth)} ${s.names[c.id]} (${c.what})`, ...charText(s, c))
+  const spot = (sp: Spot, depth: number) => {
+    for (const p of sp.powers) {
+      entity(p.power, depth)
+      for (const c of p.members) person(c, depth + 1)
+      for (const e of p.things) entity(e, depth + 1)
+    }
+    for (const e of sp.things) entity(e, depth)
+    for (const c of sp.people) person(c, depth)
+  }
   out.push('## Places')
   for (const r of rootsOf(s)) {
     const v = placeView(s, r)
-    out.push(`### ${v.name} — ${v.aka}`, ...v.prose)
-    if (v.sites.length) out.push(`Sites: ${v.sites.map((id) => s.names[id]).join(', ')}.`)
-    if (v.people.length) out.push(`People: ${v.people.map((c) => s.names[c.id]).join(', ')}.`)
-    if (v.powers.length) out.push(`Also here: ${v.powers.map((e) => s.names[e.id]).join(', ')}.`)
-    out.push(...v.todo.map((p) => `- ${p}`), ...v.hooks.map((h) => `- Story: ${hookText(s, h)}`))
+    out.push(`### ${v.name} — ${v.aka}`, v.land.text)
+    spot(v.land, 4)
+    for (const site of v.sites) {
+      out.push(`#### ${s.names[site.id]}`, site.text)
+      spot(site, 5)
+    }
+    if (v.visitors.length) out.push(`Also living here: ${listOf(v.visitors.map((c) => `${s.names[c.id]} (of ${s.names[c.faction!]})`))}.`)
+    out.push(...v.todo.map((p) => `- ${p}`))
   }
-  out.push('## Powers and things')
-  for (const kind of KIND_ORDER)
-    for (const e of s.entities.filter((x) => x.kind === kind)) out.push(`### ${upper(s.names[e.id])} (${kind === 'deity' ? e.what : `${kind}: ${e.what}`})`, ...entityText(s, e))
-  out.push('## People')
-  for (const c of s.people) out.push(`### ${s.names[c.id]} (${c.what})`, ...charText(s, c))
-  out.push('## Stories', ...s.hooks.map((h) => `- ${hookText(s, h)}`))
+  out.push('## Stories', ...s.hooks.map((h) => `- ${hookText(s, h)} (${s.names[h.at]})`))
   return out.join('\n\n')
 }

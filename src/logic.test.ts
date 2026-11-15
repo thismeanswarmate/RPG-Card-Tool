@@ -430,8 +430,8 @@ describe('settings', async () => {
       for (const h of s.hooks) for (const l of h.lines) { expect(ids.has(l.who)).toBe(true); expect(ids.has(l.target)).toBe(true); expect(l.target).not.toBe(l.who) }
       for (const r of roots) {
         const v = G.placeView(s, r)
-        expect(v.prose[0]).toContain(s.names[r])
-        expect(v.prose.join(' ')).toMatch(/\./)
+        expect(v.land.text).toContain(s.names[r])
+        for (const site of v.sites) expect(site.text).toContain(s.names[site.id])
       }
       const text = G.settingMarkdown(s)
       expect(text).not.toMatch(/[{}]|undefined|  /)
@@ -511,7 +511,8 @@ describe('setting descriptions', async () => {
     }
     const f = s.entities.find((e) => e.kind === 'faction')!
     const member = s.people.find((c) => c.faction === f.id)!
-    expect(G.entityText(s, f).join(' ')).toContain(`Its people include ${s.names[member.id]} (`)
+    const spots = G.rootsOf(s).flatMap((r) => { const v = G.placeView(s, r); return [v.land, ...v.sites] })
+    expect(spots.flatMap((sp) => sp.powers).find((p) => p.power.id === f.id)!.members.map((c) => c.id)).toContain(member.id)
     for (const c of s.people) {
       const text = G.charText(s, c)
       expect(text[0]).toContain(`${s.names[c.id]} is a`)
@@ -524,8 +525,13 @@ describe('setting descriptions', async () => {
       const who = s.entities.find((e) => e.details.some((d) => d.links.some((l) => l.node === pointed.id)))!
       expect(G.charText(s, pointed).join(' ')).toContain(s.names[who.id].replace(/^the /, ''))
     }
-    const home = G.placeView(s, G.homeRoot(s, member.home))
-    expect(home.prose.at(-1)).toContain(s.names[member.id])
+    // Every power, thing and person appears exactly once in the tree of places.
+    const shown = spots.flatMap((sp) => [
+      ...sp.powers.flatMap((p) => [p.power.id, ...p.members.map((c) => c.id), ...p.things.map((e) => e.id)]),
+      ...sp.things.map((e) => e.id), ...sp.people.map((c) => c.id),
+    ])
+    expect([...shown].sort()).toEqual([...s.entities, ...s.people].map((e) => e.id).sort())
+    for (const sp of spots) for (const p of sp.powers) { expect(p.power.home).toBe(sp.id); for (const c of p.members) expect(c.faction).toBe(p.power.id) }
     for (const h of s.hooks) expect(G.hookText(s, h)).toMatch(/^[A-Z].*\.$/)
   })
 })

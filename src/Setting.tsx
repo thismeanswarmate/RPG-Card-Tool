@@ -5,8 +5,8 @@ import { ART, imageIds, imageSpec } from './imagePrompts'
 import { useImages } from './imageStore'
 import { titleCase } from './names'
 import {
-  charText, DEFAULT_ANSWERS, entityText, homeRoot, hookText, KIND_ORDER, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, terrainOf, tiesTo, worldProse,
-  type Answers, type Setting as SettingData,
+  charText, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, terrainOf, tiesTo, worldProse,
+  type Answers, type Char, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import { useSettings } from './settingStore'
 import { TERRAIN_COLORS } from './starter'
@@ -192,6 +192,46 @@ function Map({ s }: { s: SettingData }) {
   )
 }
 
+/** A power, thing or event, with whatever hangs from it nested beneath. */
+function EntityBlock({ e, s, children }: { e: Entity; s: SettingData; children?: React.ReactNode }) {
+  return (
+    <section id={`set-${e.id}`} className={`entry nested lk-${e.kind}`}>
+      <h5><Name id={e.id} s={s} /> <small>{e.kind === 'deity' ? e.what : `${e.kind} · ${e.what}`}</small></h5>
+      <Picture id={e.id} s={s} />
+      <div className="prose">{entityText(s, e).map((t, i) => <p key={i}>{t}</p>)}</div>
+      <Refs label="Tied to" ids={tiesTo(s, e.id)} s={s} />
+      {children}
+    </section>
+  )
+}
+
+function PersonBlock({ c, s }: { c: Char; s: SettingData }) {
+  return (
+    <section id={`set-${c.id}`} className="entry nested lk-figure">
+      <h5><Name id={c.id} s={s} /> <small>{c.what}</small></h5>
+      <Picture id={c.id} s={s} />
+      <div className="prose">{charText(s, c).map((t, i) => <p key={i}>{t}</p>)}</div>
+      <Refs label="Tied to" ids={tiesTo(s, c.id).filter((id) => id !== c.faction)} s={s} />
+    </section>
+  )
+}
+
+/** Everything found at one spot: factions with their people and things beneath them, then the rest. */
+function SpotBody({ sp, s }: { sp: Spot; s: SettingData }) {
+  return (
+    <>
+      {sp.powers.map((p) => (
+        <EntityBlock key={p.power.id} e={p.power} s={s}>
+          {p.members.map((c) => <PersonBlock key={c.id} c={c} s={s} />)}
+          {p.things.map((e) => <EntityBlock key={e.id} e={e} s={s} />)}
+        </EntityBlock>
+      ))}
+      {sp.things.map((e) => <EntityBlock key={e.id} e={e} s={s} />)}
+      {sp.people.map((c) => <PersonBlock key={c.id} c={c} s={s} />)}
+    </>
+  )
+}
+
 function Gazetteer({ s }: { s: SettingData }) {
   const [copied, setCopied] = useState(false)
   const meta = worldProse(s)
@@ -222,66 +262,42 @@ function Gazetteer({ s }: { s: SettingData }) {
       <Picture id="world" s={s} />
       <Map s={s} />
       <nav className="gaz-nav">
-        {['Places', 'Powers', 'People', 'Stories'].map((t) => <button key={t} onClick={() => go(t)}>{t}</button>)}
+        {rootsOf(s).map((r) => <button key={r} onClick={() => go(r)}>{s.names[r]}</button>)}
       </nav>
 
-      {(
-        <section className="prose">
-          <h3>Overview</h3>
-          {meta.text.map((t, i) => <p key={i}>{t}</p>)}
-          {meta.prompts.length > 0 && <ul>{meta.prompts.map((t, i) => <li key={i}>{t}</li>)}</ul>}
-        </section>
-      )}
+      <section className="prose">
+        <h3>Overview</h3>
+        {meta.text.map((t, i) => <p key={i}>{t}</p>)}
+        {meta.prompts.length > 0 && <ul>{meta.prompts.map((t, i) => <li key={i}>{t}</li>)}</ul>}
+      </section>
 
-      <h3 className="gz-band" id="set-Places">Places</h3>
       {rootsOf(s).map((r) => {
         const v = placeView(s, r)
         return (
-          <article key={r} id={`set-${r}`} className="entry">
+          <article key={r} id={`set-${r}`} className="entry place">
             <h4><Name id={r} s={s} /> <small>{v.aka}</small></h4>
             <Picture id={r} s={s} />
-            <div className="prose">{v.prose.map((t, i) => <p key={i}>{t}</p>)}</div>
-            {v.sites.length > 0 && (
-              <p className="refs"><span>Sites</span>{v.sites.map((id) => <span key={id} id={`set-${id}`} className="named"><Name id={id} s={s} /></span>)}</p>
-            )}
-            <Refs label="People" ids={v.people.map((c) => c.id)} s={s} />
-            <Refs label="Also here" ids={v.powers.map((e) => e.id)} s={s} />
-            {(v.todo.length > 0 || v.hooks.length > 0) && (
-              <ul className="todo">
-                {v.hooks.map((h) => <li key={h.id}><b>Story</b> — {hookText(s, h)}</li>)}
-                {v.todo.map((t, i) => <li key={i}>{t}</li>)}
-              </ul>
-            )}
+            <div className="prose"><p>{v.land.text}</p></div>
+            <SpotBody sp={v.land} s={s} />
+            {v.sites.map((site) => (
+              <section key={site.id} id={`set-${site.id}`} className="entry nested site">
+                <h5><Name id={site.id} s={s} /> <small>site</small></h5>
+                <div className="prose"><p>{site.text}</p></div>
+                <SpotBody sp={site} s={s} />
+              </section>
+            ))}
+            <Refs label="Also living here" ids={v.visitors.map((c) => c.id)} s={s} />
+            {v.todo.length > 0 && <ul className="todo">{v.todo.map((t, i) => <li key={i}>{t}</li>)}</ul>}
           </article>
         )
       })}
 
-      <h3 className="gz-band" id="set-Powers">Powers and things</h3>
-      {KIND_ORDER.flatMap((kind) => s.entities.filter((e) => e.kind === kind)).map((e) => (
-        <article key={e.id} id={`set-${e.id}`} className={`entry lk-${e.kind}`}>
-          <h4><Name id={e.id} s={s} /> <small>{e.kind === 'deity' ? e.what : `${e.kind} · ${e.what}`}</small></h4>
-          <Picture id={e.id} s={s} />
-          <div className="prose">{entityText(s, e).map((t, i) => <p key={i}>{t}</p>)}</div>
-          {e.home && <Refs label="Where" ids={[homeRoot(s, e.home)]} s={s} />}
-          <Refs label="Tied to" ids={tiesTo(s, e.id)} s={s} />
-        </article>
-      ))}
-
-      <h3 className="gz-band" id="set-People">People</h3>
-      {s.people.map((c) => (
-        <article key={c.id} id={`set-${c.id}`} className="entry lk-figure">
-          <h4><Name id={c.id} s={s} /> <small>{c.what}</small></h4>
-          <Picture id={c.id} s={s} />
-          <div className="prose">{charText(s, c).map((t, i) => <p key={i}>{t}</p>)}</div>
-          <Refs label="Where" ids={[homeRoot(s, c.home)]} s={s} />
-          <Refs label="Tied to" ids={[...(c.faction ? [c.faction] : []), ...tiesTo(s, c.id).filter((id) => id !== c.faction)]} s={s} />
-        </article>
-      ))}
-
-      <h3 className="gz-band" id="set-Stories">Stories</h3>
-      <ul className="todo stories">
-        {s.hooks.map((h) => <li key={h.id}>{hookText(s, h)} <button className="link" onClick={() => go(h.at)}>({s.names[h.at]})</button></li>)}
-      </ul>
+      <details className="images">
+        <summary>All stories <small>{s.hooks.length} under way</small></summary>
+        <ul className="todo stories">
+          {s.hooks.map((h) => <li key={h.id}>{hookText(s, h)} <button className="link" onClick={() => go(h.lines[0].who)}>({s.names[h.at]})</button></li>)}
+        </ul>
+      </details>
     </div>
   )
 }
