@@ -868,3 +868,62 @@ describe('settings built by hand, and built places in generated ones', async () 
     expect(G.builtText(s, s.built!.find((x) => x.id === peril)!).length).toBeGreaterThan(2)
   })
 })
+
+describe('choosing the parts of a hand-built place from lists', async () => {
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  it('offers every part as text and applies the choice, keeping names and whatever is based there', () => {
+    for (let n = 0; n < 20; n++) {
+      const s = B.newManual(['fantasy'], ['temperate', 'coast'])
+      const root = B.addPlace(s)!
+      const site = G.placeView(s, root).sites[0].id
+      const [faction, person] = [B.addPower(s, 'faction', site), B.addPerson(s, root)]
+      B.addStory(s, person)
+      const [placeName, siteName, id] = [s.names[root], s.names[site], s.id]
+
+      // The land: pick a different one. The place keeps its name, its site and its people.
+      const lands = B.choices(s, 'terrain', root)
+      expect(lands.length).toBeGreaterThan(10)
+      for (const c of lands) expect(c.text).toBeTruthy()
+      const land = lands.find((c) => !c.value.startsWith(`${root}:`))!
+      B.choose(s, root, 'terrain', land.value, root)
+      const next = G.rootsOf(s)[0]
+      expect(next).not.toBe(root)
+      expect(G.terrainOf(s, next)).toBe(land.text)
+      expect([s.names[next], s.id, s.people[0].home]).toEqual([placeName, id, next])
+      expect(JSON.stringify(s)).not.toContain(`"${root}"`)
+
+      // The site: likewise, and the faction based there moves with it.
+      const kind = B.choices(s, 'site', site).find((c) => !c.value.startsWith(`${site}:`))!
+      B.choose(s, next, 'site', kind.value, site)
+      const view = G.placeView(s, next)
+      expect(s.names[view.sites[0].id]).toBe(siteName)
+      expect(view.sites[0].powers[0].power.id).toBe(faction)
+      expect(B.chosen(s, view.sites[0].id)).toBe(kind.value)
+      expect(s.specs[view.sites[0].id].base).toBe(kind.text.toLowerCase())
+
+      // The describing parts: choose, leave out, and pick at random.
+      for (const [type] of B.ASPECTS.slice(1)) {
+        const [now] = B.aspectsOf(s, next, type)
+        const pick = B.choices(s, type, now).find((c) => c.value !== B.chosen(s, now))!
+        B.choose(s, next, type, pick.value, now)
+        const [after] = B.aspectsOf(s, next, type)
+        expect(B.chosen(s, after)).toBe(pick.value)
+        B.choose(s, next, type, '', after)
+        expect(B.aspectsOf(s, next, type)).toHaveLength(0)
+        B.choose(s, next, type, 'random')
+        expect(B.aspectsOf(s, next, type)).toHaveLength(1)
+      }
+      expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN/)
+
+      // What a power is, and a person's role.
+      const kinds = B.whatChoices(s, faction)
+      expect(kinds.length).toBeGreaterThan(5)
+      B.setWhat(s, faction, kinds.find((k) => k !== s.entities[0].what)!)
+      expect(G.entityText(s, s.entities[0])[0]).toContain(s.entities[0].what)
+      const roles = B.whatChoices(s, person)
+      B.setWhat(s, person, roles[0])
+      expect(G.charText(s, s.people[0])[0]).toContain(roles[0])
+    }
+  })
+})

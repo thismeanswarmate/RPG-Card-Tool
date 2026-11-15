@@ -246,7 +246,7 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
     else name(b.id, { kind: 'site', tongue: tongueAt(home), base: kindLabel(rolls) }, rootOf(board, home))
     return b
   }
-  return { pick, genres, depth, deities, roots, sitesOf, sites, places, name, tongueAt, person, make, detail, story, hook, build }
+  return { pick, genres, depth, roles, deities, roots, sitesOf, sites, places, name, tongueAt, person, make, detail, story, hook, build }
 }
 
 export function generateSetting(answers: Answers, seed: string): Setting {

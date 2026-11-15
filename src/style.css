@@ -379,3 +379,7 @@ html, body, #root { height: 100dvh; }
 .tables[open] { display: flex; flex-direction: column; gap: 6px; }
 .rename.shown { opacity: 1; }
 @media (max-width: 700px) { .choices { grid-template-columns: 1fr; } }
+
+.pick { display: inline-flex; flex-direction: column; gap: 2px; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; max-width: 100%; }
+.pick select { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text); max-width: 220px; }
+.edit-row { align-items: flex-end; }

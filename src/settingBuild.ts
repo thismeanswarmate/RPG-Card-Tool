@@ -2,7 +2,7 @@
 // changed and taken away again. Every function here changes the setting it is given.
 
 import { cueText, autoEdge, rootOf, subtree } from './logic'
-import type { Kind } from './lore'
+import { PRIMARY, type Kind } from './lore'
 import { tonguesFor } from './names'
 import { kindLabel, rollAll as rollPeril, stepsFor as perilSteps } from './peril'
 import { DEFAULT_ANSWERS, weave, type Built, type Char, type Entity, type Setting } from './setting'
@@ -26,19 +26,24 @@ export function newManual(genres: string[], lands: string[], title = ''): Settin
   return s
 }
 
-/** An unused card of a type from the decks this setting draws on, preferring its themed decks for terrain. */
-function draw(s: Setting, type: CardType): string | undefined {
+/** The unused cards of a type from the decks this setting draws on. */
+function unused(s: Setting, type: CardType) {
   const { genres, lands } = s.answers
   const decks = new Set(['starter', ...genres, ...lands])
   const used = new Set([...Object.keys(s.board), ...s.meta.map((h) => h.card)])
-  const all = Object.values(CARDS).filter((c) => c.type === type && decks.has(c.deck) && !used.has(c.id))
+  return Object.values(CARDS).filter((c) => c.type === type && decks.has(c.deck) && !used.has(c.id))
+}
+
+/** One of them at random, preferring the themed decks for terrain. */
+function draw(s: Setting, type: CardType): string | undefined {
+  const { lands } = s.answers
+  const all = unused(s, type)
   const themed = all.filter((c) => c.deck !== 'starter')
   const pool = type === 'terrain' && themed.length && lands.length && !lands.includes('temperate') ? themed : all
   return pool[rand(pool.length)]?.id
 }
 
-function tuck(s: Setting, id: string, hub: string) {
-  const active = rand(CARDS[id].cues.length)
+function tuck(s: Setting, id: string, hub: string, active = rand(CARDS[id].cues.length)) {
   const order = Object.values(s.board).reduce((n, p) => Math.max(n, p.order), 0) + 1
   s.board[id] = { id, active, x: 0, y: 0, parent: hub, edge: autoEdge(s.board, CARDS, hub, CARDS[id], active), order }
 }
@@ -94,6 +99,49 @@ export function redrawPlace(s: Setting, root: string) {
   dress(s, root)
 }
 
+/** The parts of a place that can be chosen, in the order they are shown, with the question each answers. */
+export const ASPECTS: [CardType, string][] = [['terrain', 'Land'], ['epithet', 'Called'], ['legacy', 'Its past'], ['trait', 'Today'], ['omen', 'What is afoot']]
+
+export interface Choice { value: string; text: string }
+/** Everything a part of a place could be, as plain text: what it is now, and whatever is not in use elsewhere. */
+export function choices(s: Setting, type: CardType, current?: string): Choice[] {
+  const cards = [...(current ? [CARDS[current]] : []), ...unused(s, type)]
+  return cards.flatMap((c) => c.cues.map((cue, i) => ({ value: `${c.id}:${i}`, text: cue.text })))
+    .sort((a, b) => a.text.replace(/^(of|the) /i, '').localeCompare(b.text.replace(/^(of|the) /i, '')))
+}
+export const chosen = (s: Setting, id: string) => `${id}:${s.board[id].active}`
+/** What describes a place, by part: for each, the entries now in play (a generated place can have two of one part). */
+export const aspectsOf = (s: Setting, root: string, type: CardType) => subtree(s.board, root).filter((id) => CARDS[id].type === type)
+
+/** Swap the id of a land or site for another, everywhere it is mentioned. */
+function rekey(s: Setting, from: string, to: string) {
+  const { id, ...rest } = s
+  Object.assign(s, JSON.parse(JSON.stringify(rest).split(JSON.stringify(from)).join(JSON.stringify(to))), { id })
+}
+
+/**
+ * Set one part of a place. `value` is a choice from `choices`, 'random' for any of them, or '' to leave the
+ * part out; `current` is the entry it replaces. A land or site keeps its name and everything in it.
+ */
+export function choose(s: Setting, root: string, type: CardType, value: string, current?: string) {
+  if (value === 'random') {
+    const all = choices(s, type, current).filter((c) => !current || c.value !== chosen(s, current))
+    if (!all.length) return
+    value = all[rand(all.length)].value
+  }
+  const [card, cue] = [value.slice(0, value.lastIndexOf(':')), +value.slice(value.lastIndexOf(':') + 1)]
+  if (type === 'terrain' || type === 'site') {
+    if (!current || !CARDS[card]) return
+    if (card !== current) rekey(s, current, card)
+    s.board[card].active = cue
+    if (type === 'site' && s.specs[card]) s.specs[card].base = cueText(CARDS, s.board[card]).toLowerCase()
+    return
+  }
+  const hub = (current && s.board[current]?.parent) || root
+  if (current) delete s.board[current]
+  if (CARDS[card]) tuck(s, card, hub, cue)
+}
+
 /** Whether a land or site card has another face to turn to. */
 export const canTurn = (id: string) => CARDS[id].cues.length > 1
 /** Turn a land or site to its next kind, keeping its name and everything in it. */
@@ -125,6 +173,21 @@ export function addPerson(s: Setting, home: string): string {
 export function rewrite(s: Setting, id: string) {
   const e = find(s, id)
   if (e) { const w = weave(s); w.detail(e, e.kind === 'faction' ? w.depth.major : w.depth.minor, false) }
+}
+
+/** What a power or thing of this kind could be, and the roles a person could have. */
+export const whatChoices = (s: Setting, id: string): string[] => {
+  const e = find(s, id)
+  if (!e) return []
+  const all = e.kind === 'figure' ? weave(s).roles : PRIMARY[e.kind]
+  return [...new Set([e.what, ...all])].sort((a, b) => a.localeCompare(b))
+}
+/** Change what something is. Its name stays; draw another to match if wanted. */
+export function setWhat(s: Setting, id: string, what: string) {
+  const e = find(s, id)
+  if (!e) return
+  e.what = what
+  if (e.kind !== 'figure' && s.specs[id]) s.specs[id].base = what
 }
 
 export function setFaction(s: Setting, id: string, faction: string | undefined) {

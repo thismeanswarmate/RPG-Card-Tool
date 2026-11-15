@@ -10,12 +10,13 @@ import {
   type Answers, type Built, type Char, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import {
-  addBuilt, addPerson, addPlace, addPower, addSite, addStory, builtEdit, builtReroll, builtSteps, canTurn, goneWith, redrawPlace, remove,
-  removeStory, rerollStory, rewrite, setFaction, turn,
+  addBuilt, addPerson, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choices, choose, chosen,
+  goneWith, redrawPlace, remove, removeStory, rerollStory, rewrite, setFaction, setWhat, whatChoices,
 } from './settingBuild'
 import { SettingMap } from './SettingMap'
 import { useSettings } from './settingStore'
 import { ToolNav } from './ToolNav'
+import type { CardType } from './types'
 
 const upper = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 const go = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -123,6 +124,20 @@ function NewSetting() {
         </button>
       </div>
     </div>
+  )
+}
+
+/** One part of a place as a list to choose from: every option in words, plus a random pick and, where it fits, none. */
+function Pick({ s, root, type, label, current, optional }: { s: SettingData; root: string; type: CardType; label: string; current?: string; optional?: boolean }) {
+  const edit = useSettings((x) => x.edit)
+  return (
+    <label className="pick">{label}
+      <select value={current ? chosen(s, current) : ''} onChange={(e) => edit((d) => choose(d, root, type, e.target.value, current))}>
+        {optional && <option value="">—</option>}
+        {choices(s, type, current).map((c) => <option key={c.value} value={c.value}>{c.text}</option>)}
+        <option value="random">Surprise me</option>
+      </select>
+    </label>
   )
 }
 
@@ -314,13 +329,18 @@ const Refs = ({ label, ids, s }: { label: string; ids: string[]; s: SettingData 
   ) : null
 
 /** The buttons under a power, thing or person while editing: write it again, change where a person belongs, start a story, remove. */
-function EditRow({ id, s, person }: { id: string; s: SettingData; person?: Char }) {
+function EditRow({ id, s, what, person }: { id: string; s: SettingData; what: string; person?: Char }) {
   const edit = useSettings((x) => x.edit)
   const drop = useRemove(s)
   if (!useContext(EditCtx)) return null
   const factions = s.entities.filter((e) => e.kind === 'faction')
   return (
     <div className="edit-row">
+      <label className="pick">{person ? 'Role' : 'Kind'}
+        <select value={what} onChange={(e) => edit((d) => setWhat(d, id, e.target.value))}>
+          {whatChoices(s, id).map((w) => <option key={w} value={w}>{w}</option>)}
+        </select>
+      </label>
       <button onClick={() => edit((d) => rewrite(d, id))} title="Write the details again, so they can take in what has been added since">↻ Rewrite</button>
       {person && factions.length > 0 && (
         <select value={person.faction ?? ''} aria-label="Belongs to" onChange={(e) => edit((d) => setFaction(d, id, e.target.value || undefined))}>
@@ -342,7 +362,7 @@ function EntityBlock({ e, s, children }: { e: Entity; s: SettingData; children?:
       <Picture id={e.id} s={s} />
       <div className="prose">{entityText(s, e).map((t, i) => <p key={i}>{t}</p>)}</div>
       <Refs label="Tied to" ids={tiesTo(s, e.id)} s={s} />
-      <EditRow id={e.id} s={s} />
+      <EditRow id={e.id} s={s} what={e.what} />
       {children}
     </section>
   )
@@ -355,7 +375,7 @@ function PersonBlock({ c, s }: { c: Char; s: SettingData }) {
       <Picture id={c.id} s={s} />
       <div className="prose">{charText(s, c).map((t, i) => <p key={i}>{t}</p>)}</div>
       <Refs label="Tied to" ids={tiesTo(s, c.id).filter((id) => id !== c.faction)} s={s} />
-      <EditRow id={c.id} s={s} person={c} />
+      <EditRow id={c.id} s={s} what={c.what} person={c} />
     </section>
   )
 }
@@ -417,7 +437,7 @@ function Gazetteer({ s }: { s: SettingData }) {
         <section className="guide">
           <h3>{!roots.length ? 'Step 1: a place' : bare ? `Next: fill in ${s.names[bare]}` : 'Next: another place, or more detail'}</h3>
           <p>
-            {!roots.length ? 'Every setting starts somewhere. Add a place and it arrives with a kind of land, a site, a name and a description.'
+            {!roots.length ? 'Every setting starts somewhere. Add a place and it arrives with a kind of land, a site, a name and a description, each of which you can then choose from a list.'
               : bare ? 'Use the “Add” buttons under the place to give it a faction, some people, a settlement or a danger. Whatever you add is described in terms of what is already there.'
                 : 'Add the next place, or keep filling in the ones you have. “Rewrite” on anything lets it take in what you have added since, and every name can be redrawn or typed.'}
           </p>
@@ -449,8 +469,11 @@ function Gazetteer({ s }: { s: SettingData }) {
             <div className="prose"><p>{v.land.text}</p></div>
             {editing && (
               <div className="edit-row">
-                <button onClick={() => edit((d) => redrawPlace(d, r))} title="Draw what it is called, what was there and what is afoot again">↻ Redraw description</button>
-                {canTurn(r) && <button onClick={() => edit((d) => turn(d, r))}>Change the land</button>}
+                {ASPECTS.flatMap(([type, label]) => {
+                  const now = aspectsOf(s, r, type)
+                  return (now.length ? now : [undefined]).map((id, i) => <Pick key={`${type}${i}`} s={s} root={r} type={type} label={label} current={id} optional={type !== 'terrain'} />)
+                })}
+                <button onClick={() => edit((d) => redrawPlace(d, r))} title="Pick the description again at random, keeping the land and its sites">↻ Surprise me</button>
                 <button onClick={() => drop(r)}>Remove place</button>
               </div>
             )}
@@ -461,7 +484,7 @@ function Gazetteer({ s }: { s: SettingData }) {
                 <div className="prose"><p>{site.text}</p></div>
                 {editing && (
                   <div className="edit-row">
-                    {canTurn(site.id) && <button onClick={() => edit((d) => turn(d, site.id))}>Change the kind of site</button>}
+                    <Pick s={s} root={r} type="site" label="Kind of site" current={site.id} />
                     <button onClick={() => drop(site.id)}>Remove site</button>
                   </div>
                 )}
