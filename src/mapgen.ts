@@ -35,7 +35,8 @@ const GLYPHS: [RegExp, Glyph][] = [
 ]
 export const glyphFor = (terrain: string): Glyph => GLYPHS.find(([re]) => re.test(terrain.toLowerCase()))?.[1] ?? 'tuft'
 
-export interface MapSite { id: string; name: string; x: number; y: number }
+/** A marked spot within a region: a site, a settlement or a dangerous place. */
+export interface MapSite { id: string; name: string; x: number; y: number; kind: 'site' | 'settlement' | 'peril' }
 export interface MapRegion {
   id: string
   name: string
@@ -235,19 +236,30 @@ export function buildMap(s: Setting): MapData {
     const glyph = glyphFor(terrain)
     const base = (TERRAIN_COLORS[terrain] ?? EXPANSION_COLORS[terrain] ?? ['#8a8f7a'])[0]
 
-    const hubs = subtree(s.board, id).filter((x) => CARDS[x].type === 'site')
+    // Sites first, then the settlements and dangerous places that stand anywhere in the place.
+    const within = new Set(subtree(s.board, id))
+    const marks = new Map<string, MapSite['kind']>([
+      ...[...within].filter((x) => CARDS[x].type === 'site').map((x) => [x, 'site'] as [string, MapSite['kind']]),
+      ...(s.built ?? []).filter((b) => within.has(b.home)).map((b) => [b.id, b.tool] as [string, MapSite['kind']]),
+    ])
+    const hubs = [...marks.keys()]
     const turn = rng() * Math.PI * 2
-    const sites = hubs.map((sid, k): MapSite => {
+    const sites: MapSite[] = []
+    hubs.forEach((sid, k) => {
       let a = turn + (k / Math.max(1, hubs.length)) * Math.PI * 2
       let spot: P = [cx, cy]
-      // Step round the centre until the site sits on its own land and clear of the place's lettering.
+      // Step round the centre until the mark sits on its own land, clear of the place's lettering and of the marks before it.
       const half = s.names[id].length * 5.4 + 14
       const lettered = (p: P) => Math.abs(p[0] - cx) < half + s.names[sid].length * 2.4 && p[1] > cy - 30 && p[1] < cy + 22
-      for (let tries = 0, r = 60; tries < 70; tries++, a += 0.45, r = Math.max(18, r - 1)) {
+      // Each ring is walked right round before moving to the next: the usual distance first, then nearer and farther.
+      const rings = [60, 42, 80, 100, 26, 122, 146]
+      for (let tries = 0; tries < rings.length * 14; tries++, a += 0.45) {
+        const r = rings[Math.floor(tries / 14)]
         spot = [cx + Math.cos(a) * r * 0.95, cy + Math.sin(a) * r + (Math.sin(a) >= 0 ? 16 : -10)]
-        if (inside(spot, fine) && inside([spot[0], spot[1] + 14], fine) && !lettered(spot)) break
+        const crowded = sites.some((q) => Math.abs(q.x - spot[0]) < 46 && Math.abs(q.y - spot[1]) < 24)
+        if (inside(spot, fine) && inside([spot[0], spot[1] + 14], fine) && !lettered(spot) && !crowded) break
       }
-      return { id: sid, name: s.names[sid], x: r1(spot[0]), y: r1(spot[1]) }
+      sites.push({ id: sid, name: s.names[sid], x: r1(spot[0]), y: r1(spot[1]), kind: marks.get(sid)! })
     })
 
     // Scatter the terrain symbol across the region, clear of the lettering, the sites and each other.

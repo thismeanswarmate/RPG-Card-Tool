@@ -1100,3 +1100,28 @@ describe('choosing the decks in the mix', async () => {
     expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN/)
   })
 })
+
+describe('settlements and dangerous places on the map', async () => {
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  const M = await import('./mapgen')
+  it('marks every one inside the place it stands in, clear of the other marks', () => {
+    for (const size of ['region', 'country', 'continent'] as const) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size, focus: ['adventure', 'everyday'] }, `marks-${size}`)
+      const [root] = G.rootsOf(s)
+      for (let i = 0; i < 3; i++) { B.addBuilt(s, 'settlement', root); B.addBuilt(s, 'peril', G.placeView(s, root).sites[0]?.id ?? root) }
+      const map = M.buildMap(s)
+      const marks = map.regions.flatMap((r) => r.sites.map((m) => ({ ...m, region: r.id })))
+      for (const b of s.built!) {
+        const mark = marks.find((m) => m.id === b.id)!
+        expect(mark, b.id).toBeTruthy()
+        expect([mark.kind, mark.name, mark.region]).toEqual([b.tool, s.names[b.id], G.homeRoot(s, b.home)])
+        expect(mark.x > 0 && mark.x < map.w && mark.y > 0 && mark.y < map.h).toBe(true)
+      }
+      expect(marks.filter((m) => m.kind === 'site').length).toBeGreaterThan(0)
+      // In all but the most crowded places no two marks sit on top of each other.
+      const clashes = marks.filter((a, i) => marks.some((b, j) => j > i && Math.abs(a.x - b.x) < 20 && Math.abs(a.y - b.y) < 12))
+      expect(clashes.length).toBeLessThanOrEqual(1)
+    }
+  })
+})

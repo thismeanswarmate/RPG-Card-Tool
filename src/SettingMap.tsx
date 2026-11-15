@@ -104,8 +104,22 @@ export function SettingMap({ s }: { s: Setting }) {
             <g key={r.id}>
               {r.sites.map((site) => (
                 <g key={site.id} className="site" onClick={() => go(site.id)}>
-                  <path d="M-5 4V-1L0-6L5-1V4Z" transform={`translate(${site.x} ${site.y})`} fill={t.ink} stroke={t.halo} strokeWidth="1" />
-                  <text x={site.x} y={site.y + 16} textAnchor="middle" fontSize="9.5" fontStyle="italic" fill={t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{site.name}</text>
+                  {site.kind === 'settlement' ? (
+                    // A settlement: the ringed dot of old maps.
+                    <g transform={`translate(${site.x} ${site.y})`}>
+                      <circle r="5.5" fill={t.halo} stroke={t.ink} strokeWidth="1.4" />
+                      <circle r="2.2" fill={t.ink} />
+                    </g>
+                  ) : site.kind === 'peril' ? (
+                    // A dangerous place: a cross in the colour of the routes.
+                    <g transform={`translate(${site.x} ${site.y})`}>
+                      <path d="M-5-5L5 5M5-5L-5 5" stroke={t.halo} strokeWidth="5" strokeLinecap="round" />
+                      <path d="M-5-5L5 5M5-5L-5 5" stroke={t.route} strokeWidth="2.2" strokeLinecap="round" />
+                    </g>
+                  ) : (
+                    <path d="M-5 4V-1L0-6L5-1V4Z" transform={`translate(${site.x} ${site.y})`} fill={t.ink} stroke={t.halo} strokeWidth="1" />
+                  )}
+                  <text x={site.x} y={site.y + 16} textAnchor="middle" fontSize="9.5" fontStyle="italic" fill={site.kind === 'peril' ? t.route : t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{site.name}</text>
                 </g>
               ))}
               {picture && (
@@ -146,7 +160,7 @@ export function SettingMap({ s }: { s: Setting }) {
         <rect x="14" y="14" width={map.w - 28} height={map.h - 28} fill="none" stroke={t.ink} strokeWidth=".8" pointerEvents="none" />
       </svg>
       <figcaption>
-        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. Click a place or a site to read about it.</span>
+        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. A house marks a site, a ringed dot a settlement and a cross a dangerous place. Click any of them to read about it.</span>
         <button onClick={save}>Save map</button>
       </figcaption>
     </figure>
