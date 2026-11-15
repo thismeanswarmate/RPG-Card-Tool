@@ -104,6 +104,23 @@ const inside = (p: P, poly: P[]) => {
   return hit
 }
 
+/** The roomiest spot inside an outline: the point of a coarse grid that lies furthest from every edge. */
+function heart(poly: P[]): P {
+  const xs = poly.map((p) => p[0]), ys = poly.map((p) => p[1])
+  const [x0, y0, x1, y1] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+  const rim = poly.filter((_, i) => i % 2 === 0)
+  let best: P = [(x0 + x1) / 2, (y0 + y1) / 2], room = -1
+  for (let i = 1; i < 18; i++)
+    for (let j = 1; j < 18; j++) {
+      const p: P = [x0 + ((x1 - x0) * i) / 18, y0 + ((y1 - y0) * j) / 18]
+      if (!inside(p, poly)) continue
+      // Lettering is wide and short, so sideways room counts for less than room above and below.
+      const d = Math.min(...rim.map((q) => Math.hypot((p[0] - q[0]) * 0.8, p[1] - q[1])))
+      if (d > room) { room = d; best = p }
+    }
+  return best
+}
+
 const r1 = (n: number) => Math.round(n * 10) / 10
 const pathOf = (pts: P[]) => `M${pts.map(([x, y]) => `${r1(x)} ${r1(y)}`).join('L')}Z`
 
@@ -138,8 +155,16 @@ export function buildMap(s: Setting): MapData {
   const edge = noise(seed), dx = noise(seed + 1), dy = noise(seed + 2)
   // The warp that bends every outline: a broad swell, a middling wobble and a fine tremor. It is one
   // field over the whole map, applied to borders, centres and routes alike, so everything moves together.
-  const warp = (f: (x: number, y: number) => number, x: number, y: number) =>
-    (f(x / 150, y / 150) - 0.5) * 78 + (f(x / 58 + 9, y / 58 + 9) - 0.5) * 30 + (f(x / 17 + 3, y / 17 + 3) - 0.5) * 7
+  // Around a wild place the wobble and tremor are stronger and a fourth, tighter ripple joins in.
+  const wildness = (x: number, y: number) =>
+    pts.reduce((sum, p, i) => sum + wild[i] * Math.exp(-((x - p[0]) ** 2 + (y - p[1]) ** 2) / (2 * 120 ** 2)), 0)
+  const warp = (f: (x: number, y: number) => number, x: number, y: number) => {
+    const extra = Math.min(1, wildness(x, y))
+    return (f(x / 150, y / 150) - 0.5) * 78
+      + (f(x / 58 + 9, y / 58 + 9) - 0.5) * 30 * (1 + 0.7 * extra)
+      + (f(x / 31 + 5, y / 31 + 5) - 0.5) * 22 * extra
+      + (f(x / 17 + 3, y / 17 + 3) - 0.5) * 7 * (1 + extra)
+  }
   const push = ([x, y]: P): P => [x + warp(dx, x, y), y + warp(dy, x, y)]
   const theme = s.answers.genres[0] === 'scifi' ? 'blueprint' : 'parchment'
   const paper: [number, number, number] = theme === 'blueprint' ? [18, 42, 68] : [233, 220, 192]
@@ -153,18 +178,32 @@ export function buildMap(s: Setting): MapData {
   }
   const loads = roots.map(busy)
   const mean = loads.reduce((a, b) => a + b, 0) / loads.length || 1
-  const weight = loads.map((v) => Math.min(1.75, Math.max(0.5, 0.55 + (0.5 * v) / mean + (rng() - 0.5) * 0.5)))
+  // The spread is wide and lopsided: a few places sprawl, most are middling, some are small.
+  const weight = loads.map((v) => Math.min(2.1, Math.max(0.45, (0.5 + (0.5 * v) / mean) * Math.exp((rng() - 0.45) * 1.25))))
+  // Each place's radius for drawing borders. Where a large place would otherwise push a border past a
+  // small neighbour's centre, the large one is reined in until the small one keeps its ground.
+  const radius = weight.map((v) => 92 * v)
+  for (let pass = 0, changed = true; changed && pass < 60; pass++) {
+    changed = false
+    pts.forEach((p, i) => pts.forEach((q, j) => {
+      if (i === j || radius[i] <= radius[j]) return
+      const room = 0.4 * ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2)
+      if (radius[i] ** 2 - radius[j] ** 2 > room + 1e-6) { radius[i] = Math.sqrt(room + radius[j] ** 2); changed = true }
+    }))
+  }
+  // Some places are wilder than the rest: their coasts throw out more headlands and their borders wander further.
+  const wild = roots.map(() => (rng() < 0.4 ? 0.6 + rng() * 0.4 : 0))
 
   const regions = roots.map((id, i): MapRegion => {
     const [gx, gy] = pts[i]
     // A lopsided blob: an uneven edge, two or three lobes at angles of its own, stretched along one axis.
-    const lean = rng() * Math.PI, stretch = 0.78 + rng() * 0.5
-    const lobes = [rng() * Math.PI * 2, rng() * Math.PI * 2]
-    let poly: P[] = Array.from({ length: 56 }, (_, k) => {
-      const a = (k / 56) * Math.PI * 2
-      const r = reach * weight[i] ** 0.85
+    const lean = rng() * Math.PI, stretch = 0.78 + rng() * 0.5 + (rng() < 0.5 ? -0.16 : 0.3) * wild[i]
+    const lobes = [rng() * Math.PI * 2, rng() * Math.PI * 2, rng() * Math.PI * 2]
+    let poly: P[] = Array.from({ length: 72 }, (_, k) => {
+      const a = (k / 72) * Math.PI * 2
+      const r = Math.max(74, reach * weight[i] ** 0.9)
         * (0.72 + 0.5 * edge(i * 7.3 + Math.cos(a) * 1.9 + 5, Math.sin(a) * 1.9 + 5))
-        * (1 + 0.2 * Math.sin(a * 2 + lobes[0]) + 0.14 * Math.sin(a * 3 + lobes[1]))
+        * Math.max(0.55, 1 + (0.2 + 0.2 * wild[i]) * Math.sin(a * 2 + lobes[0]) + (0.14 + 0.18 * wild[i]) * Math.sin(a * 3 + lobes[1]) + 0.2 * wild[i] * Math.sin(a * 5 + lobes[2]))
       const [u, v] = [Math.cos(a) * r * stretch, (Math.sin(a) * r) / stretch]
       return [gx + u * Math.cos(lean) - v * Math.sin(lean), gy + u * Math.sin(lean) + v * Math.cos(lean)]
     })
@@ -174,7 +213,7 @@ export function buildMap(s: Setting): MapData {
       // and the border is the line of equal "power" between the two circles. Borders drawn by this rule
       // always meet three at a point, so regions fit together with no gaps or overlaps.
       const span = (q[0] - gx) ** 2 + (q[1] - gy) ** 2
-      const share = 0.5 + ((85 * weight[i]) ** 2 - (85 * weight[j]) ** 2) / (2 * span)
+      const share = 0.5 + (radius[i] ** 2 - radius[j] ** 2) / (2 * span)
       poly = clip(poly, [gx + (q[0] - gx) * share, gy + (q[1] - gy) * share], [q[0] - gx, q[1] - gy])
     })
     // Many short steps along each edge, each pushed by the noise field.
@@ -184,8 +223,8 @@ export function buildMap(s: Setting): MapData {
       const steps = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 9))
       for (let t = 0; t < steps; t++) fine.push(push([a[0] + ((b[0] - a[0]) * t) / steps, a[1] + ((b[1] - a[1]) * t) / steps]))
     })
-    // The centre is carried by the same warp as the outline, so it stays on its own land.
-    const [cx, cy] = push([gx, gy])
+    // The name goes at the roomiest spot in the region, wherever its shape has left that.
+    const [cx, cy] = heart(fine)
 
     const terrain = terrainOf(s, id)
     const glyph = glyphFor(terrain)
@@ -240,7 +279,8 @@ export function buildMap(s: Setting): MapData {
   for (const hk of s.hooks) for (const l of hk.lines) join(rootFor(l.who), rootFor(l.target))
   const length = ([a, b]: [string, string]) => Math.hypot(pts[index.get(a)!][0] - pts[index.get(b)!][0], pts[index.get(a)!][1] - pts[index.get(b)!][1])
   const routes = [...pairs.values()].sort((p, q) => length(p) - length(q)).slice(0, Math.ceil(roots.length * 1.1)).map(([a, b]) => {
-    const [ax, ay] = push(pts[index.get(a)!]), [bx, by] = push(pts[index.get(b)!])
+    const ra = regions[index.get(a)!], rb = regions[index.get(b)!]
+    const [ax, ay] = [ra.x, ra.y], [bx, by] = [rb.x, rb.y]
     const len = Math.hypot(bx - ax, by - ay)
     const bend = (edge(ax / 50 + bx / 90, ay / 50 + by / 90) - 0.5) * len * 0.36
     const mx = (ax + bx) / 2 - ((by - ay) / len) * bend, my = (ay + by) / 2 + ((bx - ax) / len) * bend

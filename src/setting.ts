@@ -179,7 +179,10 @@ export function generateSetting(answers: Answers, seed: string): Setting {
      */
     const resolve = (kinds: Kind[], self: Entity, create: boolean, text: string, taken: string[]) => {
       const free = <T extends { id: string }>(a: T[]) => { const rest = a.filter((x) => !taken.includes(x.id)); return rest.length ? rest : a }
-      const kind = pick(kinds.filter((k) => can(k, self, create)))
+      // A detail is only chosen when all its links can be completed, but an earlier link in the same detail
+      // may have used up the last of the budget for new things. Then the link is completed anyway.
+      const open = kinds.filter((k) => can(k, self, create))
+      const kind = pick(open.length ? open : kinds.filter((k) => k !== 'deity' || deities))
       if (kind === 'place') {
         if (text.includes('never left') && self.home) return { kind, node: self.home }
         const others = places.filter((p) => p !== self.home && !taken.includes(p))
@@ -198,7 +201,7 @@ export function generateSetting(answers: Answers, seed: string): Setting {
         if (text.includes('leads') && mine && !taken.includes(mine)) return { kind, node: mine }
         if (outside.length) existing = outside
       }
-      if (existing.length && (!create || kind === 'faction' || budget <= 0 || rng() < 0.35)) return { kind, node: pick(existing).id }
+      if (existing.length && (!create || kind === 'faction' || budget <= 0 || !open.length || rng() < 0.35)) return { kind, node: pick(existing).id }
       budget--
       return { kind, node: make(kind, self.home ?? pick(places), self.id).id }
     }

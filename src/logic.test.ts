@@ -439,6 +439,13 @@ describe('settings', async () => {
       if (a.focus.includes('adventure')) expect(text).toContain('Quest — ')
     })
   })
+  it('never fails to generate, whatever the seed', () => {
+    for (let n = 0; n < 40; n++)
+      for (const size of ['region', 'country', 'continent'] as const) {
+        const s = G.generateSetting(answers({ size, depth: n % 2 ? 'rich' : 'sketch' }), `any-${n}`)
+        for (const e of [...s.entities, ...s.people]) for (const d of e.details) for (const l of d.links) expect(s.names[l.node!], `${size} any-${n}`).toBeTruthy()
+      }
+  })
   it('renames a thing everywhere it is mentioned', () => {
     const s = G.generateSetting(answers(), 'rename')
     const f = s.entities.find((e) => e.kind === 'faction')!
@@ -595,7 +602,7 @@ describe('drawn map', async () => {
       // Regions are plainly of different sizes.
       const area = (poly: [number, number][]) => Math.abs(poly.reduce((sum, [x, y], k) => { const [nx, ny] = poly[(k + 1) % poly.length]; return sum + x * ny - nx * y }, 0)) / 2
       const areas = map.regions.map((r) => area(r.points))
-      expect(Math.max(...areas) / Math.min(...areas), 'largest to smallest').toBeGreaterThan(1.8)
+      expect(Math.max(...areas) / Math.min(...areas), 'largest to smallest').toBeGreaterThan(2.5)
       expect(map.routes.length).toBeGreaterThan(0)
       for (const route of map.routes) { expect(route.a).not.toBe(route.b); expect(route.d).toMatch(/^M[-\d. ]+Q[-\d. ]+$/) }
       // Renaming changes the lettering and nothing else.
