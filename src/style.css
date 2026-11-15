@@ -268,6 +268,18 @@ h5:hover .rename { opacity: 1; }
 .pic-actions button, .pic-actions .button { font-size: 12px; padding: 3px 9px; }
 a.button { background: var(--raised); border: 1px solid var(--line); border-radius: 6px; color: inherit; text-decoration: none; }
 textarea.prompt { min-height: 180px; resize: vertical; font-size: 14px; line-height: 1.45; }
+.step-block { display: flex; flex-direction: column; gap: 6px; }
+.step-block h3 { font-size: 15px; color: var(--accent); margin-top: 8px; }
+.step-block h3 small { color: var(--muted); font-weight: 400; font-size: 12.5px; margin-left: 8px; }
+.roll { display: flex; align-items: center; gap: 8px; background: var(--raised); border-radius: 8px; padding: 6px 8px; }
+.roll.locked { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.roll .die { flex: none; width: 46px; text-align: center; font-size: 10.5px; color: var(--muted); line-height: 1.1; }
+.roll .die b { display: block; font-size: 17px; color: var(--text); }
+.roll label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.roll label span { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.roll select { width: 100%; background: var(--bg); padding: 5px 6px; font-size: 13.5px; text-overflow: ellipsis; }
+.roll button { flex: none; font-size: 12px; padding: 5px 9px; }
+.roll button.on { background: var(--accent); border-color: var(--accent); color: #1c1608; }
 .menu { display: contents; }
 .menu-btn, .tabs, .selbar { display: none; }
 html, body, #root { height: 100dvh; }
