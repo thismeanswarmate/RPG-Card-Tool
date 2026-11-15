@@ -94,7 +94,10 @@ function ImagePanel({ s }: { s: SettingData }) {
             {Object.entries(ART).map(([k, a]) => <option key={k} value={k}>{a.label}</option>)}
           </select>
         </label>
-        <p className="hint">Applies to pictures made from now on. Example: “{imageSpec(s, 'world').prompt.split('. ').slice(-3, -1).join('. ')}.”</p>
+        <p className="hint">
+          Applies to pictures made from now on. Whatever the direction, every picture still shows the things of this setting’s genre.
+          The direction adds: “{imageSpec(s, 'world').prompt.split('. ').slice(-3, -1).join('. ')}.”
+        </p>
         <label>ComfyUI address <input value={im.url} onChange={(e) => im.setUrl(e.target.value)} spellCheck={false} /></label>
         <label>Steps <input type="number" min={4} max={60} value={im.steps} onChange={(e) => im.setSteps(+e.target.value)} /></label>
         <div className="actions">

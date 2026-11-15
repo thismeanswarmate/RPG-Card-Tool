@@ -643,3 +643,38 @@ describe('region colour from a picture', async () => {
     expect(M.washFor('#c82828', 'parchment')).not.toBe(M.washFor('#2828c8', 'parchment'))
   })
 })
+
+describe('genre in pictures', async () => {
+  const G = await import('./setting')
+  const P = await import('./imagePrompts')
+  const world: Record<string, RegExp> = {
+    fantasy: /The setting is a fantasy world: .*magic.*no modern technology/,
+    scifi: /The setting is a science fiction world: .*machines/,
+    horror: /The setting is a gothic horror world: .*decaying/,
+    grounded: /The setting is a realistic present-day world: .*present day/,
+  }
+  it('keeps the things of the genre in every prompt, whatever the art direction', () => {
+    for (const [genre, pattern] of Object.entries(world)) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: 'region', genres: [genre], focus: ['power', 'faith'] }, `genre-${genre}`)
+      for (const art of Object.keys(P.ART))
+        for (const id of P.imageIds(s)) {
+          const { prompt } = P.imageSpec({ ...s, art }, id)
+          expect(prompt, `${genre} ${art} ${id}`).toMatch(pattern)
+          // The element itself still leads, and the medium still closes.
+          expect(prompt.indexOf('The setting is a')).toBeGreaterThan(20)
+          if (art !== 'auto') expect(prompt.indexOf(P.ART[art].medium)).toBeGreaterThan(prompt.indexOf('The setting is a'))
+          expect(prompt).not.toMatch(/undefined|  /)
+        }
+      const person = P.imageSpec({ ...s, art: 'woodcut' }, s.people[0].id).prompt
+      expect(person).toContain(' They wear ')
+      expect(person).toContain(s.people[0].what)
+      expect(P.imageSpec({ ...s, art: 'woodcut' }, G.rootsOf(s)[0]).prompt).not.toContain(' They wear ')
+    }
+  })
+  it('names both genres of a mixed setting, and falls back to the present day when none is chosen', () => {
+    const mixed = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: 'region', genres: ['scifi', 'horror'] }, 'mixed')
+    expect(P.imageSpec({ ...mixed, art: 'watercolour' }, 'world').prompt).toMatch(/a science fiction and gothic horror world: .*machines.*decaying/)
+    const none = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: 'region', genres: [] }, 'none')
+    expect(P.imageSpec(none, 'world').prompt).toContain('a realistic present-day world')
+  })
+})

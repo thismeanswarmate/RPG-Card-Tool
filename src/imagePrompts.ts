@@ -20,6 +20,40 @@ const BY_GENRE: Record<string, { medium: string; light: string }> = {
 }
 
 /**
+ * What the world itself looks like, whatever it is drawn with: its buildings, its tools and how its people
+ * dress. This goes into every prompt, so a watercolour or a woodcut of a science fiction setting still
+ * shows machines and not castles.
+ */
+const WORLD: Record<string, { things: string; dress: string }> = {
+  fantasy: {
+    things: 'timber and stone buildings, hand-made tools, banners, lanterns and signs of magic in everyday use, with no modern technology',
+    dress: 'cloaks, tunics, leather and hand-worked metal',
+  },
+  scifi: {
+    things: 'advanced technology, metal and glass structures, machines, vehicles, screens and artificial light',
+    dress: 'practical technical clothing, worn work suits and gear',
+  },
+  horror: {
+    things: 'decaying old buildings, bare trees, rusted iron, candles and unsettling details half hidden in shadow',
+    dress: 'dark, old-fashioned, well-worn clothes',
+  },
+  grounded: {
+    things: 'ordinary real-world buildings, vehicles, tools and furnishings of the present day',
+    dress: 'everyday modern clothes',
+  },
+}
+const GENRE_NAME: Record<string, string> = { fantasy: 'fantasy', scifi: 'science fiction', horror: 'gothic horror', grounded: 'realistic present-day' }
+
+/** "A fantasy and gothic horror world: …" — the look of the setting's genres, up to two of them. */
+function worldClause(genres: string[], person: boolean): string {
+  const known = (genres.length ? genres : ['grounded']).filter((g) => WORLD[g]).slice(0, 2)
+  const list = known.length ? known : ['grounded']
+  const things = list.map((g) => WORLD[g].things).join('; ')
+  const dress = person ? ` They wear ${list.map((g) => WORLD[g].dress).join(', and ')}.` : ''
+  return `The setting is a ${list.map((g) => GENRE_NAME[g]).join(' and ')} world: ${things}.${dress}`
+}
+
+/**
  * Art directions to choose between. Each names a medium and, where the look depends on it, its own light;
  * without one, the light follows the setting's genre. "auto" takes both from the genre.
  */
@@ -74,7 +108,11 @@ export function imageSpec(s: Setting, id: string): ImageSpec {
   const art = ART[s.art ?? 'auto']
   const tail = `${art?.light ?? genre.light} ${art?.medium || genre.medium} No text or lettering.`
   const seed = hash(`${s.seed}:${id}`) % 2 ** 31
-  const done = (subject: string, size: { w: number; h: number }) => ({ prompt: `${subject} ${tail}`.replace(/\s+/g, ' ').trim(), ...size, seed })
+  const isPerson = s.people.some((c) => c.id === id)
+  // Subject first, then the look of the world it belongs to, then the light, then the medium.
+  const done = (subject: string, size: { w: number; h: number }) => ({
+    prompt: `${subject} ${worldClause(s.answers.genres, isPerson)} ${tail}`.replace(/\s+/g, ' ').trim(), ...size, seed,
+  })
 
   if (id === 'world') {
     const lands = [...new Set(rootsOf(s).map((r) => terrainOf(s, r).toLowerCase()))].slice(0, 5)
