@@ -31,8 +31,10 @@ in the browser.
 
 - **Running the app on the same computer** (`npm run dev` or `npm run preview`): it works as is. Requests go through `/comfy`, which the
   dev server passes on to `http://127.0.0.1:8188`.
-- **Opening the published site**: the page talks to `http://127.0.0.1:8188` directly, so ComfyUI has to be started with requests from
-  the site allowed (`--enable-cors-header https://<your-site>`), and the browser may ask for permission to reach the local network.
+- **Opening the published site**: the page talks to `http://127.0.0.1:8188` directly, and ComfyUI turns away pages it has not been
+  told to allow. In ComfyUI Desktop, open Settings → Server-Config, put the site's address (for example
+  `https://thismeanswarmate.github.io`, with no path) in "Enable CORS header", and restart ComfyUI. The Pictures panel shows the exact
+  address to enter. The browser may also ask for permission to reach the local network. A page opened as a file is always blocked.
 
 ## Development
 

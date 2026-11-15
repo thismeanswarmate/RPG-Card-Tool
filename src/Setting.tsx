@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { EXPANSION_COLORS } from './expansions'
+import { allowHint, isDirect } from './comfy'
 import { imageIds, imageSpec } from './imagePrompts'
 import { useImages } from './imageStore'
 import { titleCase } from './names'
@@ -94,8 +95,12 @@ function ImagePanel({ s }: { s: SettingData }) {
         {(im.current || im.queue.length > 0) && <p className="hint">{im.queue.length} waiting{im.current ? `, one in progress (${im.current.label})` : ''}. Each picture takes a few minutes.</p>}
         <p className="hint">
           Pictures are made by ComfyUI running on this computer and are kept in this browser. One is made at a time, nothing is sent while
-          ComfyUI has other work, and its memory is freed when the batch ends. If you opened this page from the web, not from a copy
-          running on your computer, ComfyUI must be set to allow requests from this site.
+          ComfyUI has other work, and its memory is freed when the batch ends.
+        </p>
+        <p className="hint">
+          {isDirect(im.url)
+            ? <>This page talks to ComfyUI directly, so ComfyUI has to be told to accept it. {allowHint()} The address above must start with http://, not https://.</>
+            : <>Requests go through this app’s own server, so ComfyUI needs no changes.</>}
         </p>
       </div>
     </details>

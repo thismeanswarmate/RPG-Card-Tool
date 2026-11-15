@@ -34,14 +34,24 @@ export const graph = (job: ImageJob) => ({
 
 export class ComfyError extends Error {}
 
+/** True when requests go straight from the page to ComfyUI, which ComfyUI only accepts from addresses it has been told to allow. */
+export const isDirect = (base: string) => /^https?:/i.test(base)
+
+/** What to change in ComfyUI so that it accepts requests from this page. */
+export const allowHint = () =>
+  typeof location === 'undefined' ? ''
+    : location.protocol === 'file:' ? 'This page was opened as a file, which ComfyUI always blocks. Serve it from a local server instead.'
+      : `In ComfyUI Desktop, open Settings → Server-Config, put ${location.origin} in “Enable CORS header”, and restart ComfyUI.`
+
 async function call(base: string, path: string, body?: unknown): Promise<any> {
   let res: Response
   try {
     res = await fetch(base.replace(/\/$/, '') + path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   } catch {
-    throw new ComfyError('Could not reach ComfyUI. Is it running, and does it allow requests from this page?')
+    throw new ComfyError(`Could not reach ComfyUI. Check that it is running${isDirect(base) ? ` and that it accepts requests from this page. ${allowHint()}` : '.'}`)
   }
   const text = await res.text()
+  if (res.status === 403) throw new ComfyError(`ComfyUI refused the request from this page. ${allowHint()}`)
   if (!res.ok) throw new ComfyError(`ComfyUI answered ${res.status}${text ? `: ${text.slice(0, 300)}` : ''}`)
   try { return text ? JSON.parse(text) : {} } catch { throw new ComfyError('ComfyUI sent an answer this page could not read.') }
 }
