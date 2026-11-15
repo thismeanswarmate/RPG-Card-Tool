@@ -2,7 +2,7 @@
 
 Seven tools on one page, switched from the top menu.
 
-**Perils** builds a dangerous place by rolling on tables, in steps: a premise (theme, what stood there before, and the kind of place, surroundings and danger), then tables for the place itself, for where it stands, and for what makes it dangerous, with a personality for whoever is behind it when the danger can think. Roll everything at once, reroll single tables, pick results by hand and lock the ones to keep. The result is written up as a brief. Ten kinds of place, twelve surroundings and six kinds of danger, each with tables of its own.
+**Perils** builds a dangerous place by rolling on tables, in steps: a premise (theme, what stood there before, and the kind of place and danger), then tables for the place itself and for what makes it dangerous, with a personality for whoever is behind it when the danger can think. Roll everything at once, reroll single tables, pick results by hand and lock the ones to keep. The result is written up as a brief. Ten kinds of place and six kinds of danger, each with tables of its own.
 
 **Settlements** builds a trading post, village, town, city, capital or fortress town the same way, in five steps: foundations, people, rule and order, places, and trouble and talk. Each kind of settlement has tables of its own for what it is known for, how many live there and one thing only that kind has. The result is written up as a brief and given a name.
 

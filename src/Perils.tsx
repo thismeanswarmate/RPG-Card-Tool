@@ -7,6 +7,6 @@ export const Perils = () => (
     useStore={usePerils} stepsFor={stepsFor} brief={brief}
     summary={(rolls) => (rolls.kind === undefined ? undefined : kindLabel(rolls))}
     plural="Places" single="place"
-    emptyBrief="Roll the tables and the place is written up here: what it is, where it stands, what was there before, and what makes it dangerous."
+    emptyBrief="Roll the tables and the place is written up here: what it is, what was there before, and what makes it dangerous."
   />
 )

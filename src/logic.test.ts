@@ -685,10 +685,10 @@ describe('perils', async () => {
 
   it('has well-formed tables: several entries each, none repeated, sentences where sentences are expected', () => {
     const every = [
-      ...Object.keys(D.KINDS).flatMap((_, k) => Object.keys(D.ENVIRONMENTS).flatMap((_e, e) => Object.keys(D.DANGERS).map((_d, d) => ({ kind: k, env: e, danger: d, before: 1 })))),
+      ...Object.keys(D.KINDS).flatMap((_, k) => Object.keys(D.DANGERS).map((_d, d) => ({ kind: k, danger: d, before: 1 }))),
     ].flatMap((r) => D.stepsFor(r).flatMap((s) => s.tables))
     const seen = new Map(every.map((tb) => [tb.id, tb]))
-    expect(seen.size).toBeGreaterThan(70)
+    expect(seen.size).toBeGreaterThan(50)
     for (const tb of seen.values()) {
       expect(tb.entries.length, tb.id).toBeGreaterThanOrEqual(6)
       expect(new Set(tb.entries).size, tb.id).toBe(tb.entries.length)
@@ -704,8 +704,9 @@ describe('perils', async () => {
     expect(D.stepsFor({ before: 0 }).flatMap((s) => s.tables).map((tb) => tb.id)).not.toContain('remains')
     expect(D.stepsFor({ before: 3 }).flatMap((s) => s.tables).map((tb) => tb.id)).toContain('remains')
     const people = Object.keys(D.DANGERS).indexOf('people'), magic = Object.keys(D.DANGERS).indexOf('magic')
-    expect(D.stepsFor({ kind: 0, env: 0, danger: people }).map((s) => s.title).at(-1)).toBe('Who is behind it')
-    expect(D.stepsFor({ kind: 0, env: 0, danger: magic })).toHaveLength(4)
+    expect(D.stepsFor({ kind: 0, danger: people }).map((s) => s.title).at(-1)).toBe('Who is behind it')
+    expect(D.stepsFor({ kind: 0, danger: magic })).toHaveLength(3)
+    expect(D.stepsFor({ kind: 0, danger: magic }).flatMap((s) => s.tables).map((tb) => tb.label)).not.toContain('Surroundings')
   })
   it('rolls every table that applies, keeps locked results, and writes a complete brief', () => {
     for (let n = 0; n < 200; n++) {
@@ -713,7 +714,7 @@ describe('perils', async () => {
       const tables = D.stepsFor(rolls).flatMap((s) => s.tables)
       for (const tb of tables) { expect(rolls[tb.id], tb.id).toBeGreaterThanOrEqual(0); expect(rolls[tb.id]).toBeLessThan(tb.entries.length) }
       const text = D.brief('Blackmoor Tower', rolls)
-      expect(text.length).toBeGreaterThanOrEqual(5)
+      expect(text.length).toBeGreaterThanOrEqual(4)
       expect(text[0]).toMatch(/^Blackmoor Tower is an? /)
       for (const para of text) expect(para).toMatch(/^[A-Z].*\.$/)
       expect(text.join(' ')).not.toMatch(/undefined|  |\.\.| ,|\. [a-z]/)
@@ -727,7 +728,6 @@ describe('perils', async () => {
     const rolls = D.rollAll({}, [], seq([0]))
     expect(D.brief('Ashwick', rolls)).toEqual([
       'Ashwick is a pristine, cramped burial ground, raised within the last year. It was made to honour a single great family. Every marker faces the same direction, away from the gate. It is reached by a single well-used path. Locals know nothing of it.',
-      'It stands on an island barely larger than itself, on open water. The water around it is unnaturally still. The country around is home to shoals of silver fish that scatter at a shadow. Lately the weather has been calm and clear. The land is slowly taking it back.',
       'Before this, the ground held nothing but wild country.',
       'The danger is a pack hunting together. They are here because the place is warm and dry. They are starving. No one has dealt with it because no one knows it is there. Left alone, it will spread to the nearest settlement. Outsiders should care because someone they know is inside.',
       'The thread running through it all is debt.',
@@ -770,7 +770,7 @@ describe('settlements', async () => {
   it('reads as intended for a known set of rolls, and copes with gaps', () => {
     const rolls = T.rollAll({}, [], () => 0)
     expect(T.brief('Ashford', rolls)).toEqual([
-      'Ashford is a squalid trading post, barely a generation old. It began as a camp that never moved on and lies on a coast. It is known for furs and hides. Visitors are almost unknown.',
+      'Ashford is a squalid trading post, barely a generation old. It began as a camp that never moved on. It is known for furs and hides. Visitors are almost unknown.',
       'It holds a dozen permanent residents. Its people are nearly all of one folk; most are destitute. Toward strangers they are hostile.',
       'It is run by an elected mayor. The law is absent, and crime is almost unknown. It is defended by nothing. A single family controls every stall.',
       'The market square is cobbled and crowded. The best-known inn is a low, smoky house with excellent stew. Shops of note include a bookbinder. There is also a bathhouse. The main place of worship is a plain wooden chapel, and people gather at the well.',

@@ -1,10 +1,10 @@
-// The perils tool: a dangerous place built by rolling on tables, in four steps — a premise, the place
-// itself, its surroundings and its danger — with a fifth for whoever is behind it when the danger can
-// think. All table text is original to this project.
+// The perils tool: a dangerous place built by rolling on tables, in three steps — a premise, the place
+// itself and its danger — with a fourth for whoever is behind it when the danger can think. All table
+// text is original to this project.
 //
 // A table is a list of entries and its die is simply the number of them. Most entries are written to
-// complete a sentence in the brief ("It was made …", "It stands …"); the comments beside each table say
-// which. Which tables apply depends on earlier rolls: the kind of place, the surroundings and the kind
+// complete a sentence in the brief ("It was made …"); the comments beside each table say
+// which. Which tables apply depends on earlier rolls: the kind of place and the kind
 // of danger each bring their own.
 
 import { an, entries as t, reader, rollTables, type Rolls, type Step, type Table } from './roller'
@@ -61,81 +61,6 @@ export const KINDS: Record<string, { label: string; purpose: string[]; feature: 
     label: 'watchtower',
     purpose: t('to watch the sea | to watch a pass | to watch for fire | to watch a neighbour | to watch the stars | to watch something beneath it'),
     feature: t('The stair has more steps going down than coming up. | Its light is lit each night by no one. | The top room is locked from the inside. | Its windows face only one way. | A long list of names is carved by the door, the last unfinished. | The watch log ends mid-sentence.'),
-  },
-}
-
-export const ENVIRONMENTS: Record<string, { label: string; where: string; sits: string[]; feature: string[]; wildlife: string[] }> = {
-  water: {
-    label: 'Open water', where: 'on open water',
-    sits: t('on an island barely larger than itself | on stilts above the shallows | on a moored raft of lashed hulls | beneath the surface, in a pocket of air | on a reef exposed only at low tide | aboard a great ship that no longer sails'),
-    feature: t('The water around it is unnaturally still. | Weed grows thick enough to walk on. | Lights move below the surface at night. | A whirlpool turns slowly nearby. | Wrecks ring it like a fence. | The tide here keeps its own hours.'),
-    wildlife: t('shoals of silver fish that scatter at a shadow | seabirds that nest on anything dry | seals that watch from a distance | eels as thick as an arm | something large that surfaces at dusk | crabs that come ashore in thousands'),
-  },
-  coast: {
-    label: 'Coast', where: 'on the coast',
-    sits: t('on a headland | in a sheltered cove | among the dunes | on a sea stack joined by a rope bridge | at the mouth of a river | on a tidal flat'),
-    feature: t('The cliff beneath it is slowly giving way. | Sea caves run under it. | A wreck lies on the rocks below. | Fog comes in without warning. | The beach is littered with worn glass. | A blowhole roars with every wave.'),
-    wildlife: t('gulls that mob anything carrying food | otters | long-legged wading birds | sand fleas in clouds | a colony of noisy sea lions | dogs gone wild'),
-  },
-  desert: {
-    label: 'Desert', where: 'in the desert',
-    sits: t('at an oasis | in the lee of a great dune | on a rock outcrop | in a dry riverbed | half buried in sand | on the edge of a salt pan'),
-    feature: t('The sand hums when the wind is right. | The bones of some huge animal lie nearby. | A mirage of water shows each afternoon. | The well is good, and guarded. | Glass lies fused in the sand. | Old tracks lead in and none lead out.'),
-    wildlife: t('scorpions under every stone | vultures | basking lizards | a herd of wild camels | jackals | snakes that hunt by night'),
-  },
-  otherworld: {
-    label: 'Another world', where: 'in another world',
-    sits: t('on a fragment of land adrift in mist | at the meeting of two skies | inside a vast, sleeping thing | on a road that loops back on itself | where a door once stood open | in a place that mirrors somewhere real'),
-    feature: t('Shadows fall toward the light. | Time passes faster inside than out. | The ground remembers footsteps. | Voices carry from somewhere else. | The colours are slightly wrong. | Nothing here casts a reflection.'),
-    wildlife: t('moths made of ash | birds that fly backward | pale, eyeless hounds | things that copy whatever they see | lights that follow at a distance | nothing living at all'),
-  },
-  forest: {
-    label: 'Forest', where: 'in the forest',
-    sits: t('in a clearing | among the roots of a giant tree | on a wooded ridge | beside a forest stream | where an old road is swallowed by trees | high in the canopy'),
-    feature: t('The trees lean toward it. | A ring of pale mushrooms surrounds it. | Carved faces look out of the trunks. | No birds sing within sight of it. | The paths near it shift. | Old snares hang from the branches.'),
-    wildlife: t('deer | wolves | wild boar | owls | a bear that knows the paths | foxes too bold for comfort'),
-  },
-  jungle: {
-    label: 'Jungle', where: 'in the jungle',
-    sits: t('on a river bluff | inside a strangler fig | beside a waterfall | on top of a buried ruin | on a rare patch of open ground | on a platform above the flood line'),
-    feature: t('Vines have grown through every opening. | The air is thick with insects. | Rain falls here every afternoon. | Bright flowers hide the smell of rot. | Dripping water sounds like footsteps. | Statues stand half swallowed by roots.'),
-    wildlife: t('monkeys that steal | parrots | great cats | snakes in the branches | ants that march in rivers | river beasts with too many teeth'),
-  },
-  mountain: {
-    label: 'Mountains', where: 'in the mountains',
-    sits: t('on a ledge | in a high pass | at the tree line | on a peak | at the foot of a cliff | in a hanging valley'),
-    feature: t('Rockfalls have scarred the only path. | Snow lies in its shadow all year. | The wind there never stops. | Prayer flags, faded white, hang from every rope. | An echo answers a moment late. | A cave mouth nearby breathes cold air.'),
-    wildlife: t('wild goats | eagles | mountain cats | marmots that whistle warnings | bears | ravens'),
-  },
-  plain: {
-    label: 'Plains', where: 'on the plains',
-    sits: t('on the only hill for miles | in a fold of the land | beside a lone tree | at a meeting of tracks | by a slow river | amid standing crops'),
-    feature: t('It can be seen a day before it is reached. | The grass around it grows in a circle. | Storms break over it first. | Old burial mounds dot the land nearby. | A dry well stands beside it. | The road to it is rutted by heavy wagons.'),
-    wildlife: t('herds of grazing beasts | hawks | wild horses | hares | packs of wild dogs | locusts, in season'),
-  },
-  swamp: {
-    label: 'Swamp', where: 'in the swamp',
-    sits: t('on a hummock of firm ground | on piles driven into the mud | on a causeway | in a hollow of drowned trees | on a floating mat of reeds | at the edge of black water'),
-    feature: t('Marsh gas burns with pale flames at night. | The boardwalks are rotten in places. | Something has gnawed the pilings. | Mist rises at dusk. | The water is warm. | The frogs fall silent all at once.'),
-    wildlife: t('herons | leeches | snapping turtles | water snakes | clouds of biting flies | a great pale crocodile'),
-  },
-  tundra: {
-    label: 'Tundra', where: 'on the tundra',
-    sits: t('on a frozen shore | in the lee of a ridge | on bare rock scoured of snow | beside a hot spring | on the ice itself | in a valley of dwarf willow'),
-    feature: t('Snow has drifted to the eaves. | The ground cracks like gunshots at night. | The sky burns green. | Old bones mark the trail. | Frost flowers cover every surface. | A wind-carved arch of ice stands nearby.'),
-    wildlife: t('reindeer | white foxes | lean wolves | snowy owls | seals at the ice edge | a white bear'),
-  },
-  underground: {
-    label: 'Underground', where: 'deep underground',
-    sits: t('in a natural cavern | in worked tunnels | beside an underground river | on a ledge above a chasm | in the cellar of something larger | in a bubble of old lava'),
-    feature: t('The air is bad in the lower reaches. | Pale fungus gives a little light. | Water drips in a steady rhythm. | The walls are scored with old tool marks. | A draught blows from an unseen opening. | Crystals grow from the roof.'),
-    wildlife: t('bats | blind fish | pale crickets | rats | cave spiders | something that leaves slime trails'),
-  },
-  city: {
-    label: 'City', where: 'in a city',
-    sits: t('in a wealthy quarter | in the slums | by the docks | against the city wall | beneath the streets | in a forgotten courtyard'),
-    feature: t('Newer buildings crowd it on every side. | The neighbours pretend it is not there. | A market sets up outside each morning. | Its street has no name. | Posters are pasted over its doors. | The watch avoids the street.'),
-    wildlife: t('rats | pigeons | stray cats | feral dogs | crows | trained monkeys that pick pockets'),
   },
 }
 
@@ -208,7 +133,6 @@ const PREMISE: Table[] = [
   // "Of that, …"
   { id: 'remains', label: 'What remains of it', entries: t('nothing is left at all | only a few scattered traces remain | the signs are plain to anyone who looks | much still stands, built into the newer work | it has never really gone away | it is coming back') },
   { id: 'kind', label: 'Kind of place', entries: Object.values(KINDS).map((k) => k.label) },
-  { id: 'env', label: 'Surroundings', entries: Object.values(ENVIRONMENTS).map((e) => e.label) },
   { id: 'danger', label: 'Kind of danger', entries: Object.values(DANGERS).map((d) => d.label) },
 ]
 
@@ -220,12 +144,6 @@ const PLACE: Table[] = [
   { id: 'access', label: 'Way in', entries: t('by a single well-used path | only by those who know the way | across water | by a hard climb | through something else that must be passed first | easily, which is part of the problem') },
   // "Locals …"
   { id: 'known', label: 'What locals make of it', entries: t('know nothing of it | tell tales of it but keep away | know it well and avoid it | visit it openly | depend on it | argue about what it really is') },
-]
-
-const SURROUNDINGS: Table[] = [
-  // "Lately the weather has been …"
-  { id: 'weather', label: 'Recent weather', entries: t('calm and clear | unsettled | wet for days | bitterly cold | hot and close | stormy | foggy | strange for the season') },
-  { id: 'press', label: 'Land and place', entries: t('The land is slowly taking it back. | The place has changed the land around it. | Land and place ignore each other. | It could not survive here without constant work. | The surroundings hide it well. | The surroundings make it hard to leave.') },
 ]
 
 const STAKES: Table[] = [
@@ -248,7 +166,7 @@ const key = (group: Record<string, unknown>, index: number | undefined) => (inde
 
 /** The steps and tables that apply, given what has been rolled so far. */
 export function stepsFor(rolls: Rolls): Step[] {
-  const kind = key(KINDS, rolls.kind), env = key(ENVIRONMENTS, rolls.env), danger = key(DANGERS, rolls.danger)
+  const kind = key(KINDS, rolls.kind), danger = key(DANGERS, rolls.danger)
   const steps: Step[] = [{
     title: 'Premise', blurb: 'The idea behind the place, and the three choices that shape everything after.',
     tables: PREMISE.filter((tb) => tb.id !== 'remains' || (rolls.before !== undefined && rolls.before !== 0)),
@@ -262,20 +180,6 @@ export function stepsFor(rolls: Rolls): Step[] {
         { id: `kind.${kind}.purpose`, label: 'Why it was made', entries: k.purpose },
         { id: `kind.${kind}.feature`, label: 'What stands out', entries: k.feature },
         ...PLACE,
-      ],
-    })
-  }
-  if (env) {
-    const e = ENVIRONMENTS[env]
-    steps.push({
-      title: `Surroundings: ${e.label.toLowerCase()}`, blurb: 'Where it stands and what the country around it is like.',
-      tables: [
-        // "It stands …"
-        { id: `env.${env}.sits`, label: 'Where it stands', entries: e.sits },
-        { id: `env.${env}.feature`, label: 'What is notable nearby', entries: e.feature },
-        // "The country around is home to …"
-        { id: `env.${env}.wildlife`, label: 'Wildlife', entries: e.wildlife },
-        ...SURROUNDINGS,
       ],
     })
   }
@@ -300,7 +204,7 @@ export const rollAll = (rolls: Rolls, locked: string[] = [], random: () => numbe
 /** The place written up as a brief: one paragraph for each step, leaving out whatever has not been rolled. */
 export function brief(name: string, rolls: Rolls): string[] {
   const { get, say } = reader(stepsFor, rolls)
-  const kind = key(KINDS, rolls.kind), env = key(ENVIRONMENTS, rolls.env), danger = key(DANGERS, rolls.danger)
+  const kind = key(KINDS, rolls.kind), danger = key(DANGERS, rolls.danger)
   const called = name.trim() || 'This place'
   const out: string[] = []
 
@@ -311,14 +215,6 @@ export function brief(name: string, rolls: Rolls): string[] {
       `${called} is ${an(`${looks ? `${looks} ` : ''}${k.label}`)}${get('age') ? `, ${get('age')}` : ''}.`,
       say`It was made ${get(`kind.${kind}.purpose`)}.`, get(`kind.${kind}.feature`),
       say`It is reached ${get('access')}.`, say`Locals ${get('known')}.`,
-    ].filter(Boolean).join(' '))
-  }
-  if (env) {
-    const e = ENVIRONMENTS[env]
-    out.push([
-      get(`env.${env}.sits`) ? `It stands ${get(`env.${env}.sits`)}, ${e.where}.` : `It stands ${e.where}.`,
-      get(`env.${env}.feature`), say`The country around is home to ${get(`env.${env}.wildlife`)}.`,
-      say`Lately the weather has been ${get('weather')}.`, get('press'),
     ].filter(Boolean).join(' '))
   }
   if (get('before')) out.push([say`Before this, the ground held ${get('before')}.`, rolls.before ? say`Of that, ${get('remains')}.` : ''].filter(Boolean).join(' '))

@@ -53,8 +53,6 @@ const FOUNDATIONS: Table[] = [
   { id: 'origin', label: 'How it began', entries: t('as a camp that never moved on | around a river crossing | by royal charter | as a refuge in wartime | around a mine | at a meeting of trade roads | on the ruins of something older | around a shrine') },
   { id: 'age', label: 'Age', entries: t('barely a generation old | a few generations old | centuries old | ancient | older than its own records | newly refounded after a disaster') },
   { id: 'condition', label: 'Condition', entries: t('squalid | shabby | plain | well-kept | prosperous | splendid') },
-  // "… and lies …"
-  { id: 'land', label: 'Where it lies', entries: t('on a coast | in a forest | in the mountains | on open plains | on a river | in a swamp | underground | in the desert | on a lake island | in cold northern country') },
   // "Visitors are …"
   { id: 'traffic', label: 'Visitors', entries: t('almost unknown | rare | a steady trickle | common | constant | more than it can hold') },
 ]
@@ -113,7 +111,7 @@ export function stepsFor(rolls: Rolls): Step[] {
   const k = type && TYPES[type]
   return [
     {
-      title: 'Foundations', blurb: 'What kind of settlement it is, how it came to be and where it lies.',
+      title: 'Foundations', blurb: 'What kind of settlement it is, and how it came to be.',
       // "It is known for …"
       tables: [...FOUNDATIONS, ...(k ? [{ id: `type.${type}.known`, label: 'What it is known for', entries: k.known }] : [])],
     },
@@ -139,7 +137,6 @@ export function brief(name: string, rolls: Rolls): string[] {
   const k = TYPES[type]
   const called = name.trim() || 'This settlement'
   const join = (parts: (string | undefined)[]) => parts.filter(Boolean).join(' ')
-  const beginnings = [get('origin') && `began ${get('origin')}`, get('land') && `lies ${get('land')}`].filter(Boolean).join(' and ')
   const lawAndCrime = [get('law') && `The law is ${get('law')}`, get('crime') && `crime is ${get('crime')}`].filter(Boolean).join(', and ')
   const shops = [...new Set([get('shop1'), get('shop2')].filter(Boolean))].join(' and ')
   const faith = [get('worship') && `The main place of worship is ${get('worship')}`, get('gather') && `people gather ${get('gather')}`].filter(Boolean).join(', and ')
@@ -147,7 +144,7 @@ export function brief(name: string, rolls: Rolls): string[] {
   return [
     join([
       `${called} is ${an(`${get('condition') ? `${get('condition')} ` : ''}${k.label}`)}${get('age') ? `, ${get('age')}` : ''}.`,
-      beginnings && `It ${beginnings}.`, say`It is known for ${get(`type.${type}.known`)}.`, say`Visitors are ${get('traffic')}.`,
+      say`It began ${get('origin')}.`, say`It is known for ${get(`type.${type}.known`)}.`, say`Visitors are ${get('traffic')}.`,
     ]),
     join([
       say`It holds ${get(`type.${type}.size`)}.`,
