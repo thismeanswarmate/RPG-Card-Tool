@@ -412,3 +412,16 @@ html, body, #root { height: 100dvh; }
 .section-actions { margin-left: 10px; display: inline-flex; gap: 6px; }
 .section-actions button { font-size: 12px; padding: 2px 8px; color: var(--muted); font-weight: 400; }
 @media (max-width: 700px) { .draw.row .draw-label { min-width: 100%; } }
+
+/* Elements folded down to one line */
+button.fold { border: none; background: none; padding: 0 6px 0 0; color: var(--muted); font-size: 13px; vertical-align: 1px; }
+button.fold:hover { color: var(--text); }
+.entry.mini { padding: 6px 10px; gap: 0; }
+.entry.place.mini { padding: 8px 12px; }
+.mini-row { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; padding: 0; text-align: left; min-width: 0; }
+.mini-row img, .mini-row .thumb { flex: none; width: 40px; height: 40px; border-radius: 6px; object-fit: cover; }
+.mini-row .thumb { display: grid; place-items: center; background: color-mix(in srgb, var(--c, var(--terrain)) 30%, var(--raised)); color: var(--text); font-weight: 600; font-size: 16px; }
+.mini-row b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.entry.place .mini-row b { font-size: 17px; }
+.mini-row small { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.mini-row .open { color: var(--muted); }

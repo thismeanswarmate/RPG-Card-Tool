@@ -15,6 +15,7 @@ import {
   addBuilt, addMention, addPerson, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, findMentions, mentionKind,
   goneWith, redrawPlace, remove, removeStory, rerollStory, toggleDeck, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
 } from './settingBuild'
+import { siteKind } from './mapgen'
 import { SettingMap } from './SettingMap'
 import { useSettings } from './settingStore'
 import { cardsOf } from './store'
@@ -23,7 +24,14 @@ import { ToolNav } from './ToolNav'
 import type { CardType } from './types'
 
 const upper = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
-const go = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+/** Opens every folded element; set by the setting on screen, so that a jump can reach something tucked inside one. */
+let unfoldAll: (() => void) | null = null
+const scrollTo = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+const go = (id: string) => {
+  if (document.getElementById(`set-${id}`)) return scrollTo(id)
+  unfoldAll?.()
+  setTimeout(() => scrollTo(id), 60)
+}
 const WORDS = 'ember harbour thistle lantern marrow sable quill tallow wren ash juniper flint'.split(' ')
 const randomSeed = () => `${WORDS[Math.floor(Math.random() * WORDS.length)]}-${Math.floor(100 + Math.random() * 900)}`
 
@@ -168,6 +176,32 @@ function SettingDecks({ s, onClose }: { s: SettingData; onClose(): void }) {
   )
 }
 
+/** Which elements are folded down to a single line, and the way to fold or open one. */
+const FoldCtx = createContext<{ folded: Set<string>; toggle(id: string): void }>({ folded: new Set(), toggle: () => {} })
+
+/** The small button in an element's heading that folds it away. */
+function FoldButton({ id }: { id: string }) {
+  const { toggle } = useContext(FoldCtx)
+  return <button className="fold" title="Minimise" aria-label="Minimise" aria-expanded onClick={() => toggle(id)}>▾</button>
+}
+
+/** An element folded down: a small picture, its name and what it is. Clicking it opens it again. */
+function Mini({ id, s, what, className }: { id: string; s: SettingData; what: string; className: string }) {
+  const { toggle } = useContext(FoldCtx)
+  const src = useImages((x) => x.links[`${s.id}:${id}`])
+  const name = s.names[id] ?? ''
+  return (
+    <section id={`set-${id}`} className={`${className} mini`}>
+      <button className="mini-row" aria-expanded={false} title="Open" onClick={() => toggle(id)}>
+        {src ? <img src={src} alt="" loading="lazy" /> : <span className="thumb" aria-hidden>{name.replace(/^the /i, '').charAt(0).toUpperCase()}</span>}
+        <b>{name.charAt(0).toUpperCase() + name.slice(1)}</b>
+        <small>{what}</small>
+        <span className="open" aria-hidden>▸</span>
+      </button>
+    </section>
+  )
+}
+
 /** Whether the setting on screen is being edited, which shows the buttons for adding, changing and removing. */
 const EditCtx = createContext(false)
 
@@ -246,9 +280,11 @@ function BuiltBlock({ b, s }: { b: Built; s: SettingData }) {
   const editing = useContext(EditCtx)
   const edit = useSettings((x) => x.edit)
   const drop = useRemove(s)
+  const what = `${b.tool === 'settlement' ? 'settlement' : 'dangerous place'} · ${builtKind(b)}`
+  if (useContext(FoldCtx).folded.has(b.id)) return <Mini id={b.id} s={s} what={what} className={`entry nested built ${b.tool}`} />
   return (
     <section id={`set-${b.id}`} className={`entry nested built ${b.tool}`}>
-      <h5><Name id={b.id} s={s} /> <small>{b.tool === 'settlement' ? 'settlement' : 'dangerous place'} · {builtKind(b)}</small></h5>
+      <h5><FoldButton id={b.id} /><Name id={b.id} s={s} /> <small>{what}</small></h5>
       <Picture id={b.id} s={s} />
       <Prose s={s} text={builtText(s, b)} home={b.home} />
       {editing && (
@@ -379,9 +415,11 @@ function EditRow({ id, s, what, person }: { id: string; s: SettingData; what: st
 
 /** A power, thing or event, with whatever hangs from it nested beneath. */
 function EntityBlock({ e, s, children }: { e: Entity; s: SettingData; children?: React.ReactNode }) {
+  const what = e.kind === 'deity' ? e.what : `${e.kind} · ${e.what}`
+  if (useContext(FoldCtx).folded.has(e.id)) return <Mini id={e.id} s={s} what={what} className={`entry nested lk-${e.kind}`} />
   return (
     <section id={`set-${e.id}`} className={`entry nested lk-${e.kind}`}>
-      <h5><Name id={e.id} s={s} /> <small>{e.kind === 'deity' ? e.what : `${e.kind} · ${e.what}`}</small></h5>
+      <h5><FoldButton id={e.id} /><Name id={e.id} s={s} /> <small>{what}</small></h5>
       <Picture id={e.id} s={s} />
       <Prose s={s} text={entityText(s, e)} home={e.home} skip={e.what} />
       <Refs label="Tied to" ids={tiesTo(s, e.id)} s={s} />
@@ -392,9 +430,10 @@ function EntityBlock({ e, s, children }: { e: Entity; s: SettingData; children?:
 }
 
 function PersonBlock({ c, s }: { c: Char; s: SettingData }) {
+  if (useContext(FoldCtx).folded.has(c.id)) return <Mini id={c.id} s={s} what={c.what} className="entry nested lk-figure" />
   return (
     <section id={`set-${c.id}`} className="entry nested lk-figure">
-      <h5><Name id={c.id} s={s} /> <small>{c.what}</small></h5>
+      <h5><FoldButton id={c.id} /><Name id={c.id} s={s} /> <small>{c.what}</small></h5>
       <Picture id={c.id} s={s} />
       <Prose s={s} text={charText(s, c)} home={c.home} skip={c.what} />
       <Refs label="Tied to" ids={tiesTo(s, c.id).filter((id) => id !== c.faction)} s={s} />
@@ -425,6 +464,13 @@ function Gazetteer({ s }: { s: SettingData }) {
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(!!s.manual)
   const [decks, setDecks] = useState(false)
+  // What is folded is remembered for each setting in this browser.
+  const foldKey = `storyloom-folded:${s.id}`
+  const [folded, setFolded] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem(foldKey) ?? '[]') as string[]) } catch { return new Set() } })
+  const keep = (next: Set<string>) => { setFolded(next); try { localStorage.setItem(foldKey, JSON.stringify([...next])) } catch { /* private window */ } }
+  const fold = { folded, toggle: (id: string) => { const next = new Set(folded); if (!next.delete(id)) next.add(id); keep(next) } }
+  useEffect(() => { unfoldAll = () => keep(new Set()); return () => { unfoldAll = null } })
+  const everything = () => [...rootsOf(s), ...Object.keys(s.board).filter((id) => s.board[id].parent && s.names[id]), ...s.entities.map((e) => e.id), ...s.people.map((c) => c.id), ...(s.built ?? []).map((b) => b.id)]
   const edit = useSettings((x) => x.edit)
   const add = useAdd()
   const drop = useRemove(s)
@@ -447,6 +493,7 @@ function Gazetteer({ s }: { s: SettingData }) {
   }
   return (
     <EditCtx.Provider value={editing}>
+    <FoldCtx.Provider value={fold}>
     <div className="gazetteer">
       <header className="gaz-head">
         <h2><Name id="world" s={s} /></h2>
@@ -454,6 +501,8 @@ function Gazetteer({ s }: { s: SettingData }) {
         <div className="actions">
           <button className={editing ? 'on' : ''} aria-pressed={editing} onClick={() => setEditing(!editing)}>{editing ? 'Done editing' : 'Edit'}</button>
           <button onClick={() => setDecks(true)}>Decks</button>
+          {roots.length > 0 && <button onClick={() => keep(new Set(everything()))}>Minimise all</button>}
+          {folded.size > 0 && <button onClick={() => keep(new Set())}>Open all</button>}
           <button onClick={copy}>{copied ? 'Copied' : 'Copy as text'}</button>
           <button onClick={download}>Download</button>
         </div>
@@ -488,9 +537,10 @@ function Gazetteer({ s }: { s: SettingData }) {
 
       {rootsOf(s).map((r) => {
         const v = placeView(s, r)
+        if (folded.has(r)) return <Mini key={r} id={r} s={s} what={v.aka} className="entry place" />
         return (
           <article key={r} id={`set-${r}`} className="entry place">
-            <h4><Name id={r} s={s} /> <small>{v.aka}</small></h4>
+            <h4><FoldButton id={r} /><Name id={r} s={s} /> <small>{v.aka}</small></h4>
             <Picture id={r} s={s} />
             <Prose s={s} text={[v.land.text]} home={r} />
             {editing && (
@@ -506,9 +556,9 @@ function Gazetteer({ s }: { s: SettingData }) {
               </>
             )}
             <SpotBody sp={v.land} s={s} />
-            {v.sites.map((site) => (
+            {v.sites.map((site) => folded.has(site.id) ? <Mini key={site.id} id={site.id} s={s} what={`site · ${siteKind(s, site.id).toLowerCase()}`} className="entry nested site" /> : (
               <section key={site.id} id={`set-${site.id}`} className="entry nested site">
-                <h5><Name id={site.id} s={s} /> <small>site</small></h5>
+                <h5><FoldButton id={site.id} /><Name id={site.id} s={s} /> <small>site · {siteKind(s, site.id).toLowerCase()}</small></h5>
                 <Picture id={site.id} s={s} />
                 <Prose s={s} text={[site.text]} home={site.id} />
                 {editing && (
@@ -548,6 +598,7 @@ function Gazetteer({ s }: { s: SettingData }) {
         {editing && s.people.length === 0 && <p className="hint">Stories start from people: add a person, then use “+ Story” under them.</p>}
       </details>
     </div>
+    </FoldCtx.Provider>
     </EditCtx.Provider>
   )
 }
