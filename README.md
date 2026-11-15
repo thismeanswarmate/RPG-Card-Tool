@@ -3,6 +3,7 @@
 A browser tool for building story settings from cards. Draw a Terrain, tuck Sites, Epithets, Legacies, Traits and
 Omens under its edges, and arrange the resulting microsettings into a world map.
 
+- **Two tabs:** *Custom* is the hands-on table. *Auto* deals a whole world in one click: a meta row, then 5–20 microsettings (by map size) alternating simple and complex, which you can then edit like any other. Each tab keeps its own world.
 - **Guided or free:** follow the six-step guide (with an optional "complex" mode that draws two and lets you keep one or both), or draw from any pile.
 - **Table:** drag cards, tuck them under a Terrain or Site edge, double-click to turn a card to its next cue, pan and zoom.
 - **World tools:** a sideboard of face-up cards, a world-wide meta row, discards, links between cards, and notes per microsetting.

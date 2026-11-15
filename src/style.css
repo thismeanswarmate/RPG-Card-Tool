@@ -22,6 +22,10 @@ input[type=text], input:not([type]), textarea { background: var(--bg); border: 1
 .topbar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .topbar h1 { font-size: 18px; letter-spacing: .04em; color: var(--accent); margin-right: 6px; }
 .spacer { flex: 1; }
+.modes { display: flex; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.modes button { border: none; background: none; color: var(--muted); padding: 4px 14px; border-radius: 6px; font-weight: 600; }
+.modes button.on { background: var(--accent); color: #1c1608; }
+select { font: inherit; color: inherit; background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
 .toggle { display: flex; align-items: center; gap: 4px; color: var(--muted); white-space: nowrap; }
 .guide { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .steps { display: flex; gap: 3px; }
@@ -139,6 +143,7 @@ html, body, #root { height: 100dvh; }
   .step { flex: 1; padding: 5px 0; font-size: 12px; }
   .step-help { flex: 1; min-width: 0; font-size: 12px; }
   .guide .primary { padding: 7px 18px; }
+  .guide select { flex: 1; min-width: 0; padding: 8px; }
 
   .main { position: relative; }
   .sidebar, .panel { position: absolute; left: 0; right: 0; bottom: 0; width: auto; max-height: 62%; z-index: 20; border: none;
@@ -161,3 +166,4 @@ html, body, #root { height: 100dvh; }
   .empty p { max-width: 280px; }
   input, textarea { font-size: 16px; }
 }
+.roots .link { display: inline; }

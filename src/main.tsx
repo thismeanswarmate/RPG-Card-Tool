@@ -5,12 +5,10 @@ import { Hand } from './Hand'
 import { Panel } from './Panel'
 import { Sidebar } from './Sidebar'
 import { titleOf } from './logic'
-import { cardsOf, useStore } from './store'
+import { cardsOf, stores, useStore, WorldCtx, type Mode } from './store'
 import { Table } from './Table'
 import { TopBar } from './TopBar'
 import './style.css'
-
-if (!useStore.getState().init) useStore.getState().reset()
 
 type Sheet = 'piles' | 'details' | null
 
@@ -31,11 +29,28 @@ function SelectionBar({ onDetails }: { onDetails: () => void }) {
   )
 }
 
+const savedMode = (): Mode => {
+  try { return localStorage.getItem('worldloom-tab') === 'auto' ? 'auto' : 'custom' } catch { return 'custom' }
+}
+
 function App() {
+  const [mode, setMode] = useState<Mode>(savedMode)
+  const pickMode = (m: Mode) => {
+    setMode(m)
+    try { localStorage.setItem('worldloom-tab', m) } catch { /* private window */ }
+  }
+  return (
+    <WorldCtx.Provider value={mode}>
+      <World key={mode} mode={mode} onMode={pickMode} />
+    </WorldCtx.Provider>
+  )
+}
+
+function World({ mode, onMode }: { mode: Mode; onMode: (m: Mode) => void }) {
   const [decks, setDecks] = useState(false)
   const [sheet, setSheet] = useState<Sheet>(null)
-  const handSize = useStore((s) => s.hand.length)
-  const linking = useStore((s) => s.linking)
+  const { hand, linking } = useStore()
+  const handSize = hand.length
   useEffect(() => { if (handSize || linking) setSheet(null) }, [handSize, linking])
   const tab = (name: Sheet, label: string) => (
     <button className={sheet === name ? 'on' : ''} onClick={() => setSheet(sheet === name ? null : name)}>{label}</button>
@@ -43,17 +58,17 @@ function App() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest('input, textarea')) return
-      const s = useStore.getState()
+      const s = stores[mode].getState()
       if (!s.selected) return
       if (e.key === 'r') s.rotate(s.selected)
       if (e.key === 'Delete' || e.key === 'Backspace') s.discard(s.selected)
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [])
+  }, [mode])
   return (
     <div className={`app${sheet ? ` sheet-${sheet}` : ''}`}>
-      <TopBar onDecks={() => setDecks(true)} />
+      <TopBar mode={mode} onMode={onMode} onDecks={() => setDecks(true)} />
       <div className="main">
         <Sidebar />
         <div className="stage">

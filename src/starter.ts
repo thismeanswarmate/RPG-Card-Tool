@@ -5,6 +5,7 @@ import type { CardDef, CardType, Cue } from './types'
 const terrain = [
   'Marsh', 'Steppe', 'Highlands', 'Archipelago', 'Fjord', 'Dunes', 'Old Forest', 'Tundra', 'Salt Flats',
   'Badlands', 'Savanna', 'Moor', 'Rift Valley', 'Lagoon', 'Karst', 'Floodplain', 'Caldera', 'Heath',
+  'Glacier', 'Mangrove', 'Plateau', 'Estuary', 'Canyonlands', 'Atoll',
 ]
 
 export const TERRAIN_COLORS: Record<string, [string, string]> = {
@@ -14,6 +15,8 @@ export const TERRAIN_COLORS: Record<string, [string, string]> = {
   Badlands: ['#b0694a', '#7a4636'], Savanna: ['#b99b4c', '#7c7a3a'], Moor: ['#6b5f73', '#454a55'],
   'Rift Valley': ['#8a6d4b', '#4d5a3c'], Lagoon: ['#3fa39a', '#2a6d80'], Karst: ['#8e9486', '#5b6660'],
   Floodplain: ['#6f8f5a', '#4a6f6c'], Caldera: ['#70504c', '#3b3340'], Heath: ['#8a6f8c', '#5c6b4c'],
+  Glacier: ['#b7d3de', '#6f97ab'], Mangrove: ['#3f6f52', '#2b4d55'], Plateau: ['#a8875c', '#6d5d4b'],
+  Estuary: ['#7f9a86', '#46708a'], Canyonlands: ['#c0714a', '#7d3f33'], Atoll: ['#58b8b0', '#2c6f95'],
 }
 
 const sites = [
@@ -22,6 +25,9 @@ const sites = [
   ['Citadel', 'Harbour'], ['Aqueduct', 'Burial Mound'], ['Hot Spring', 'Mine'], ['Customs House', 'Standing Stones'],
   ['Hermitage', 'Fairground'], ['Sinkhole', 'Cove'], ['Inn', 'Granary'], ['Signal Fire', 'Clocktower'],
   ['Walled Town', 'Sluice Gate'], ['Apiary', 'Rope Bridge'],
+  ['Ropewalk', 'Tannery'], ['Monastery', 'Toll Gate'], ['Windmill', 'Boatyard'], ['Menagerie', 'Salt Works'],
+  ['Courthouse', 'Kiln'], ['Stepwell', 'Vineyard'], ['Barrow', 'Beacon Hill'], ['Glassworks', 'Ford'],
+  ['Almshouse', 'Tide Pool'], ['Stockade', 'Tea House'], ['Printing House', 'Menhir'], ['Dry Dock', 'Wishing Well'],
 ]
 
 // First cue opens a name ("The Whispering Marsh"); the other three end it ("The Marsh of Lanterns").
@@ -42,6 +48,20 @@ const epithets = [
   ['Stubborn', 'Before the Dawn', 'of Needles', 'of Amber'],
   ['Salted', 'That Wanders', 'of Echoes', 'of Last Letters'],
   ['Thousandfold', 'Where Wolves Sing', 'of Chalk', 'of Small Mercies'],
+  ['Sleepless', 'of Broken Oaths', 'That Keeps Count', 'of Tin Whistles'],
+  ['Mended', 'of Burnt Sugar', 'Where Tides Wait', 'of Sparrows'],
+  ['Giddy', 'of Hidden Stairs', 'That Sings Back', 'of Pewter'],
+  ['Feathered', 'of Slow Clocks', 'Beyond the Last Fence', 'of Foxgloves'],
+  ['Tilted', 'of Open Windows', 'That Owes Nothing', 'of Driftwood'],
+  ['Unhurried', 'of Three Moons', 'Where Smoke Rises', 'of Riddles'],
+  ['Smouldering', 'of Cold Hearths', 'That Came Back', 'of Sealing Wax'],
+  ['Twice-Sold', 'of Paper Boats', 'Without a Master', 'of Hazel'],
+  ['Moonlit', 'of Unsent Gifts', 'That Outlived Its Makers', 'of Flint'],
+  ['Bitter', 'of Sweet Water', 'Where Children Rule', 'of Looms'],
+  ['Wayward', 'of Empty Thrones', 'That Prays for Rain', 'of Herons'],
+  ['Painted', 'of Borrowed Time', 'Under Lock and Key', 'of Marigolds'],
+  ['Sunken', 'of Good Intentions', 'That Speaks in Bells', 'of Walnut'],
+  ['Tongue-Tied', 'of Lost Causes', 'Where Roads Forget', 'of Starlings'],
 ]
 
 const legacies = [
@@ -57,6 +77,18 @@ const legacies = [
   ['Founded by a runaway heir', 'Site of a trial still argued over', 'Shaped by generations of quarrying', 'Discovered by accident'],
   ['Where a beloved ballad was first sung', 'Once a royal hunting preserve', 'Survived a siege of seven years', 'Left unfinished by its architects'],
   ['Sacred to a faith no one remembers', 'Raised by rival families in one season', 'Where a great expedition set out', 'Traded for a shipload of spice'],
+  ['Drained from a swamp by convicts', 'Named after a beloved dog', 'Site of a coronation gone wrong', 'Built with stones from a rival city'],
+  ['Founded by shipwrights without a sea', 'Once quarantined for a generation', 'Where a peace was signed at swordpoint', 'Grown from a single orchard'],
+  ['Home of a vanished guild', 'Founded to hide a scandal', 'Won by a commoner in a lawsuit', 'Twice destroyed by floods'],
+  ['Birthplace of a famous impostor', 'Once a monastery of silent scholars', 'Mapped wrongly for centuries', 'Settled by followers of a comet'],
+  ['Site of a festival that never ended', 'Lost in a game of cards', 'Built by an exiled queen', 'Where the old calendar was abandoned'],
+  ['Refuge for runaway apprentices', 'Raised from ruins by its grandchildren', 'Once famous for a wonder now lost', 'Founded on the wrong side of a border'],
+  ['Chosen by lot as a capital, briefly', 'Where a plague was cured', 'Built as a monument to a lie', 'Reclaimed from the wild after a long absence'],
+  ['Meeting place of ancient caravans', 'Founded by a jilted bride', 'Spared by an invading army', 'Dug out in search of treasure'],
+  ['Home of a line of famous twins', 'Once owned by a single family', 'Where a prophet was laughed out of town', 'Shaped by a great landslide'],
+  ['Founded by mutineers', 'Once a garden for distant kings', 'Site of an unsolved disappearance', 'Built on reclaimed tideland'],
+  ['Where a long feud began', 'Settled by a failed crusade', 'Starting line of a legendary race', 'Left behind by retreating ice'],
+  ['Granted as payment for a song', 'Once forbidden to outsiders', 'Where a river was moved by hand', 'Rebuilt from memory after a fire'],
 ]
 
 const traits = [
@@ -76,6 +108,20 @@ const traits = [
   ['Great lovers of riddles', 'Trades in salvaged goods', 'Keeps an unbroken watch', 'Renowned for smoked fish'],
   ['Governed by a merchant league', 'Masks worn on holy days', 'Abundant wild game', 'Famous for its clocks'],
   ['Children are raised by the whole village', 'Guards an old library', 'Known for bitter winters', 'Music in every tavern'],
+  ['Famous for its pickles', 'Everyone can swim', 'Ruled by whoever is oldest', 'Dust storms in spring'],
+  ['Proud of its crooked streets', 'Whistled signals carry for miles', 'Guests must tell a story', 'Bridges are privately owned'],
+  ['Renowned ropemakers', 'Suspicious of mirrors', 'Lantern boats each midsummer', 'Overrun with goats'],
+  ['Disputes are settled by footrace', 'Prized wool', 'Mist rolls in at noon', 'Offices are held for one day'],
+  ['Devoted to an ancestral hero', 'Exports fine ink', 'Hair is braided by trade', 'Famous sour bread'],
+  ['Rival choirs compete fiercely', 'Forgets nothing, forgives slowly', 'Remarkably tall residents', 'Plagued by gossip'],
+  ['Celebrated puppeteers', 'Shops open only at dawn', 'Protective of its recipes', 'Renowned bellfounders'],
+  ['Generous to beggars', 'Obsessed with kite fighting', 'Doors are never locked', 'Tolls paid in firewood'],
+  ['Trains rescue dogs', 'Silent on one day each week', 'Famous for its echoes', 'Wary of bargains'],
+  ['Skilled bonesetters', 'Governed by a rotating council', 'Known for lavish weddings', 'Rich in hot springs'],
+  ['Feeds its poor first', 'Breeds racing pigeons', 'Paints its dead on walls', 'Sudden summer hailstorms'],
+  ['Thriving trade in secrets', 'Uses its own calendar', 'Reveres a local river', 'Known for fine lacework'],
+  ['Stubbornly old-fashioned', 'Celebrated tilemakers', 'Snowbound half the year', 'Home to a famous infirmary'],
+  ['Great lovers of chess', 'Trades in second-hand books', 'Lights a beacon every night', 'Renowned for honey cakes'],
 ]
 
 const omens: [string, string][][] = [
@@ -91,6 +137,18 @@ const omens: [string, string][][] = [
   [['A ship has returned without its crew', 'adrift, well stocked, or carrying something new'], ['Neighbours are disputing a boundary', 'a stream, a pasture, or a toll bridge']],
   [['An old prediction is coming due', 'awaited, dreaded, or half forgotten'], ['Outsiders have come to study the place', 'scholars, surveyors, or spies']],
   [['A sickness is spreading quietly', 'among livestock, travellers, or the well-to-do'], ['Someone long thought dead has returned', 'changed, pursued, or unrepentant']],
+  [['A bridge has collapsed', 'from neglect, flood, or a deliberate hand'], ['A travelling court is on its way', 'to judge, to tax, or to hide']],
+  [['A child has been born under strange signs', 'hailed, feared, or quietly hidden'], ['The mill has stopped turning', 'for lack of water, workers, or will']],
+  [['A rich traveller has fallen ill here', 'generous, demanding, or not who they claim'], ['The old charter has been found', 'granting rights, debts, or an inconvenient truth']],
+  [['Smoke is rising beyond the border', 'from war, wildfire, or a new settlement'], ['A marriage is uniting two feuding houses', 'gladly, grudgingly, or under false names']],
+  [['Coins of an unknown mint are circulating', 'forged, foreign, or very old'], ['The young are leaving in numbers', 'for work, adventure, or a distant cause']],
+  [['A beloved landmark is to be torn down', 'for profit, safety, or spite'], ['A stranger claims to speak for the dead', 'comforting, extorting, or telling the truth']],
+  [['The price of bread has doubled', 'after a bad harvest, a blockade, or a hoarder’s scheme'], ['Something is washing ashore', 'wreckage, cargo, or letters in bottles']],
+  [['A long drought has broken', 'with floods, celebration, or a ruined crop'], ['An old tunnel has been rediscovered', 'leading to cellars, a vault, or somewhere unexpected']],
+  [['The night watch has gone on strike', 'over pay, a death, or what they saw'], ['A famous artist has come to stay', 'seeking quiet, a subject, or sanctuary']],
+  [['Rival claimants are raising banners', 'over a title, an inheritance, or an insult'], ['The bells will not ring', 'cracked, stolen, or silenced by decree']],
+  [['A census is being taken', 'for taxes, conscription, or a search'], ['Lights have been seen on the water', 'smugglers, fishermen, or something unexplained']],
+  [['The trade fair has drawn a record crowd', 'bringing wealth, thieves, or old enemies'], ['A grave has been found empty', 'robbed, mistaken, or never filled']],
 ]
 
 const make = (type: CardType, rows: Cue[][]): CardDef[] =>

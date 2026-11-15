@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CardView } from './CardView'
 import { DIR, dropTarget, layout, peek, SIZE } from './logic'
-import { cardsOf, useStore, viewport } from './store'
+import { cardsOf, MIN_ZOOM, useApi, useMode, useStore, viewport } from './store'
 import type { Edge } from './types'
 
 interface Drag { id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean }
@@ -9,6 +9,8 @@ interface Pan { sx: number; sy: number; ox: number; oy: number; moved: boolean }
 
 export function Table() {
   const s = useStore()
+  const api = useApi()
+  const mode = useMode()
   const cards = cardsOf(s)
   const pos = useMemo(() => layout(s.placed, cards), [s.placed, cards])
   const ref = useRef<HTMLDivElement>(null)
@@ -75,7 +77,7 @@ export function Table() {
     const pz = pinch.current
     if (pz && touches.current.size === 2) {
       const [a, b] = [...touches.current.values()].map(local)
-      const k = Math.min(2, Math.max(0.3, (pz.view.k * Math.hypot(a.x - b.x, a.y - b.y)) / pz.d))
+      const k = Math.min(2, Math.max(MIN_ZOOM, (pz.view.k * Math.hypot(a.x - b.x, a.y - b.y)) / pz.d))
       const f = k / pz.view.k
       s.setView({ k, x: (a.x + b.x) / 2 - (pz.mx - pz.view.x) * f, y: (a.y + b.y) / 2 - (pz.my - pz.view.y) * f })
       return
@@ -87,7 +89,7 @@ export function Table() {
       if (!d.moved && Math.hypot(dx, dy) * s.view.k < 5) return
       s.move(d.id, d.ox + dx, d.oy + dy, !d.moved)
       d.moved = true
-      const st = useStore.getState()
+      const st = api.getState()
       setTarget(dropTarget(st.placed, cards, layout(st.placed, cards), d.id))
     } else if (pan.current) {
       const p = pan.current
@@ -119,7 +121,7 @@ export function Table() {
     const r = ref.current!.getBoundingClientRect()
     const mx = e.clientX - r.left
     const my = e.clientY - r.top
-    const k = Math.min(2, Math.max(0.3, s.view.k * Math.exp(-e.deltaY * 0.0015)))
+    const k = Math.min(2, Math.max(MIN_ZOOM, s.view.k * Math.exp(-e.deltaY * 0.0015)))
     const f = k / s.view.k
     s.setView({ k, x: mx - (mx - s.view.x) * f, y: my - (my - s.view.y) * f })
   }
@@ -181,14 +183,18 @@ export function Table() {
       {!order.length && !s.hand.length && (
         <div className="empty">
           <h2>An empty table</h2>
-          <p>Press <b>Draw</b> in the guide above to start your first microsetting, or draw any card from the piles on the left.</p>
+          {mode === 'auto' ? (
+            <p>Pick a map size above and press <b>Generate world</b>. Everything it deals can still be moved, turned and swapped.</p>
+          ) : (
+            <p>Press <b>Draw</b> in the guide above to start your first microsetting, or draw any card from the piles.</p>
+          )}
         </div>
       )}
       {s.linking && <div className="toast">Click another card to link it — or click the table to cancel.</div>}
       <div className="zoom">
         <button onClick={() => s.setView({ ...s.view, k: Math.min(2, s.view.k * 1.2) })}>+</button>
-        <button onClick={() => s.setView({ ...s.view, k: Math.max(0.3, s.view.k / 1.2) })}>−</button>
-        <button onClick={() => s.setView({ x: 0, y: 0, k: 1 })} title="Reset view">⌂</button>
+        <button onClick={() => s.setView({ ...s.view, k: Math.max(MIN_ZOOM, s.view.k / 1.2) })}>−</button>
+        <button onClick={s.fit} title="Fit everything in view">⌂</button>
       </div>
     </div>
   )

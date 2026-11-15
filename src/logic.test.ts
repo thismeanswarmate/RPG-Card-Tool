@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { autoEdge, composeName, cueAt, dropTarget, layout, peek, shuffle, type Board, type Cards } from './logic'
+import { autoEdge, composeName, cueAt, dropTarget, layout, peek, rootOf, shuffle, type Board, type Cards } from './logic'
 import { STARTER } from './starter'
 import { TYPES } from './types'
 
@@ -77,4 +77,31 @@ describe('placement helpers', () => {
   it('shuffle keeps every element', () => {
     expect(shuffle([1, 2, 3, 4, 5]).sort()).toEqual([1, 2, 3, 4, 5])
   })
+})
+
+describe('world generator', async () => {
+  const { blank, generateWorld, WORLD_SIZES } = await import('./store')
+  for (const size of ['small', 'medium', 'large'] as const)
+    it(`deals a complete ${size} world`, () => {
+      for (let run = 0; run < 20; run++) {
+        const s = blank()
+        generateWorld(s, size)
+        const placed = Object.values(s.placed)
+        const roots = placed.filter((p) => !p.parent)
+        expect(roots.length).toBeGreaterThanOrEqual(WORLD_SIZES[size].min)
+        expect(roots.length).toBeLessThanOrEqual(WORLD_SIZES[size].max)
+        expect(s.meta.map((m) => cards[m.card].type).sort()).toEqual(['epithet', 'legacy', 'omen', 'trait'])
+        for (const r of roots) {
+          expect(cards[r.id].type).toBe('terrain')
+          const kinds = new Set(placed.filter((p) => p.id !== r.id && rootOf(s.placed, p.id) === r.id).map((p) => cards[p.id].type))
+          expect([...kinds].sort()).toEqual(['epithet', 'legacy', 'omen', 'site', 'trait'])
+        }
+        // no card is in two places, and clusters keep clear of each other
+        const everywhere = [...Object.keys(s.placed), ...s.discards, ...s.meta.map((m) => m.card), ...TYPES.flatMap((t) => s.piles[t])]
+        expect(new Set(everywhere).size).toBe(everywhere.length)
+        expect(everywhere.length).toBe(STARTER.length)
+        for (const a of roots) for (const b of roots) if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(380)
+        for (const p of placed) expect(p.active).toBeLessThan(cards[p.id].cues.length)
+      }
+    })
 })

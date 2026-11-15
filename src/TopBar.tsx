@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { GUIDE_STEPS, snapshot, useStore } from './store'
+import { GUIDE_STEPS, snapshot, useApi, useStore, WORLD_SIZES, type Mode, type WorldSize } from './store'
 import { TYPE_INFO } from './types'
 
 const STEP_HELP = [
@@ -11,19 +11,26 @@ const STEP_HELP = [
   'Add an Omen for its future.',
 ]
 
-export function TopBar({ onDecks }: { onDecks: () => void }) {
+const TABS: [Mode, string][] = [['custom', 'Custom'], ['auto', 'Auto']]
+
+export function TopBar({ mode, onMode, onDecks }: { mode: Mode; onMode: (m: Mode) => void; onDecks: () => void }) {
   const s = useStore()
+  const api = useApi()
+  const [size, setSize] = useState<WorldSize>('small')
+  const generate = () => {
+    if (!Object.keys(s.placed).length || confirm('Replace the current generated world with a new one?')) s.generate(size)
+  }
   const file = useRef<HTMLInputElement>(null)
   const { guide } = s
   const [menu, setMenu] = useState(false)
 
   useEffect(() => {
-    if (guide.on && guide.drawn && !s.hand.length) s.guideNext()
-  }, [guide.on, guide.drawn, s.hand.length])
+    if (mode === 'custom' && guide.on && guide.drawn && !s.hand.length) s.guideNext()
+  }, [mode, guide.on, guide.drawn, s.hand.length])
 
   const exportJson = () => {
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(snapshot(), null, 2)], { type: 'application/json' }))
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(snapshot(api), null, 2)], { type: 'application/json' }))
     a.download = 'worldloom-world.json'
     a.click()
     URL.revokeObjectURL(a.href)
@@ -43,10 +50,25 @@ export function TopBar({ onDecks }: { onDecks: () => void }) {
   return (
     <header className="topbar">
       <h1>Worldloom</h1>
-      <label className="toggle">
-        <input type="checkbox" checked={guide.on} onChange={(e) => s.setGuide({ on: e.target.checked })} /> Guided
-      </label>
-      {guide.on && (
+      <nav className="modes" aria-label="Mode">
+        {TABS.map(([m, label]) => (
+          <button key={m} className={m === mode ? 'on' : ''} aria-current={m === mode} onClick={() => onMode(m)}>{label}</button>
+        ))}
+      </nav>
+      {mode === 'auto' && (
+        <div className="guide">
+          <select value={size} onChange={(e) => setSize(e.target.value as WorldSize)} aria-label="Map size">
+            {Object.entries(WORLD_SIZES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+          <button className="primary" onClick={generate}>Generate world</button>
+        </div>
+      )}
+      {mode === 'custom' && (
+        <label className="toggle">
+          <input type="checkbox" checked={guide.on} onChange={(e) => s.setGuide({ on: e.target.checked })} /> Guided
+        </label>
+      )}
+      {mode === 'custom' && guide.on && (
         <div className="guide">
           <div className="steps">
             {GUIDE_STEPS.map((t, i) => (

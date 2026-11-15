@@ -1,4 +1,5 @@
-import { create } from 'zustand'
+import { createContext, useContext } from 'react'
+import { create, useStore as useZustand, type StoreApi } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { STARTER } from './starter'
@@ -57,13 +58,23 @@ interface Actions {
   saveCustom(card: CardDef): void
   deleteCustom(id: string): void
   toggleDeck(deck: string): void
+  fit(): void
+  generate(size: WorldSize): void
 }
 
 export type State = Data & Actions
 
+export type WorldSize = 'small' | 'medium' | 'large'
+/** How many microsettings a generated world holds, by map size. */
+export const WORLD_SIZES: Record<WorldSize, { label: string; min: number; max: number }> = {
+  small: { label: 'Small — 5 to 7 places', min: 5, max: 7 },
+  medium: { label: 'Medium — 9 to 14 places', min: 9, max: 14 },
+  large: { label: 'Large — 14 to 20 places', min: 14, max: 20 },
+}
+
 const emptyPiles = () => Object.fromEntries(TYPES.map((t) => [t, [] as string[]])) as Record<CardType, string[]>
 
-const blank = (): Data => ({
+export const blank = (): Data => ({
   init: true, custom: [], disabled: [], piles: emptyPiles(), hand: [], discards: [], side: null, meta: [],
   placed: {}, links: [], notes: {}, view: { x: 0, y: 0, k: 1 }, selected: null, focus: null, linking: null,
   guide: { on: true, complex: false, step: 0, drawn: false }, seq: 1,
@@ -82,7 +93,7 @@ const inUse = (s: Data) =>
     ...Object.values(s.side ?? {}), ...Object.keys(s.placed),
   ])
 
-function rebuild(s: Data) {
+export function rebuild(s: Data) {
   const used = inUse(s)
   const all = Object.values(cardsOf(s)).filter((c) => !s.disabled.includes(c.deck) && !used.has(c.id))
   for (const t of TYPES) s.piles[t] = shuffle(all.filter((c) => c.type === t).map((c) => c.id))
@@ -140,7 +151,95 @@ export function targetHub(s: Data): string | null {
   return s.focus && s.placed[s.focus] ? s.focus : null
 }
 
-export const useStore = create<State>()(
+export const MIN_ZOOM = 0.12
+
+/** Zoom and pan so that every card on the table is in view. */
+function fitView(s: Data) {
+  const pos = Object.values(layout(s.placed, cardsOf(s)))
+  if (!pos.length) { s.view = { x: 0, y: 0, k: 1 }; return }
+  const pad = 30
+  const x0 = Math.min(...pos.map((p) => p.x)) - pad
+  const y0 = Math.min(...pos.map((p) => p.y)) - pad
+  const w = Math.max(...pos.map((p) => p.x)) + SIZE + pad - x0
+  const h = Math.max(...pos.map((p) => p.y)) + SIZE + pad - y0
+  const k = Math.max(MIN_ZOOM, Math.min(1, viewport.w / w, viewport.h / h))
+  s.view = { k, x: (viewport.w - w * k) / 2 - x0 * k, y: (viewport.h - h * k) / 2 - y0 * k }
+}
+
+const rand = (n: number) => Math.floor(Math.random() * n)
+const HEX = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]
+
+/** An irregular blob of n cells on a hex grid, grown outward from the middle. */
+function blob(n: number): [number, number][] {
+  const cells: [number, number][] = [[0, 0]]
+  const has = (q: number, r: number) => cells.some((c) => c[0] === q && c[1] === r)
+  const dist = ([q, r]: number[]) => Math.hypot(q + r / 2, r * 0.87)
+  while (cells.length < n) {
+    const open = cells.flatMap(([q, r]) => HEX.map(([a, b]) => [q + a, r + b] as [number, number])).filter(([q, r]) => !has(q, r))
+    const a = open[rand(open.length)]
+    const b = open[rand(open.length)]
+    cells.push(dist(a) < dist(b) ? a : b)
+  }
+  return cells
+}
+
+/**
+ * Fill an empty table with a whole world: a meta row chosen from two draws of each type, then a run of
+ * microsettings that alternate between simple (one of everything) and complex (two Sites, Epithets and
+ * Traits drawn, one or both kept).
+ */
+export function generateWorld(s: Data, size: WorldSize) {
+  Object.assign(s, blank(), { custom: s.custom, disabled: s.disabled, guide: { ...s.guide } })
+  rebuild(s)
+  const cards = cardsOf(s)
+  const cue = (id: string) => rand(cards[id].cues.length)
+
+  for (const t of ['epithet', 'legacy', 'trait', 'omen'] as CardType[]) {
+    const [keep, spare] = [pop(s, t), pop(s, t)]
+    if (keep) s.meta.push({ card: keep, active: cue(keep) })
+    if (spare) s.discards.push(spare)
+  }
+
+  const { min, max } = WORLD_SIZES[size]
+  const count = Math.min(min + rand(max - min + 1), s.piles.terrain.length)
+  let complex = Math.random() < 0.5
+
+  const tuck = (id: string, hub: string, active: number) => {
+    s.placed[id] = { id, active, x: 0, y: 0, parent: hub, edge: autoEdge(s.placed, cards, hub, cards[id], active), order: ++s.seq }
+  }
+  /** Draw one card, or two for a complex microsetting, keeping one or both. */
+  const drawFor = (type: CardType, doubled: boolean) => {
+    const got = [pop(s, type), doubled ? pop(s, type) : undefined].filter((c): c is string => !!c)
+    if (got.length === 2 && Math.random() < 0.5) s.discards.push(got.pop()!)
+    return got
+  }
+
+  for (const [q, r] of blob(count)) {
+    const terrain = pop(s, 'terrain')
+    if (!terrain) break
+    s.placed[terrain] = { id: terrain, active: 0, x: (q + r / 2) * 560 + rand(80) - 40, y: r * 490 + rand(80) - 40, order: ++s.seq }
+    const hubs = [terrain]
+    const anyHub = () => hubs[rand(hubs.length)]
+
+    for (const id of drawFor('site', complex)) { tuck(id, terrain, cue(id)); hubs.push(id) }
+    for (const id of drawFor('epithet', complex)) {
+      const hub = anyHub()
+      const opened = childrenOf(s.placed, hub).some((c) => cards[c.id].type === 'epithet' && c.active === 0)
+      tuck(id, hub, opened ? 1 + rand(3) : cue(id))
+    }
+    for (const id of drawFor('legacy', false)) tuck(id, anyHub(), cue(id))
+    for (const id of drawFor('trait', complex)) tuck(id, anyHub(), cue(id))
+    for (const id of drawFor('omen', false)) tuck(id, terrain, cue(id))
+    complex = !complex
+  }
+  fitView(s)
+}
+
+export type Mode = 'custom' | 'auto'
+type Api = StoreApi<State>
+
+const makeStore = (name: string) => create<State>()(
+
   persist(
     immer((set) => ({
       ...blank(),
@@ -282,13 +381,34 @@ export const useStore = create<State>()(
         s.disabled = s.disabled.includes(deck) ? s.disabled.filter((d) => d !== deck) : [...s.disabled, deck]
         rebuild(s)
       }),
+
+      fit: () => set((s) => { fitView(s) }),
+
+      generate: (size) => set((s) => { generateWorld(s, size) }),
     })),
-    { name: 'worldloom-v1' },
+    { name },
   ),
 )
 
+/** Each tab keeps its own, separately saved world. */
+export const stores: Record<Mode, Api> = { custom: makeStore('worldloom-v1'), auto: makeStore('worldloom-auto-v1') }
+for (const api of Object.values(stores)) {
+  if (!api.getState().init) api.getState().reset()
+  // A world saved before the deck grew: shuffle the cards it has never seen into its piles.
+  else (api.setState as (recipe: (s: State) => void) => void)((s) => {
+    const known = new Set([...inUse(s), ...TYPES.flatMap((t) => s.piles[t])])
+    for (const c of Object.values(cardsOf(s)))
+      if (!known.has(c.id) && !s.disabled.includes(c.deck)) s.piles[c.type] = shuffle([...s.piles[c.type], c.id])
+  })
+}
+
+export const WorldCtx = createContext<Mode>('custom')
+export const useMode = () => useContext(WorldCtx)
+export const useApi = () => stores[useContext(WorldCtx)]
+export const useStore = () => useZustand(useApi())
+
 /** The saved portion of the state, for export. */
-export function snapshot(): Data {
-  const s = useStore.getState()
+export function snapshot(api: Api): Data {
+  const s = api.getState()
   return JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(s).filter(([, v]) => typeof v !== 'function'))))
 }
