@@ -1227,3 +1227,22 @@ describe('pictures for every element', async () => {
     expect(P.loosePrompt('x', 'wide', 'races:y').seed).not.toBe(spec.seed)
   })
 })
+
+describe('how a race looks', async () => {
+  const E = await import('./cardTool')
+  const T = await import('./cardTools')
+  it('has skin, hair, eyes and features, written into the description', () => {
+    expect(T.RACES.aspects.map((a) => a.id).slice(0, 6)).toEqual(['form', 'mark', 'skin', 'hair', 'eyes', 'features'])
+    const item = E.blank(T.RACES, 'x'); item.name = 'The Velmar'
+    E.fill(T.RACES, item, 0, [], () => 0)
+    item.sections[0].slots.features = { card: 'core:features:0', active: 0 }
+    const text = E.text(T.RACES, item)[0]
+    expect(text).toContain('Their skin is weathered brown, like old leather; their hair is black and coarse, worn long; and their eyes are pale grey. They have high cheekbones and narrow chins. They say they')
+    delete item.sections[0].slots.hair; delete item.sections[0].slots.features
+    expect(E.text(T.RACES, item)[0]).toContain('Their skin is weathered brown, like old leather; and their eyes are pale grey. They say they')
+    delete item.sections[0].slots.skin
+    expect(E.text(T.RACES, item)[0]).toContain('Their eyes are pale grey. They say they')
+    item.sections[0].slots.hair = { card: 'core:hair:0', active: 1 }
+    expect(E.text(T.RACES, item)[0]).toContain('Their hair is white from birth and their eyes are pale grey.')
+  })
+})

@@ -12,6 +12,16 @@ const word = (taken: string[], kind: 'place' | 'world' = 'place') => {
   return makeName({ kind, tongue: pick(tongues) }, Math.random, new Set(taken.map((x) => x.toLowerCase())))
 }
 
+/** "Their skin is …, their hair is … and their eyes are …", with whatever is missing left out. */
+function looks(skin?: string, hair?: string, eyes?: string): string {
+  const parts = [skin && `skin is ${skin}`, hair && `hair is ${hair}`, eyes && `eyes are ${eyes}`].filter(Boolean) as string[]
+  if (!parts.length) return ''
+  // Cues with commas of their own are set apart by semicolons so the list still reads.
+  const sep = parts.some((p) => p.includes(',')) ? '; ' : ', '
+  const list = parts.map((p, i) => (i ? `their ${p}` : `Their ${p}`))
+  return `${list.length > 1 ? `${list.slice(0, -1).join(sep)}${sep === '; ' ? '; and ' : ' and '}${list.at(-1)}` : list[0]}.`
+}
+
 export const RACES: ToolDef = {
   id: 'races',
   packs: PACKS,
@@ -37,6 +47,42 @@ export const RACES: ToolDef = {
       fantasy: `a faint glow about the hands at night; antlers that are shed each winter; eyes of two different metals; runes that rise on the skin when they lie`,
       scifi: `a port at the base of the skull; skin that shifts colour with their mood; a serial mark under the left eye; lenses grown in place of eyes`,
       horror: `the absence of any reflection; a second set of teeth behind the first; eyes with no whites at all; the way dogs will not go near them` } },
+    // "Their skin is …"
+    { id: 'skin', label: 'Skin', hint: 'Its colour and texture', cues: {
+      core: `weathered brown, like old leather; pale as milk, and quick to flush; deep black with a blue sheen; warm copper; olive, darkening with age;
+        freckled all over; ruddy and wind-roughened; smooth and dark as river stone; sallow, with shadows under the eyes; golden-brown;
+        grey-brown, like bark; so fair the veins show; tawny, with paler palms; dappled light and dark; rough as sand to the touch;
+        the red-brown of clay; ashen in winter and bronze by summer; fine-grained and almost poreless; marked with pale birth-lines; dusky, with a faint shine`,
+      fantasy: `faintly green, like new leaves; covered in fine pearly scales; the grey of storm cloud; lightly furred, striped down the back`,
+      scifi: `chalk-white from generations without sun; patterned with engineered pigment; translucent enough to show the bones of the hand; plated with a soft grown armour`,
+      horror: `waxy, and cold in any weather; mottled like something long under water; thin as paper over the knuckles; seamed with scars no one remembers getting` } },
+    // "their hair is …"
+    { id: 'hair', label: 'Hair', hint: 'Its colour and how it grows or is worn', cues: {
+      core: `black and coarse, worn long; white from birth; red as rust, and curled tight; fine and straw-coloured; thick, brown and never cut;
+        shaved close by custom; dark, with a streak of grey at the temple; wiry and worn in knots; silver by the age of twenty; the colour of wet sand;
+        heavy and blue-black; sparse, growing only on the crown; chestnut, braided with cord; pale gold and very fine; curly and dark, cropped short;
+        ash-brown, bleached at the tips by the sun; thick as a pelt, down the neck and shoulders; auburn in the young and iron-grey in the old; straight and black as ink; worn under a cap, and seldom seen`,
+      fantasy: `more like fine feathers than hair; moss-green and always damp; threaded with strands of real silver; a mane that runs down the spine`,
+      scifi: `absent entirely, by design; fibre-fine and faintly luminous; grown in a colour chosen at birth; replaced by a crest of soft quills`,
+      horror: `lank and colourless; falling out in handfuls, and regrowing overnight; white since whatever happened; matted, and never quite dry` } },
+    // "their eyes are …"
+    { id: 'eyes', label: 'Eyes', hint: 'Their colour and shape', cues: {
+      core: `pale grey; so dark the pupil is lost; green flecked with gold; wide-set and amber; narrow and black; a startling light blue;
+        hazel, and heavy-lidded; brown, with long lashes; large, and slow to blink; deep-set under heavy brows; grey-green, like the sea in winter;
+        round and bright as a bird’s; almost colourless; two different colours, more often than not; tilted, with a fold at the corner; honey-coloured;
+        small and sharp; violet in certain lights; ringed with a darker band; dark brown and very steady`,
+      fantasy: `slit-pupilled, like a goat’s; silver, with no visible pupil; faintly glowing in the dark; the colour of whatever they last looked at`,
+      scifi: `lensed, with a ring of fine script round the iris; black from lid to lid; able to shutter like a camera; mirrored`,
+      horror: `filmed over, though they see well enough; red-rimmed and unblinking; far too large for the face; sunk so deep they seem like holes` } },
+    // "They have …"
+    { id: 'features', label: 'Features', hint: 'The face and anything else that stands out', optional: true, cues: {
+      core: `high cheekbones and narrow chins; broad noses and strong jaws; long faces and longer ears; small mouths and heavy brows; round faces that keep their youth;
+        hooked noses and thin lips; flat, wide faces and short necks; pointed chins and upturned noses; large hands and feet; long necks and sloping shoulders;
+        sharp teeth and a ready smile; deep lines from an early age; ears that stand out from the head; delicate wrists and ankles; thick necks and barrel chests;
+        a gap between the front teeth; faces that show every feeling; faces that show none; prominent brows and deep voices; fine bones and a quick, darting way of moving`,
+      fantasy: `ears that taper to a point; small tusks at the corners of the mouth; a short tail they are shy about; a third, closed eye in the forehead`,
+      scifi: `gill-slits along the neck; a second thumb on each hand; ridges of bone along the skull; fingers jointed one time more than ours`,
+      horror: `mouths a little too wide; fingers a little too long; a stillness about the chest, as if breathing were optional; smiles that never reach the eyes` } },
     // "They say they …"
     { id: 'origin', label: 'Origin', hint: 'Where they say they came from', cues: {
       core: `were shaped from river clay; came across the sea in a single night; were the first to walk here; are descended from one enormous family;
@@ -87,6 +133,8 @@ export const RACES: ToolDef = {
   ],
   write: (g, name) => join(
     `${name || 'This people'} are ${g('form') ?? 'a people apart'}${g('mark') ? `, known by ${g('mark')}` : ''}.`,
+    looks(g('skin'), g('hair'), g('eyes')),
+    say`They have ${g('features')}.`,
     say`They say they ${g('origin')}.`,
     say`They are most at home ${g('home')}.`,
     g('gift') ? `They have a gift for ${g('gift')}${g('flaw') ? `, but they ${g('flaw')}` : ''}.` : g('flaw') ? `They ${g('flaw')}.` : '',
