@@ -12,14 +12,31 @@ const an = (w: string) => `${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}`
 /** Terrain names that are plural ("dragon peaks", "salt flats") take no article. */
 const land = (w: string) => (/s$/.test(w) ? w : an(w))
 
-const MEDIUM: Record<string, string> = {
-  fantasy: 'Fantasy concept art, painterly, richly detailed.',
-  scifi: 'Science fiction concept art, cinematic, richly detailed.',
-  horror: 'Dark gothic illustration, muted colours, heavy atmosphere.',
-  grounded: 'Realistic photograph, natural colours.',
+const BY_GENRE: Record<string, { medium: string; light: string }> = {
+  fantasy: { medium: 'Fantasy concept art, painterly, richly detailed.', light: 'Warm low sunlight.' },
+  scifi: { medium: 'Science fiction concept art, cinematic, richly detailed.', light: 'Cool artificial light with deep shadows.' },
+  horror: { medium: 'Dark gothic illustration, muted colours, heavy atmosphere.', light: 'Dim overcast light and mist.' },
+  grounded: { medium: 'Realistic photograph, natural colours.', light: 'Soft natural daylight.' },
 }
-const LIGHT: Record<string, string> = {
-  fantasy: 'Warm low sunlight.', scifi: 'Cool artificial light with deep shadows.', horror: 'Dim overcast light and mist.', grounded: 'Soft natural daylight.',
+
+/**
+ * Art directions to choose between. Each names a medium and, where the look depends on it, its own light;
+ * without one, the light follows the setting's genre. "auto" takes both from the genre.
+ */
+export const ART: Record<string, { label: string; medium: string; light?: string }> = {
+  auto: { label: 'Match the genre', medium: '' },
+  concept: { label: 'Painterly concept art', medium: 'Painterly concept art, richly detailed, broad confident brushwork.' },
+  watercolour: { label: 'Watercolour', medium: 'Loose watercolour on textured paper, soft edges, pale washes, white paper showing through.', light: 'Gentle diffuse daylight.' },
+  ink: { label: 'Pen and ink', medium: 'Pen and ink drawing with grey wash on cream paper, fine cross-hatching, no colour.', light: 'Even light with clear shadows.' },
+  oil: { label: 'Oil painting', medium: 'Oil painting in the manner of the old masters, visible brushwork, deep glazes, rich earth colours.', light: 'A single warm light source against deep shadow.' },
+  woodcut: { label: 'Woodcut print', medium: 'Hand-coloured woodcut print, bold black outlines, flat muted colours, visible wood grain.', light: 'Flat, even light.' },
+  storybook: { label: 'Storybook illustration', medium: 'Storybook illustration in gouache, rounded shapes, warm gentle colours, soft texture.', light: 'Golden afternoon light.' },
+  animation: { label: 'Animated film background', medium: 'Hand-painted animation background, clean shapes, luminous colour, crisp detail.', light: 'Bright clear light with long soft shadows.' },
+  photo: { label: 'Photograph', medium: 'Realistic photograph, 35mm lens, natural colours, fine detail.' },
+  film: { label: 'Film still', medium: 'Cinematic film still, wide anamorphic frame, shallow depth of field, subtle film grain.', light: 'Dramatic directional light.' },
+  noir: { label: 'Black and white', medium: 'High-contrast black and white photograph, film noir, heavy grain.', light: 'Hard light and deep black shadows.' },
+  pixel: { label: 'Pixel art', medium: 'Detailed pixel art with a limited palette, crisp square pixels, no blur.', light: 'Clear simple lighting.' },
+  tapestry: { label: 'Embroidered tapestry', medium: 'Embroidered medieval tapestry, flat figures, woven texture, faded dyes, decorative border.', light: 'Flat, even light.' },
 }
 
 export interface ImageSpec { prompt: string; w: number; h: number; seed: number }
@@ -53,8 +70,9 @@ function where(s: Setting, home?: string): string {
 
 /** The prompt, size and seed for one element: a place, a power or thing, a person, or the world itself. */
 export function imageSpec(s: Setting, id: string): ImageSpec {
-  const genre = s.answers.genres[0] ?? 'grounded'
-  const tail = `${LIGHT[genre] ?? LIGHT.grounded} ${MEDIUM[genre] ?? MEDIUM.grounded} No text or lettering.`
+  const genre = BY_GENRE[s.answers.genres[0] ?? 'grounded'] ?? BY_GENRE.grounded
+  const art = ART[s.art ?? 'auto']
+  const tail = `${art?.light ?? genre.light} ${art?.medium || genre.medium} No text or lettering.`
   const seed = hash(`${s.seed}:${id}`) % 2 ** 31
   const done = (subject: string, size: { w: number; h: number }) => ({ prompt: `${subject} ${tail}`.replace(/\s+/g, ' ').trim(), ...size, seed })
 

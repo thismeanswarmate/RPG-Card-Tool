@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { EXPANSION_COLORS } from './expansions'
 import { allowHint, isDirect } from './comfy'
-import { imageIds, imageSpec } from './imagePrompts'
+import { ART, imageIds, imageSpec } from './imagePrompts'
 import { useImages } from './imageStore'
 import { titleCase } from './names'
 import {
@@ -78,11 +78,24 @@ function ImagePanel({ s }: { s: SettingData }) {
   const im = useImages()
   const missing = imageIds(s).filter((id) => !im.links[`${s.id}:${id}`])
   const active = im.status === 'working' && (im.current || im.queue.length > 0)
-  const all = () => im.add(missing.map((id) => ({ key: `${s.id}:${id}`, label: s.names[id], ...imageSpec(s, id) })))
+  const setArt = useSettings((x) => x.setArt)
+  // The fold opens by itself when there is something to report, and otherwise stays as the user left it.
+  const [open, setOpen] = useState(false)
+  useEffect(() => { if (im.status !== 'idle' || im.queue.length > 0) setOpen(true) }, [im.status, im.queue.length])
+  const have = imageIds(s).filter((id) => im.links[`${s.id}:${id}`])
+  const jobs = (ids: string[]) => ids.map((id) => ({ key: `${s.id}:${id}`, label: s.names[id], ...imageSpec(s, id) }))
+  const all = () => im.add(jobs(missing))
+  const redo = () => { if (confirm(`Replace all ${have.length} pictures with new ones in this art direction?`)) im.add(jobs(have)) }
   return (
-    <details className="images" open={im.status !== 'idle' || im.queue.length > 0}>
+    <details className="images" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>Pictures <small>{im.message || 'Made on your own computer with ComfyUI'}</small></summary>
       <div className="images-body">
+        <label>Art direction
+          <select value={s.art ?? 'auto'} onChange={(e) => setArt(e.target.value)}>
+            {Object.entries(ART).map(([k, a]) => <option key={k} value={k}>{a.label}</option>)}
+          </select>
+        </label>
+        <p className="hint">Applies to pictures made from now on. Example: “{imageSpec(s, 'world').prompt.split('. ').slice(-3, -1).join('. ')}.”</p>
         <label>ComfyUI address <input value={im.url} onChange={(e) => im.setUrl(e.target.value)} spellCheck={false} /></label>
         <label>Steps <input type="number" min={4} max={60} value={im.steps} onChange={(e) => im.setSteps(+e.target.value)} /></label>
         <div className="actions">
@@ -90,6 +103,7 @@ function ImagePanel({ s }: { s: SettingData }) {
           <button className="primary" onClick={all} disabled={!missing.length}>
             {im.status === 'busy' || im.status === 'error' ? 'Resume' : `Make all missing pictures (${missing.length})`}
           </button>
+          {have.length > 0 && !active && <button onClick={redo}>Redo all in this direction ({have.length})</button>}
           {(active || im.queue.length > 0) && <button onClick={im.cancel}>Stop</button>}
         </div>
         {(im.current || im.queue.length > 0) && <p className="hint">{im.queue.length} waiting{im.current ? `, one in progress (${im.current.label})` : ''}. Each picture takes a few minutes.</p>}

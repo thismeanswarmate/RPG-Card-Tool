@@ -529,3 +529,29 @@ describe('setting descriptions', async () => {
     for (const h of s.hooks) expect(G.hookText(s, h)).toMatch(/^[A-Z].*\.$/)
   })
 })
+
+describe('art directions', async () => {
+  const G = await import('./setting')
+  const P = await import('./imagePrompts')
+  it('changes the medium and light of every prompt but not its subject, size or seed', () => {
+    const s = G.generateSetting(G.DEFAULT_ANSWERS, 'art')
+    const id = G.rootsOf(s)[0]
+    const base = P.imageSpec(s, id)
+    expect(base.prompt).toContain('Fantasy concept art')
+    const seen = new Set<string>()
+    for (const [key, art] of Object.entries(P.ART)) {
+      const spec = P.imageSpec({ ...s, art: key }, id)
+      expect(art.label).toBeTruthy()
+      expect(spec.prompt).toMatch(/No text or lettering\.$/)
+      expect(spec.prompt).not.toMatch(/undefined|  /)
+      expect([spec.w, spec.h, spec.seed]).toEqual([base.w, base.h, base.seed])
+      expect(spec.prompt.split('. ')[0]).toBe(base.prompt.split('. ')[0])
+      if (key === 'auto') expect(spec.prompt).toBe(base.prompt)
+      else { expect(spec.prompt).toContain(art.medium); expect(spec.prompt).not.toContain('Fantasy concept art') }
+      seen.add(spec.prompt)
+    }
+    expect(seen.size).toBe(Object.keys(P.ART).length)
+    expect(P.imageSpec({ ...s, art: 'gone' }, id).prompt).toBe(base.prompt)
+    expect(P.imageSpec({ ...s, art: 'photo' }, id).prompt).toContain('Warm low sunlight.')
+  })
+})

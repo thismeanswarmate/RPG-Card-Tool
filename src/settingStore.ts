@@ -11,6 +11,7 @@ interface Settings {
   select(id: string | null): void
   remove(id: string): void
   rename(id: string, name?: string): void
+  setArt(art: string): void
 }
 
 export const useSettings = create<Settings>()(
@@ -31,6 +32,10 @@ export const useSettings = create<Settings>()(
       rename: (id, name) => set((s) => {
         const setting = s.settings.find((x) => x.id === s.current)
         if (setting?.names[id]) setting.names[id] = name?.trim() || rename(setting, id)
+      }),
+      setArt: (art) => set((s) => {
+        const setting = s.settings.find((x) => x.id === s.current)
+        if (setting) setting.art = art === 'auto' ? undefined : art
       }),
     })),
     { name: 'storyloom-settings-v1' },

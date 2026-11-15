@@ -49,6 +49,8 @@ export interface Setting {
   entities: Entity[]
   people: Char[]
   hooks: Hook[]
+  /** The art direction for this setting's pictures; absent means it follows the genre. */
+  art?: string
 }
 
 const CARDS = cardsOf({ custom: [] })
