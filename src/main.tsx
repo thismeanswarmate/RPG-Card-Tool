@@ -1,3 +1,4 @@
+import { Cultures, History, Races } from './CardTools'
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Decks } from './Decks'
@@ -43,7 +44,7 @@ const savedMode = (): Mode => {
 const savedTool = (): Tool => {
   try {
     const t = localStorage.getItem('storyloom-tool')
-    return t === 'worlds' || t === 'people' || t === 'lore' || t === 'stories' || t === 'perils' || t === 'settlements' ? t : 'setting'
+    return t === 'worlds' || t === 'people' || t === 'lore' || t === 'stories' || t === 'perils' || t === 'settlements' || t === 'races' || t === 'cultures' || t === 'history' ? t : 'setting'
   } catch { return 'setting' }
 }
 
@@ -55,7 +56,7 @@ function App() {
   }
   return (
     <ToolCtx.Provider value={{ tool, setTool }}>
-      {tool === 'setting' ? <Setting /> : tool === 'people' ? <People /> : tool === 'lore' ? <Lore /> : tool === 'stories' ? <Stories /> : tool === 'perils' ? <Perils /> : tool === 'settlements' ? <Settlements /> : <Worlds />}
+      {tool === 'setting' ? <Setting /> : tool === 'people' ? <People /> : tool === 'lore' ? <Lore /> : tool === 'stories' ? <Stories /> : tool === 'perils' ? <Perils /> : tool === 'settlements' ? <Settlements /> : tool === 'races' ? <Races /> : tool === 'cultures' ? <Cultures /> : tool === 'history' ? <History /> : <Worlds />}
     </ToolCtx.Provider>
   )
 }

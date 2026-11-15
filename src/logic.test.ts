@@ -1125,3 +1125,69 @@ describe('settlements and dangerous places on the map', async () => {
     }
   })
 })
+
+describe('races, cultures and history', async () => {
+  const E = await import('./cardTool')
+  const T = await import('./cardTools')
+  const tools = [T.RACES, T.CULTURES, T.HISTORY]
+
+  it('has well-formed decks: full draws, nothing repeated, and cues that complete a sentence', () => {
+    for (const def of tools) {
+      const cards = E.cardsOf(def)
+      expect(new Set(cards.map((c) => c.id)).size).toBe(cards.length)
+      for (const a of def.aspects) {
+        const core = cards.filter((c) => c.aspect === a.id && c.deck === 'core')
+        expect(core.length, `${def.id}:${a.id}`).toBeGreaterThanOrEqual(4)
+        const cues = cards.filter((c) => c.aspect === a.id).flatMap((c) => c.cues)
+        expect(new Set(cues).size, `${def.id}:${a.id}`).toBe(cues.length)
+        for (const c of cards.filter((x) => x.aspect === a.id)) expect(c.cues, c.id).toHaveLength(4)
+        for (const cue of cues) expect(cue, `${def.id}:${a.id}`).toMatch(/^[^.\n]+[^.\s]$/)
+      }
+      for (const pack of Object.keys(def.packs)) expect(cards.some((c) => c.deck === pack), `${def.id}:${pack}`).toBe(true)
+    }
+  })
+  it('draws every aspect and writes whole sentences, whatever is left out', () => {
+    for (const def of tools) for (let n = 0; n < 150; n++) {
+      const item = E.blank(def, 'x')
+      item.name = n % 3 ? def.name([]) : ''
+      const packs = [[], ['fantasy'], ['-core', 'scifi', 'horror']][n % 3]
+      item.sections.forEach((_, i) => E.fill(def, item, i, packs))
+      // Knock out a few at random: the text must still read.
+      for (const section of item.sections) for (const a of def.aspects) if (Math.random() < 0.25) delete section.slots[a.id]
+      const out = E.text(def, item)
+      for (const para of out) expect(para, para).toMatch(/^[A-Z].*\.$/)
+      expect(out.join(' ')).not.toMatch(/undefined|  |\.\.| ,| \.|\. [a-z]/)
+      const all = item.sections.flatMap((x) => Object.values(x.slots).flatMap((h) => (h ? [h.card] : [])))
+      if (!packs.length) expect(new Set(all).size).toBe(all.length)
+    }
+  })
+  it('keeps to the ticked decks, and keeps what is locked', () => {
+    for (let n = 0; n < 60; n++) {
+      expect(E.draw(T.RACES, 'origin', ['-core', 'horror'])!.card).toMatch(/^horror:/)
+      expect(E.draw(T.RACES, 'origin', ['fantasy', '-fantasy:origin'])!.card).toMatch(/^core:/)
+      expect(E.draw(T.RACES, 'home', ['-core', 'horror'])!.card).toMatch(/^core:/)
+    }
+    const item = E.blank(T.HISTORY, 'x')
+    expect(item.sections).toHaveLength(3)
+    E.fill(T.HISTORY, item, 0, [])
+    const kept = { ...item.sections[0].slots.name!, locked: true }
+    item.sections[0].slots.name = kept
+    for (let n = 0; n < 10; n++) E.fill(T.HISTORY, item, 0, [])
+    expect(item.sections[0].slots.name).toEqual(kept)
+  })
+  it('reads as intended for a known draw', () => {
+    const first = (def: typeof T.RACES, name: string) => {
+      const item = E.blank(def, 'x'); item.name = name
+      item.sections.forEach((_, i) => E.fill(def, item, i, [], () => 0.5))
+      return E.text(def, item)
+    }
+    const races = first(T.RACES, 'The Velmar')
+    expect(races).toHaveLength(1)
+    expect(races[0]).toMatch(/^The Velmar are .+, known by .+\. They say they .+\. They are most at home .+\. They have a gift for .+, but they .+\. They live .+\. Other peoples .+\.$/)
+    expect(first(T.CULTURES, 'the Lorel folk')[0]).toMatch(/^The Lorel folk prize .+ above all\. They are governed by .+\. Households are .+\. They hold that .+\. By custom, .+\. It is forbidden to .+\. They are known for .+, and dress in .+\. What divides them now is .+\.$/)
+    const history = first(T.HISTORY, 'The Chronicle of Lorel')
+    expect(history[0]).toBe('The Chronicle of Lorel is told in three ages.')
+    expect(history).toHaveLength(4)
+    for (const age of history.slice(1)) expect(age).toMatch(/^The Age of .+ began when .+\. In those years .+ held sway\. Under them .+, but .+\. It ended when .+\. What remains of it is .+\.$/)
+  })
+})

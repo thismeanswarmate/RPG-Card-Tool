@@ -1,6 +1,6 @@
 # Storyloom
 
-Seven tools on one page, switched from the top menu.
+Ten tools on one page, switched from the top menu.
 
 **Perils** builds a dangerous place by rolling on tables, in steps: a premise (theme, what stood there before, and the kind of place and danger), then tables for the place itself and for what makes it dangerous, with a personality for whoever is behind it when the danger can think. Roll everything at once, reroll single tables, pick results by hand and lock the ones to keep. The result is written up as a brief. Ten kinds of place and six kinds of danger, each with tables of its own.
 
@@ -54,3 +54,5 @@ npm run build    # static site in dist/
 ```
 
 **Decks.** Setting, Lore and Stories each have a Decks button, like the one in Worlds, for choosing what is in the mix. In Stories it lists the core deck and every pack, and with Advanced each kind of card within one. In Lore it lists the element types and the extras. In a setting it lists the decks for lands and sites, the decks for people and stories, and whether there are deities; the choice applies to whatever is added or redrawn from then on.
+
+**Races**, **Cultures** and **History** are three more generators on one shared engine. Each aspect is drawn like a card and shown as the few options that came up: pick one, redraw for a fresh set, or lock it. A race has a build, a mark, an origin, a home, a gift and its burden, a lifespan and a reputation. A culture has what it prizes, who governs, its households, belief, a custom, a taboo, what it is known for, its dress and what divides it. A history is told in ages, each with a name, a beginning, who held sway, what was done and at what cost, an ending and what remains; ages can be added and removed. Each has a core deck and optional fantasy, science-fiction and horror decks, chosen under Decks.

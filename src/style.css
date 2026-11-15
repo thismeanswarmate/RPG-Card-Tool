@@ -403,3 +403,12 @@ html, body, #root { height: 100dvh; }
 .deck-group { display: flex; flex-direction: column; gap: 6px; }
 .deck-group .expansion { display: flex; flex-direction: column; gap: 6px; }
 .deck-group .count { color: var(--muted); font-size: 12px; }
+
+/* Races, Cultures and History */
+.draw.row { background: var(--raised); border-radius: 8px; padding: 7px 9px; }
+.draw.row.locked { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.draw.row .draw-label { min-width: 120px; }
+.draw .redraw.on { color: var(--accent); border-color: var(--accent); }
+.section-actions { margin-left: 10px; display: inline-flex; gap: 6px; }
+.section-actions button { font-size: 12px; padding: 2px 8px; color: var(--muted); font-weight: 400; }
+@media (max-width: 700px) { .draw.row .draw-label { min-width: 100%; } }
