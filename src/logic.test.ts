@@ -981,3 +981,39 @@ describe('what is chosen for a land is told in its description', async () => {
     }
   })
 })
+
+describe('story packs: mystery, curios and pasts', async () => {
+  const S = await import('./story')
+  it('adds cards of the right kinds, and only when switched on', () => {
+    const decks = (deck: string) => S.STORY_CARDS.filter((c) => c.deck === deck)
+    expect(decks('mystery').map((c) => c.kind).sort().join()).toBe('character,character,character,drive,drive,obstacle,obstacle,subject,subject,subject,trait,trait')
+    expect(decks('curios').filter((c) => c.kind === 'subject')).toHaveLength(3)
+    expect(decks('curios').filter((c) => c.kind === 'trait')).toHaveLength(4)
+    expect(decks('pasts').filter((c) => c.kind === 'past')).toHaveLength(11)
+    expect(decks('pasts').filter((c) => c.kind === 'present')).toHaveLength(11)
+    expect(S.drawCard('past', [])).toBeUndefined()
+    for (const p of S.PATTERNS) {
+      expect(S.slotsOf(p.id, []).map((x) => x.id)).not.toContain('past')
+      expect(S.slotsOf(p.id, ['pasts']).map((x) => x.id).slice(-2)).toEqual(['past', 'now'])
+      expect(p.slots.map((x) => x.id)).toContain(p.other)
+    }
+  })
+  it('writes the past into the prompt as a sentence of its own', () => {
+    for (const p of S.PATTERNS) for (let n = 0; n < 60; n++) {
+      const story = { id: 'x', pattern: p.id, slots: {}, notes: '' }
+      S.fill(story, ['mystery', 'curios', 'pasts'])
+      const text = S.write(story)
+      const past = text.find((t) => t.startsWith('Long ago the '))
+      expect(past, text.join(' | ')).toMatch(/^Long ago the .+ (the|a|an) .+, and now .+\.$/)
+      expect(text.join(' ')).not.toMatch(/undefined|  |\.\./)
+    }
+    const fixed = { id: 'x', pattern: 'seed', notes: '', slots: {
+      who: { card: 'mystery:character:0', active: 0 }, drive: { card: 'mystery:drive:0', active: 1 }, what: { card: 'curios:subject:0', active: 0 },
+      but: { card: 'mystery:obstacle:0', active: 0 }, past: { card: 'pasts:past:0', active: 0 }, now: { card: 'pasts:present:0', active: 0 },
+    } }
+    expect(S.write(fixed)).toEqual([
+      'A night-shift detective wants to clear the name of a compass that points at what you fear, but the evidence points at them.',
+      'Long ago the night-shift detective was saved by the compass that points at what you fear, and now the wrong people have started asking questions.',
+    ])
+  })
+})

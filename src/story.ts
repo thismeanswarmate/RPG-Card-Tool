@@ -1,7 +1,7 @@
 // The story tool: a prompt is a sentence built from cards — who, what they want, what it concerns,
 // and what stands in the way. All card text is original to this project.
 
-export type CardKind = 'character' | 'drive' | 'subject' | 'obstacle' | 'trait' | 'bond' | 'question'
+export type CardKind = 'character' | 'drive' | 'subject' | 'obstacle' | 'trait' | 'bond' | 'question' | 'past' | 'present'
 
 export const KIND_INFO: Record<CardKind, { label: string; cues: number; hint: string }> = {
   character: { label: 'Character', cues: 4, hint: 'Someone who makes choices' },
@@ -11,9 +11,11 @@ export const KIND_INFO: Record<CardKind, { label: string; cues: number; hint: st
   trait: { label: 'Trait', cues: 4, hint: 'A describing word' },
   bond: { label: 'Bond', cues: 4, hint: 'How two characters are tied' },
   question: { label: 'Question', cues: 4, hint: 'Something to answer about them' },
+  past: { label: 'Past', cues: 2, hint: 'What once happened between them' },
+  present: { label: 'Present', cues: 2, hint: 'Why it matters again now' },
 }
 
-export const PACKS: Record<string, string> = { fantasy: 'Fantasy', scifi: 'Science fiction', horror: 'Horror', dynamics: 'Dynamics' }
+export const PACKS: Record<string, string> = { fantasy: 'Fantasy', scifi: 'Science fiction', horror: 'Horror', mystery: 'Mystery', curios: 'Curios', dynamics: 'Dynamics', pasts: 'Pasts' }
 
 const words = (s: string) => s.split(';').map((w) => w.trim()).filter(Boolean)
 
@@ -65,6 +67,35 @@ const DECKS: Record<string, Partial<Record<CardKind, string[]>>> = {
       the old asylum; a doll with real teeth; a midnight knock; a drowned village`),
     obstacle: words('something follows them home each night; the dead will not stay quiet; they can no longer trust their own eyes; it has already learned their name'),
     trait: words('rotting; whispering; bloodstained; sleepless; hollow-eyed; unhallowed; moth-eaten; nameless'),
+  },
+  mystery: {
+    character: words(`night-shift detective; coroner’s clerk; hotel doorman; crime reporter; insurance adjuster; star witness; safecracker; chief suspect;
+      retired inspector; switchboard operator; pawnbroker; alibi for hire`),
+    drive: words('find out who killed; clear the name of; frame; cover up'),
+    subject: words(`a body in the library; a missing heiress; an unbreakable alibi; a ransom note; a locked safe; the night of the blackout; a cold case; an anonymous tip;
+      a stopped clock; a second will; the last witness; a stained glove`),
+    obstacle: words('the evidence points at them; the only witness has vanished; someone on the inside is feeding the culprit; the case was closed years ago'),
+    trait: words('tight-lipped; double-crossing; unsolved; bloodless; rain-soaked; well-alibied; planted; overlooked'),
+  },
+  // Things worth owning and things that should never be owned. The traits read as well on a person as on an object.
+  curios: {
+    subject: words(`a compass that points at what you fear; a coat with too many pockets; a key that fits every third lock; a mirror that runs an hour late;
+      a ring that cannot be given away; a lantern that burns without fuel; a deck of cards with one face missing; a music box nobody wound;
+      a blade that will not cut its maker; a book that adds a page each night; a coin that always comes back; a bottle of bottled weather`),
+    trait: words(`cursed; blessed; counterfeit; priceless; much-mended; long-lost; oath-bound; ill-gotten; unlucky; unbreakable; hungry; heirloom;
+      whisper-quiet; twice-stolen; half-awake; uninvited`),
+  },
+  // What once passed between a character and someone or something else, and why it has come back.
+  pasts: {
+    past: words(`was saved by; betrayed; was raised beside; swore to protect; walked away from; was nearly ruined by; made; lost;
+      lied about; was promised; buried the truth about; won; kept watch over; took the blame for; was forgiven by; owed everything to;
+      fled from; taught everything to; hid; gave up; was named after; first found`),
+    present: words(`the wrong people have started asking questions; it turns out to have been built on a lie; the debt has come due; someone else has found out;
+      it is happening again; the other side remembers it differently; a letter has arrived about it; there is finally a chance to put it right;
+      the proof has surfaced; someone is using it against them; nobody else remembers it; it is about to be made public;
+      the same choice has come round again; an old witness has returned; it no longer feels like the right thing; what was lost has been found;
+      the promise is being called in; a stranger knows every detail; it can no longer be hidden; they are being thanked for it by the wrong person;
+      it has been inherited; time is running out to speak of it`),
   },
   dynamics: {
     bond: words(`former teacher and student; estranged siblings; rivals since childhood; bound by a life-debt; secretly in love; keepers of the same lie;
@@ -129,13 +160,13 @@ const sentence = (subject: string | undefined, drive: string | undefined, target
   return `${cap(subject)}${want}${but ? `, but ${but}` : ''}.`
 }
 
-export interface Pattern { id: string; name: string; blurb: string; slots: SlotDef[]; lead: string; write(get: Get): string[] }
+export interface Pattern { id: string; name: string; blurb: string; slots: SlotDef[]; lead: string; /** Who or what the lead's past is with. */ other: string; write(get: Get): string[] }
 
 const T = (id: string, of: string): SlotDef => ({ id, kind: 'trait', label: `Trait for ${of}`, optional: true })
 
 export const PATTERNS: Pattern[] = [
   {
-    id: 'seed', name: 'Story seed', blurb: 'One character, one want, one obstacle.', lead: 'who',
+    id: 'seed', name: 'Story seed', blurb: 'One character, one want, one obstacle.', lead: 'who', other: 'what',
     slots: [
       { id: 'who', kind: 'character', label: 'Character' }, T('whoT', 'the character'), { id: 'drive', kind: 'drive', label: 'Drive' },
       { id: 'what', kind: 'subject', label: 'Subject', alt: 'character' }, T('whatT', 'the subject'), { id: 'but', kind: 'obstacle', label: 'Obstacle' },
@@ -143,7 +174,7 @@ export const PATTERNS: Pattern[] = [
     write: (g) => [sentence(phrase(g, 'who', 'whoT'), g('drive')?.text, phrase(g, 'what', 'whatT'), g('but')?.text)],
   },
   {
-    id: 'study', name: 'Character study', blurb: 'A fuller character with something they carry.', lead: 'who',
+    id: 'study', name: 'Character study', blurb: 'A fuller character with something they carry.', lead: 'who', other: 'what',
     slots: [
       { id: 'who', kind: 'character', label: 'Character' }, T('whoT', 'the character'),
       { id: 'has', kind: 'subject', label: 'What they carry', optional: true }, T('hasT', 'what they carry'),
@@ -157,7 +188,7 @@ export const PATTERNS: Pattern[] = [
     },
   },
   {
-    id: 'circle', name: 'Two-way street', blurb: 'Two characters who each want something from the other.', lead: 'a',
+    id: 'circle', name: 'Two-way street', blurb: 'Two characters who each want something from the other.', lead: 'a', other: 'b',
     slots: [
       { id: 'a', kind: 'character', label: 'First character' }, T('aT', 'the first'), { id: 'aDrive', kind: 'drive', label: 'First drive' },
       { id: 'aBut', kind: 'obstacle', label: 'First obstacle' },
@@ -170,7 +201,7 @@ export const PATTERNS: Pattern[] = [
     ],
   },
   {
-    id: 'clash', name: 'Collision course', blurb: 'Two characters after the same thing for different reasons.', lead: 'a',
+    id: 'clash', name: 'Collision course', blurb: 'Two characters after the same thing for different reasons.', lead: 'a', other: 'x',
     slots: [
       { id: 'a', kind: 'character', label: 'First character' }, T('aT', 'the first'), { id: 'aDrive', kind: 'drive', label: 'First drive' },
       { id: 'aBut', kind: 'obstacle', label: 'First obstacle' },
@@ -184,7 +215,7 @@ export const PATTERNS: Pattern[] = [
     ],
   },
   {
-    id: 'torn', name: 'Torn in two', blurb: 'One character pulled between two things they cannot both have.', lead: 'who',
+    id: 'torn', name: 'Torn in two', blurb: 'One character pulled between two things they cannot both have.', lead: 'who', other: 'x',
     slots: [
       { id: 'who', kind: 'character', label: 'Character' }, T('whoT', 'the character'),
       { id: 'xDrive', kind: 'drive', label: 'First drive' }, { id: 'x', kind: 'subject', label: 'First desire', alt: 'character' }, T('xT', 'the first desire'),
@@ -200,12 +231,16 @@ export const PATTERNS: Pattern[] = [
 
 export const PATTERN: Record<string, Pattern> = Object.fromEntries(PATTERNS.map((p) => [p.id, p]))
 
-/** The slots a story has: its pattern's, plus a Question — and a Bond for two characters — with the Dynamics pack. */
+/** The slots a story has: its pattern's, plus a past and its present with the Pasts pack, and a Question — and a Bond for two characters — with the Dynamics pack. */
 export function slotsOf(pattern: string, packs: string[]): SlotDef[] {
   const p = PATTERN[pattern] ?? PATTERNS[0]
-  if (!packs.includes('dynamics')) return p.slots
   const pair = p.slots.filter((s) => s.kind === 'character').length > 1
-  return [...p.slots, ...(pair ? [{ id: 'bond', kind: 'bond', label: 'Bond between them' } as SlotDef] : []), { id: 'ask', kind: 'question', label: 'Question' }]
+  return [
+    ...p.slots,
+    ...(packs.includes('pasts') ? [{ id: 'past', kind: 'past', label: 'What happened between them' }, { id: 'now', kind: 'present', label: 'Why it matters now' }] as SlotDef[] : []),
+    ...(packs.includes('dynamics') && pair ? [{ id: 'bond', kind: 'bond', label: 'Bond between them' } as SlotDef] : []),
+    ...(packs.includes('dynamics') ? [{ id: 'ask', kind: 'question', label: 'Question' } as SlotDef] : []),
+  ]
 }
 
 const getter = (story: Story): Get => (slot) => {
@@ -221,6 +256,8 @@ export function write(story: Story): string[] {
   const lead = phrase(g, p.lead, undefined, true)
   return [
     ...p.write(g),
+    lead && g('past') && phrase(g, p.other, undefined, true)
+      ? `Long ago ${lead} ${g('past')!.text} ${phrase(g, p.other, undefined, true)}${g('now') ? `, and now ${g('now')!.text}` : ''}.` : '',
     g('bond') ? `The two are ${g('bond')!.text}.` : '',
     g('ask') ? `${lead ? `About ${lead}: ` : ''}${g('ask')!.text}` : '',
   ].filter(Boolean)

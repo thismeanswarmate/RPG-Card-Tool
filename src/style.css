@@ -390,3 +390,5 @@ html, body, #root { height: 100dvh; }
 .draw .opt.on { background: color-mix(in srgb, var(--accent) 22%, var(--raised)); border-color: var(--accent); color: var(--text); }
 .draw .redraw { padding: 2px 8px; color: var(--muted); background: none; }
 @media (max-width: 700px) { .draw-label { min-width: 100%; } }
+
+.sk-past { --c: #8b5fa3; } .sk-present { --c: #c0563f; }

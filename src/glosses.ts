@@ -216,4 +216,16 @@ export const ROLE_GLOSS: Record<string, string> = parse(`
   restless ghost = who has not accepted the news
   folklorist = who writes down what others are afraid to say
   undertaker = discreet about what the dead leave behind
+  night-shift detective = who does their best thinking after midnight
+  coroner’s clerk = who reads every report before it is filed
+  hotel doorman = who notices who comes in and who does not leave
+  crime reporter = always one phone call ahead of the police
+  insurance adjuster = paid to doubt every story
+  star witness = whose account changes a little each time
+  safecracker = patient, with very good hearing
+  chief suspect = who has stopped expecting to be believed
+  retired inspector = still bothered by the one that got away
+  switchboard operator = who hears more than anyone supposes
+  pawnbroker = who knows what everything is really worth
+  alibi for hire = who will swear to anything for a fee
 `)
