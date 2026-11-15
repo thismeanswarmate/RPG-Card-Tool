@@ -496,6 +496,10 @@ function Gazetteer({ s }: { s: SettingData }) {
                 {editing && (
                   <>
                     <Pick s={s} root={r} type="site" label="Kind of site" current={site.id} />
+                    {ASPECTS.slice(1, 4).flatMap(([type, label]) => {
+                      const now = aspectsOf(s, site.id, type)
+                      return (now.length ? now : [undefined]).map((id, i) => <Pick key={`${type}${i}`} s={s} root={site.id} type={type} label={label} current={id} optional />)
+                    })}
                     <div className="edit-row"><button onClick={() => drop(site.id)}>Remove site</button></div>
                   </>
                 )}

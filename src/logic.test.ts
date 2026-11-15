@@ -949,3 +949,35 @@ describe('choosing the parts of a hand-built place from lists', async () => {
     }
   })
 })
+
+describe('what is chosen for a land is told in its description', async () => {
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  const { cardSentence } = await import('./describe')
+  const { cardsOf } = await import('./store')
+  const CARDS = cardsOf({ custom: [] })
+  it('includes the past, today and what is afoot of a land in the land text, and of a site in the site text', () => {
+    for (let n = 0; n < 30; n++) {
+      const s = B.newManual([['fantasy'], ['scifi'], ['horror']][n % 3], ['temperate'])
+      const root = B.addPlace(s)!
+      const check = () => {
+        const v = G.placeView(s, G.rootsOf(s)[0])
+        for (const spot of [v.land, ...v.sites])
+          for (const [type] of B.ASPECTS.slice(1))
+            for (const id of B.aspectsOf(s, spot.id, type)) {
+              const told = cardSentence(s.board, CARDS, id)
+              expect(told, type).toBeTruthy()
+              // The land's own sentence names it in full; the others are told word for word.
+              expect(spot.text, `${type}: ${told}`).toContain(type === 'epithet' ? told.slice(0, 20) : told)
+            }
+      }
+      for (const [type] of B.ASPECTS.slice(1)) expect(B.aspectsOf(s, root, type), type).toHaveLength(1)
+      check()
+      B.redrawPlace(s, root)
+      for (const [type] of B.ASPECTS.slice(1)) { B.choose(s, root, type, 'random', B.aspectsOf(s, root, type)[0]); check() }
+      const site = G.placeView(s, root).sites[0].id
+      for (const [type] of B.ASPECTS.slice(1, 4)) { B.choose(s, site, type, 'random'); expect(B.aspectsOf(s, site, type)).toHaveLength(1) }
+      check()
+    }
+  })
+})

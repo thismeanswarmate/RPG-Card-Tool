@@ -49,13 +49,11 @@ function tuck(s: Setting, id: string, hub: string, active = rand(CARDS[id].cues.
   s.board[id] = { id, active, x: 0, y: 0, parent: hub, edge: autoEdge(s.board, CARDS, hub, CARDS[id], active), order }
 }
 
-/** The cards that describe a place: one each of what it is called, what was there, what it is like and what is afoot. */
+/** What describes a land: one each of what it is called, what was there, what it is like and what is afoot. All belong to the land itself, so they are told in its description. */
 function dress(s: Setting, root: string) {
   for (const type of ['epithet', 'legacy', 'trait', 'omen'] as CardType[]) {
     const id = draw(s, type)
-    if (!id) continue
-    const hubs = type === 'omen' ? [root] : subtree(s.board, root).filter((c) => CARDS[c].type === 'terrain' || CARDS[c].type === 'site')
-    tuck(s, id, hubs[rand(hubs.length)])
+    if (id) tuck(s, id, root)
   }
 }
 
@@ -94,9 +92,9 @@ export function addSite(s: Setting, root: string): string | undefined {
   return id
 }
 
-/** Draw the describing cards of a place again, keeping the land, its sites and everything in it. */
+/** Draw what describes a land again, keeping the land, its sites and everything in them. */
 export function redrawPlace(s: Setting, root: string) {
-  for (const id of subtree(s.board, root)) if (!['terrain', 'site'].includes(CARDS[id].type)) delete s.board[id]
+  for (const p of Object.values(s.board)) if (p.parent === root && ['epithet', 'legacy', 'trait', 'omen'].includes(CARDS[p.id].type)) delete s.board[p.id]
   dress(s, root)
 }
 
@@ -113,8 +111,9 @@ export function choices(s: Setting, type: CardType, current?: string): Choice[] 
 export const chosen = (s: Setting, id: string) => `${id}:${s.board[id].active}`
 /** The options that came with one draw: as many as its card has, be that one, two or four. */
 export const drawn = (id: string): Choice[] => CARDS[id].cues.map((cue, i) => ({ value: `${id}:${i}`, text: cue.text }))
-/** What describes a place, by part: for each, the entries now in play (a generated place can have two of one part). */
-export const aspectsOf = (s: Setting, root: string, type: CardType) => subtree(s.board, root).filter((id) => CARDS[id].type === type)
+/** What describes a land or a site, by part: the entries that belong to it and so appear in its own description. */
+export const aspectsOf = (s: Setting, hub: string, type: CardType) =>
+  type === 'terrain' ? [hub] : Object.values(s.board).filter((p) => p.parent === hub && CARDS[p.id].type === type).map((p) => p.id)
 
 /** Swap the id of a land or site for another, everywhere it is mentioned. */
 function rekey(s: Setting, from: string, to: string) {
