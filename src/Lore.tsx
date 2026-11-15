@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { DeckDialog } from './DeckDialog'
 import { BASE_KINDS, describeNode, detailParts, KIND_LABEL, kindsFor, PACK_LABEL, refText, title, webText, type Kind, type LoreNode } from './lore'
 import { useLore, type Pending } from './loreStore'
+import { ToolPicture } from './PictureBox'
 import { ToolNav } from './ToolNav'
 
 const NODE = { w: 250, cx: 125, cy: 70 }
@@ -108,6 +109,7 @@ function Chronicle({ onClose }: { onClose: () => void }) {
           {Object.values(web).map((n) => (
             <section key={n.id}>
               <h3>{title(n)} <small>{KIND_LABEL[n.kind]}</small></h3>
+              <ToolPicture tool="lore" id={n.id} label={title(n)} text={[`${title(n).replace(/^The /, 'the ')}, ${KIND_LABEL[n.kind].toLowerCase()}.`, describeNode(n, web)].filter(Boolean)} lead="An illustration of" shape={n.kind === 'figure' || n.kind === 'deity' ? 'tall' : n.kind === 'object' || n.kind === 'material' || n.kind === 'creature' ? 'square' : 'wide'} />
               <p>{describeNode(n, web) || 'Nothing is known of it yet.'}</p>
             </section>
           ))}

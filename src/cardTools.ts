@@ -15,6 +15,7 @@ const word = (taken: string[], kind: 'place' | 'world' = 'place') => {
 export const RACES: ToolDef = {
   id: 'races',
   packs: PACKS,
+  picture: { lead: 'A portrait of one member of a people, head and shoulders, looking at the viewer.', shape: 'tall' },
   name: (taken) => `The ${word(taken)}${pick(['', '', 'i', 'ar', 'en', ' folk', ' kin'])}`,
   aspects: [
     // "They are …"
@@ -97,6 +98,7 @@ export const RACES: ToolDef = {
 export const CULTURES: ToolDef = {
   id: 'cultures',
   packs: PACKS,
+  picture: { lead: 'A scene of everyday life among a people, in their own street or home.', shape: 'wide' },
   name: (taken) => `The ${word(taken)} ${pick(['folk', 'way', 'people', 'houses', 'towns', 'clans'])}`,
   aspects: [
     // "They prize … above all."
@@ -181,6 +183,7 @@ const AGES = ['one age', 'two ages', 'three ages', 'four ages', 'five ages', 'si
 export const HISTORY: ToolDef = {
   id: 'history',
   packs: PACKS,
+  picture: { lead: 'A grand historical scene, as a mural might show it.', shape: 'wide' },
   sections: { label: 'Age', start: 3, max: 8 },
   name: (taken) => `The Chronicle of ${word(taken)}`,
   intro: (name, n) => `${name || 'This history'} is told in ${AGES[n - 1] ?? `${n} ages`}.`,

@@ -4,7 +4,7 @@
 import { describe } from './describe'
 import { cueText, rootOf, subtree } from './logic'
 import { detailParts, type DetailInst } from './lore'
-import { rootsOf, terrainOf, type Char, type Entity, type Setting } from './setting'
+import { builtKind, builtText, rootsOf, terrainOf, type Char, type Entity, type Setting } from './setting'
 import { cardsOf } from './store'
 
 const CARDS = cardsOf({ custom: [] })
@@ -118,6 +118,18 @@ export function imageSpec(s: Setting, id: string): ImageSpec {
     const lands = [...new Set(rootsOf(s).map((r) => terrainOf(s, r).toLowerCase()))].slice(0, 5)
     return done(`A sweeping aerial vista of a wide land made up of ${lands.join(', ')}, stretching to the horizon.`, WIDE)
   }
+  if (s.board[id]?.parent) {
+    // A site: the thing itself up close, in the land it stands in.
+    const kind = cueText(CARDS, s.board[id]).toLowerCase()
+    const told = describe(s.board, CARDS, rootOf(s.board, id), [], {}).find((p) => p.toLowerCase().includes(kind))?.split('. ')[0].replace(/\.$/, '') ?? ''
+    return done(`${an(kind)} ${where(s, rootOf(s.board, id))}, seen from close by.${told ? ` ${told}.` : ''}`.replace(/^./, (c) => c.toUpperCase()), WIDE)
+  }
+  const built = s.built?.find((b) => b.id === id)
+  if (built) {
+    // A settlement or dangerous place: what its tables say of it, without its name.
+    const told = builtText({ ...s, names: { ...s.names, [id]: built.tool === 'settlement' ? 'the settlement' : 'the place' } }, built)[0] ?? ''
+    return done(`A wide view of ${an(builtKind(built))} ${where(s, built.home)}${built.tool === 'peril' ? ', a dangerous place' : ''}. ${told}`, WIDE)
+  }
   if (s.board[id]) {
     const terrain = terrainOf(s, id).toLowerCase()
     const sites = subtree(s.board, id).filter((x) => CARDS[x].type === 'site').map((x) => an(cueText(CARDS, s.board[x]).toLowerCase()))
@@ -148,4 +160,14 @@ export function imageSpec(s: Setting, id: string): ImageSpec {
 }
 
 /** Everything in a setting that can have a picture, in reading order. */
-export const imageIds = (s: Setting) => ['world', ...rootsOf(s), ...s.entities.map((e) => e.id), ...s.people.map((c) => c.id)]
+export const imageIds = (s: Setting) => [
+  'world', ...rootsOf(s), ...Object.keys(s.board).filter((id) => s.board[id].parent && CARDS[id].type === 'site'),
+  ...s.entities.map((e) => e.id), ...s.people.map((c) => c.id), ...(s.built ?? []).map((b) => b.id),
+]
+
+/** A prompt for something outside any setting, from its written description: the text, then a plain painterly look. */
+export function loosePrompt(text: string, shape: 'wide' | 'tall' | 'square', key: string): ImageSpec {
+  const size = shape === 'wide' ? WIDE : shape === 'tall' ? TALL : SQUARE
+  const look = BY_GENRE.fantasy
+  return { prompt: `${text} ${look.light} ${look.medium} No text or lettering.`.replace(/\s+/g, ' ').trim(), ...size, seed: hash(key) % 2 ** 31 }
+}

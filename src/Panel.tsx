@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { chronicle, chronicleText, describe, metaPrompts, prompts } from './describe'
 import { cueText, rootOf, titleOf } from './logic'
-import { cardsOf, useStore, viewport } from './store'
+import { cardsOf, useMode, useStore, viewport } from './store'
+import { ToolPicture } from './PictureBox'
 import { isHub, TYPE_INFO } from './types'
 
 function CopyButton({ text }: { text: string }) {
@@ -92,6 +93,7 @@ export function Panel() {
   }
 
   const def = cards[sel.id]
+  const mode = useMode()
   const root = rootOf(s.placed, sel.id)
   const prose = describe(s.placed, cards, root, s.links)
   const todo = prompts(s.placed, cards, root)
@@ -102,6 +104,7 @@ export function Panel() {
       <h3>{titleOf(s.placed, cards, root)}</h3>
       {prose.length > 0 ? (
         <>
+          <ToolPicture tool={`worlds-${mode}`} id={root} label={titleOf(s.placed, cards, root)} text={prose} lead="A wide landscape view of a place." shape="wide" />
           <div className="prose">{prose.map((t, i) => <p key={i}>{t}</p>)}</div>
           {todo.length > 0 && (
             <>

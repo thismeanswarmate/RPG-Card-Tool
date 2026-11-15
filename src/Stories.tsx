@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { DeckDialog, type DeckGroup } from './DeckDialog'
 import { CARD, deckOn, KIND_INFO, PACKS, PATTERN, PATTERNS, slotsOf, STORY_CARDS, write, type CardKind } from './story'
 import { useStories } from './storyStore'
+import { ToolPicture } from './PictureBox'
 import { ToolNav } from './ToolNav'
 
 export function Stories() {
@@ -96,6 +97,7 @@ export function Stories() {
 
         <aside className="portrait">
           <h3>Prompt</h3>
+          <ToolPicture tool="stories" id={story.id} label={pattern.name} text={prose} lead="An illustration of the opening scene of a story." shape="wide" />
           {prose.length ? (
             <>
               <div className="prose">{prose.map((t, i) => <p key={i}>{t}</p>)}</div>

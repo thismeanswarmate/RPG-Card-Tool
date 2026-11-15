@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { cardOf, cardsOf, deckOn, text, type ToolDef } from './cardTool'
 import type { CardToolState } from './cardToolStore'
 import { DeckDialog, type DeckGroup } from './DeckDialog'
+import { ToolPicture } from './PictureBox'
 import { ToolNav } from './ToolNav'
 
 interface Props {
@@ -106,6 +107,7 @@ export function CardTool({ def, useStore, plural, single, blurb }: Props) {
 
         <aside className="portrait">
           <h3>Written out</h3>
+          <ToolPicture tool={def.id} id={item.id} label={item.name.trim()} text={text(def, { ...item, name: '' }).slice(def.intro ? 1 : 0)} lead={def.picture.lead} shape={def.picture.shape} />
           {prose.length ? (
             <>
               <div className="prose">{prose.map((x, i) => <p key={i}>{x}</p>)}</div>

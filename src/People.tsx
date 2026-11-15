@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { cardText, GENRES, portrait, SLOT_INFO, SLOTS, type Slot } from './people'
 import { useLookup, usePeople } from './peopleStore'
+import { ToolPicture } from './PictureBox'
 import { ToolNav } from './ToolNav'
 
 function CustomCards({ onClose }: { onClose: () => void }) {
@@ -111,6 +112,7 @@ export function People() {
 
         <aside className="portrait">
           <h3>Portrait</h3>
+          <ToolPicture tool="characters" id={person.id} label={person.name?.trim() ?? ''} text={prose} lead="A portrait of a character, head and shoulders, expressive face, looking at the viewer." shape="tall" />
           {prose.length ? (
             <>
               <div className="prose">{prose.map((t, i) => <p key={i}>{t}</p>)}</div>

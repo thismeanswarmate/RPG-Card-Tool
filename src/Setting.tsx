@@ -3,6 +3,7 @@ import { allowHint, isDirect } from './comfy'
 import { DeckDialog } from './DeckDialog'
 import { ART, imageIds, imageSpec } from './imagePrompts'
 import { useImages } from './imageStore'
+import { PictureBox } from './PictureBox'
 import { KIND_LABEL, type Kind } from './lore'
 import { titleCase } from './names'
 import { RollRows } from './Roller'
@@ -248,6 +249,7 @@ function BuiltBlock({ b, s }: { b: Built; s: SettingData }) {
   return (
     <section id={`set-${b.id}`} className={`entry nested built ${b.tool}`}>
       <h5><Name id={b.id} s={s} /> <small>{b.tool === 'settlement' ? 'settlement' : 'dangerous place'} · {builtKind(b)}</small></h5>
+      <Picture id={b.id} s={s} />
       <Prose s={s} text={builtText(s, b)} home={b.home} />
       {editing && (
         <>
@@ -334,42 +336,8 @@ function ImagePanel({ s }: { s: SettingData }) {
   )
 }
 
-/** The picture for one element, with the buttons to make, redo, save or remove it. */
-function Picture({ id, s }: { id: string; s: SettingData }) {
-  const im = useImages()
-  const key = `${s.id}:${id}`
-  const src = im.links[key]
-  const waiting = im.current?.key === key || im.queue.some((j) => j.key === key)
-  const [editing, setEditing] = useState<string | null>(null)
-  const spec = imageSpec(s, id)
-  const make = (prompt = spec.prompt, fresh = false) =>
-    im.add([{ key, label: s.names[id], ...spec, prompt, seed: fresh ? Math.floor(Math.random() * 2 ** 31) : spec.seed }])
-  return (
-    <div className="picture">
-      {src && <img src={src} alt={`Picture of ${s.names[id]}`} loading="lazy" />}
-      <div className="pic-actions">
-        {waiting ? <span className="hint">{im.current?.key === key ? 'Making the picture…' : 'Waiting its turn…'}</span> : (
-          <>
-            <button onClick={() => make(spec.prompt, !!src)}>{src ? 'New picture' : 'Make picture'}</button>
-            <button onClick={() => setEditing(spec.prompt)}>Edit prompt…</button>
-            {src && <a className="button" href={src} download={`${s.names[id].replace(/\W+/g, '-').toLowerCase()}.png`}>Save</a>}
-            {src && <button onClick={() => im.remove(key)}>Remove</button>}
-          </>
-        )}
-      </div>
-      {editing !== null && (
-        <div className="modal-back" onClick={() => setEditing(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <header><h2>Prompt for {s.names[id]}</h2><button onClick={() => setEditing(null)}>Cancel</button></header>
-            <p className="hint">Describe the subject, then the setting, then the light, then the medium. Invented names are best left out.</p>
-            <textarea className="prompt" value={editing} onChange={(e) => setEditing(e.target.value)} />
-            <div className="actions"><button className="primary" disabled={!editing.trim()} onClick={() => { make(editing.trim(), true); setEditing(null) }}>Make picture</button></div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+/** The picture for one element of a setting. */
+const Picture = ({ id, s }: { id: string; s: SettingData }) => <PictureBox imageKey={`${s.id}:${id}`} label={s.names[id]} spec={imageSpec(s, id)} />
 
 const Refs = ({ label, ids, s }: { label: string; ids: string[]; s: SettingData }) =>
   ids.length ? (
@@ -541,6 +509,7 @@ function Gazetteer({ s }: { s: SettingData }) {
             {v.sites.map((site) => (
               <section key={site.id} id={`set-${site.id}`} className="entry nested site">
                 <h5><Name id={site.id} s={s} /> <small>site</small></h5>
+                <Picture id={site.id} s={s} />
                 <Prose s={s} text={[site.text]} home={site.id} />
                 {editing && (
                   <>

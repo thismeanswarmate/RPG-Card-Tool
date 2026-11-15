@@ -26,6 +26,8 @@ export interface ToolDef {
   write(get: (aspect: string) => string | undefined, name: string, index: number): string
   /** A name for a new item. */
   name(taken: string[]): string
+  /** How a picture of one should be framed. */
+  picture: { lead: string; shape: 'wide' | 'tall' | 'square' }
 }
 
 export interface Card { id: string; aspect: string; deck: string; cues: string[] }

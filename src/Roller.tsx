@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Rolls, Step } from './roller'
 import type { RollerState } from './rollerStore'
+import { ToolPicture } from './PictureBox'
 import { ToolNav } from './ToolNav'
 
 interface Props {
@@ -13,6 +14,8 @@ interface Props {
   plural: string
   single: string
   emptyBrief: string
+  /** Where this tool keeps its pictures. */
+  tool: string
 }
 
 interface RowsProps {
@@ -56,7 +59,7 @@ export function RollRows({ steps, rolls, locked, onSet, onRoll, onLock }: RowsPr
 }
 
 /** The screen shared by the table-rolling tools: a saved list, the tables step by step, and the brief. */
-export function Roller({ useStore, stepsFor, brief, summary, plural, single, emptyBrief }: Props) {
+export function Roller({ useStore, stepsFor, brief, summary, plural, single, emptyBrief, tool }: Props) {
   const s = useStore()
   const [copied, setCopied] = useState(false)
   const p = s.items.find((x) => x.id === s.current)!
@@ -103,6 +106,7 @@ export function Roller({ useStore, stepsFor, brief, summary, plural, single, emp
 
         <aside className="portrait">
           <h3>Brief</h3>
+          <ToolPicture tool={tool} id={p.id} label={p.name.trim()} text={brief('', p.rolls)} lead={`A wide view of a ${single}.`} shape="wide" />
           {prose.length ? (
             <>
               <div className="prose">{prose.map((x, i) => <p key={i}>{x}</p>)}</div>

@@ -5,7 +5,7 @@ import { useSettlements } from './settlementStore'
 export const Settlements = () => (
   <Roller
     useStore={useSettlements} stepsFor={stepsFor} brief={brief} summary={typeLabel}
-    plural="Settlements" single="settlement"
+    plural="Settlements" single="settlement" tool="settlements"
     emptyBrief="Roll the tables and the settlement is written up here: what it is, who lives there, who runs it, where to go and what people are talking about."
   />
 )

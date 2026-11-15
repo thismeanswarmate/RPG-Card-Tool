@@ -466,11 +466,12 @@ describe('pictures', async () => {
   it('writes a prompt for every element, without invented names', () => {
     const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, focus: ['faith', 'power'] }, 'pictures')
     const ids = P.imageIds(s)
-    expect(ids).toHaveLength(1 + G.rootsOf(s).length + s.entities.length + s.people.length)
+    const siteCount = G.rootsOf(s).reduce((n, r) => n + G.placeView(s, r).sites.length, 0)
+    expect(ids).toHaveLength(1 + G.rootsOf(s).length + siteCount + s.entities.length + s.people.length + s.built!.length)
     for (const id of ids) {
       const spec = P.imageSpec(s, id)
       expect(spec.prompt, id).toMatch(/^[A-Z].*No text or lettering\.$/)
-      expect(spec.prompt).not.toMatch(/undefined|something|\{|  /)
+      expect(spec.prompt).not.toMatch(s.built!.some((b) => b.id === id) ? /undefined|\{|  / : /undefined|something|\{|  /)
       expect(spec.w % 32).toBe(0)
       expect(spec.h % 32).toBe(0)
       expect(spec.seed).toBe(P.imageSpec(s, id).seed)
@@ -1189,5 +1190,40 @@ describe('races, cultures and history', async () => {
     expect(history[0]).toBe('The Chronicle of Lorel is told in three ages.')
     expect(history).toHaveLength(4)
     for (const age of history.slice(1)) expect(age).toMatch(/^The Age of .+ began when .+\. In those years .+ held sway\. Under them .+, but .+\. It ended when .+\. What remains of it is .+\.$/)
+  })
+})
+
+describe('pictures for every element', async () => {
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  const P = await import('./imagePrompts')
+  it('offers a picture for sites, settlements and dangerous places as well as the rest', () => {
+    const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: 'region' }, 'every-picture')
+    const ids = P.imageIds(s)
+    const sites = G.rootsOf(s).flatMap((r) => G.placeView(s, r).sites.map((x) => x.id))
+    expect(sites.length).toBeGreaterThan(0)
+    for (const id of [...sites, ...s.built!.map((b) => b.id), ...s.entities.map((e) => e.id), ...s.people.map((c) => c.id), ...G.rootsOf(s), 'world']) expect(ids).toContain(id)
+    expect(new Set(ids).size).toBe(ids.length)
+    for (const id of ids) {
+      const spec = P.imageSpec(s, id)
+      expect(spec.prompt, id).toMatch(/^[A-Z].*No text or lettering\.$/)
+      expect(spec.prompt, id).not.toMatch(/undefined|NaN|\.\. |  /)
+      // Invented names stay out of prompts, since the picture model would try to write them.
+      expect(spec.prompt, id).not.toContain(s.names[id])
+    }
+    const site = P.imageSpec(s, sites[0]).prompt
+    expect(site).toContain('seen from close by')
+    const town = s.built!.find((b) => b.tool === 'settlement')!
+    expect(P.imageSpec(s, town.id).prompt).toContain(`A wide view of a${/^[aeiou]/.test(G.builtKind(town)) ? 'n' : ''} ${G.builtKind(town)}`)
+    expect(P.imageSpec(s, s.built!.find((b) => b.tool === 'peril')!.id).prompt).toContain('a dangerous place')
+    const hand = B.newManual(['scifi'], ['frost']); const root = B.addPlace(hand)!
+    expect(P.imageSpec(hand, B.addBuilt(hand, 'peril', root)).prompt).toMatch(/dangerous place/)
+  })
+  it('makes a prompt from any written description', () => {
+    const spec = P.loosePrompt('A portrait of one member of a people. They are tall.', 'tall', 'races:x')
+    expect([spec.w, spec.h]).toEqual([768, 1344])
+    expect(spec.prompt).toMatch(/^A portrait of one member of a people\. They are tall\. .+ No text or lettering\.$/)
+    expect(P.loosePrompt('x', 'tall', 'races:x').seed).toBe(spec.seed)
+    expect(P.loosePrompt('x', 'wide', 'races:y').seed).not.toBe(spec.seed)
   })
 })
