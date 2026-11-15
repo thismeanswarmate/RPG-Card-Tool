@@ -126,7 +126,9 @@ function remove(s: Data, id: string): number {
   return active
 }
 
-const centre = (s: Data) => ({ x: (viewport.w / 2 - s.view.x) / s.view.k, y: (viewport.h / 2 - s.view.y) / s.view.k })
+/** Screen point new cards are placed around: higher up on a phone, where the hand covers the lower half. */
+const focal = () => ({ x: viewport.w / 2, y: viewport.h * (viewport.w < 760 ? 0.3 : 0.5) })
+const centre = (s: Data) => ({ x: (focal().x - s.view.x) / s.view.k, y: (focal().y - s.view.y) / s.view.k })
 
 export function targetHub(s: Data): string | null {
   const cards = cardsOf(s)
@@ -206,8 +208,8 @@ export const useStore = create<State>()(
         if (card.type === 'terrain') {
           s.focus = id
           const p = s.placed[id]
-          s.view.x = viewport.w / 2 - (p.x + SIZE / 2) * s.view.k
-          s.view.y = viewport.h / 2 - (p.y + SIZE / 2) * s.view.k
+          s.view.x = focal().x - (p.x + SIZE / 2) * s.view.k
+          s.view.y = focal().y - (p.y + SIZE / 2) * s.view.k
         }
         s.selected = hub ?? id
       }),

@@ -15,6 +15,26 @@ export function Table() {
   const drag = useRef<Drag | null>(null)
   const pan = useRef<Pan | null>(null)
   const lastClick = useRef({ id: '', t: 0 })
+  const touches = useRef(new Map<number, { x: number; y: number }>())
+  const pinch = useRef<{ d: number; mx: number; my: number; view: typeof s.view } | null>(null)
+
+  const local = (p: { x: number; y: number }) => {
+    const r = ref.current!.getBoundingClientRect()
+    return { x: p.x - r.left, y: p.y - r.top }
+  }
+
+  /** Register a pointer. Returns false when it starts a two-finger pinch instead of a drag or pan. */
+  const down = (e: React.PointerEvent) => {
+    ref.current!.setPointerCapture(e.pointerId)
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (touches.current.size !== 2) return true
+    const [a, b] = [...touches.current.values()].map(local)
+    pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, view: s.view }
+    drag.current = null
+    pan.current = null
+    setTarget(null)
+    return false
+  }
   const [target, setTarget] = useState<{ hub: string; edge: Edge } | null>(null)
 
   useEffect(() => {
@@ -51,6 +71,15 @@ export function Table() {
   }
 
   const onMove = (e: React.PointerEvent) => {
+    if (touches.current.has(e.pointerId)) touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const pz = pinch.current
+    if (pz && touches.current.size === 2) {
+      const [a, b] = [...touches.current.values()].map(local)
+      const k = Math.min(2, Math.max(0.3, (pz.view.k * Math.hypot(a.x - b.x, a.y - b.y)) / pz.d))
+      const f = k / pz.view.k
+      s.setView({ k, x: (a.x + b.x) / 2 - (pz.mx - pz.view.x) * f, y: (a.y + b.y) / 2 - (pz.my - pz.view.y) * f })
+      return
+    }
     const d = drag.current
     if (d) {
       const dx = (e.clientX - d.sx) / s.view.k
@@ -67,7 +96,12 @@ export function Table() {
     }
   }
 
-  const onUp = () => {
+  const onUp = (e: React.PointerEvent) => {
+    touches.current.delete(e.pointerId)
+    if (pinch.current) {
+      if (!touches.current.size) pinch.current = null
+      return
+    }
     const d = drag.current
     if (d) {
       if (!d.moved) click(d.id)
@@ -97,8 +131,7 @@ export function Table() {
       ref={ref}
       className={`table${s.linking ? ' linking' : ''}`}
       onPointerDown={(e) => {
-        ref.current!.setPointerCapture(e.pointerId)
-        pan.current = { sx: e.clientX, sy: e.clientY, ox: s.view.x, oy: s.view.y, moved: false }
+        if (down(e)) pan.current = { sx: e.clientX, sy: e.clientY, ox: s.view.x, oy: s.view.y, moved: false }
       }}
       onPointerMove={onMove}
       onPointerUp={onUp}
@@ -116,8 +149,7 @@ export function Table() {
               style={{ left: pos[id].x, top: pos[id].y, zIndex: z + 1 }}
               onPointerDown={(e) => {
                 e.stopPropagation()
-                ref.current!.setPointerCapture(e.pointerId)
-                drag.current = { id, sx: e.clientX, sy: e.clientY, ox: pos[id].x, oy: pos[id].y, moved: false }
+                if (down(e)) drag.current = { id, sx: e.clientX, sy: e.clientY, ox: pos[id].x, oy: pos[id].y, moved: false }
               }}
             >
               <CardView def={cards[id]} active={p.active} edge={p.parent ? p.edge : undefined} selected={s.selected === id} />

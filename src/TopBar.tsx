@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { GUIDE_STEPS, snapshot, useStore } from './store'
 import { TYPE_INFO } from './types'
 
@@ -15,6 +15,7 @@ export function TopBar({ onDecks }: { onDecks: () => void }) {
   const s = useStore()
   const file = useRef<HTMLInputElement>(null)
   const { guide } = s
+  const [menu, setMenu] = useState(false)
 
   useEffect(() => {
     if (guide.on && guide.drawn && !s.hand.length) s.guideNext()
@@ -62,11 +63,14 @@ export function TopBar({ onDecks }: { onDecks: () => void }) {
         </div>
       )}
       <div className="spacer" />
+      <button className="menu-btn" aria-label="Menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>☰</button>
+      <div className={`menu${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
       <button onClick={onDecks}>Decks</button>
       <button onClick={exportJson}>Export</button>
       <button onClick={() => file.current!.click()}>Import</button>
       <input ref={file} type="file" accept="application/json" hidden onChange={(e) => { importJson(e.target.files?.[0]); e.target.value = '' }} />
       <button onClick={() => confirm('Clear the table and start a new world? Your custom cards are kept.') && s.reset()}>New world</button>
+      </div>
     </header>
   )
 }
