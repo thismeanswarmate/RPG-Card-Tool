@@ -25,8 +25,8 @@ const GLYPH: Record<Glyph, string> = {
 
 const THEMES = {
   // `ocean` is the open sea, `sea` the paler shallows round the land, and `water` the lakes and rivers.
-  parchment: { paper: '#e9dcc0', edge: '#8fa3a3', ink: '#3b2a1a', faint: '#8a7353', ocean: '#b6cbc9', sea: '#d5e3dd', water: '#9fc0c6', beyond: '#d3cbb6', route: '#8c3b2a', halo: '#efe4cb' },
-  blueprint: { paper: '#122a44', edge: '#060f1c', ink: '#d6e8ff', faint: '#7fa3cc', ocean: '#0a1a2e', sea: '#17395c', water: '#2b6a9c', beyond: '#1a2f47', route: '#ffd27a', halo: '#122a44' },
+  parchment: { paper: '#e9dcc0', edge: '#8fa3a3', ink: '#3b2a1a', faint: '#8a7353', ocean: '#b6cbc9', sea: '#d5e3dd', water: '#9fc0c6', waterInk: '#35606e', beyond: '#d3cbb6', route: '#8c3b2a', halo: '#efe4cb' },
+  blueprint: { paper: '#122a44', edge: '#060f1c', ink: '#d6e8ff', faint: '#7fa3cc', ocean: '#0a1a2e', sea: '#17395c', water: '#2b6a9c', waterInk: '#9fd0f0', beyond: '#1a2f47', route: '#ffd27a', halo: '#122a44' },
 }
 
 const go = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -70,24 +70,16 @@ export function SettingMap({ s }: { s: Setting }) {
         {/* The ocean: one even colour to the edge of the sheet. */}
         <rect width={map.w} height={map.h} fill={t.ocean} />
 
-        {/* The shores of neighbouring worlds, coming in from the edges: shallows, a coastline, and land left plain. */}
-        <g strokeLinejoin="round" pointerEvents="none">
-          {map.beyond.map((b) => (
-            <g key={b.id}>
-              <path d={b.d} fill="none" stroke={t.sea} strokeWidth="30" opacity=".4" />
-              <path d={b.d} fill="none" stroke={t.sea} strokeWidth="14" opacity=".55" />
-              <path d={b.d} fill={t.beyond} stroke={t.ink} strokeWidth="2.2" />
-            </g>
-          ))}
-        </g>
-
         {/* Rings of shallow water around the land, then the coastline itself. */}
         <g fill="none" strokeLinejoin="round">
           {[[56, 0.3], [34, 0.4], [16, 0.55]].map(([width, opacity]) => (
-            <g key={width} stroke={t.sea} strokeWidth={width} opacity={opacity}>{map.regions.map((r) => <path key={r.id} d={r.d} />)}</g>
+            <g key={width} stroke={t.sea} strokeWidth={width} opacity={opacity}>{[...map.regions, ...map.beyond].map((r) => <path key={r.id} d={r.d} />)}</g>
           ))}
-          <g stroke={t.ink} strokeWidth="4.5">{map.regions.map((r) => <path key={r.id} d={r.d} />)}</g>
+          <g stroke={t.ink} strokeWidth="4.5">{[...map.regions, ...map.beyond].map((r) => <path key={r.id} d={r.d} />)}</g>
         </g>
+
+        {/* Neighbouring worlds: plain land joined to this one and running off the sheet. */}
+        {map.beyond.map((b) => <path key={b.id} d={b.d} fill={t.beyond} stroke={t.beyond} strokeWidth="3" strokeLinejoin="round" pointerEvents="none" />)}
 
         {/* The land: a wash for each region, with faint borders between them. */}
         {/* The paper under each wash is drawn a little proud of its outline, which closes any hairline between neighbours. */}
@@ -204,12 +196,31 @@ export function SettingMap({ s }: { s: Setting }) {
           )
         })}
 
-        {/* The worlds beyond, named along the edges they lie past, each with a small arrow pointing off the sheet. */}
-        <g pointerEvents="none" fill={t.ink} opacity=".85" fontStyle="italic" letterSpacing=".14em">
+        {/* The names of lakes and rivers: a lake's beneath it, a river's set along its course. */}
+        <g pointerEvents="none" fill={t.waterInk} fontStyle="italic" fontSize="8" stroke={t.halo} strokeWidth="2.6" paintOrder="stroke">
+          <defs>{map.rivers.map((r, i) => <path key={i} id={`river-${i}`} d={r.along} />)}</defs>
+          {map.rivers.map((r, i) => (
+            <text key={i} dy="-3.5"><textPath href={`#river-${i}`} startOffset="50%" textAnchor="middle">{r.name}</textPath></text>
+          ))}
+          {map.lakes.map((l, i) => <text key={i} x={l.x} y={l.y} textAnchor="middle">{l.name}</text>)}
+        </g>
+
+        {/* The frontier with each neighbouring world, and its name on its own land. */}
+        <g pointerEvents="none">
           {map.beyond.map((b) => (
-            <text key={b.id} textAnchor="middle" fontSize="13.5" transform={`translate(${b.x} ${b.y}) rotate(${b.turn})`}>
-              ↑ {titleCase(b.name.replace(/^the /, 'The ')).toUpperCase()} ↑
-            </text>
+            <g key={b.id}>
+              <path d={b.d} fill="none" stroke={t.ink} strokeWidth="1.8" strokeDasharray="9 4 2 4" strokeLinejoin="round" opacity=".8" />
+              <text transform={`translate(${b.x} ${b.y}) rotate(${b.turn})`} textAnchor="middle" fontSize="15" fontStyle="italic" letterSpacing=".16em" fill={t.ink} opacity=".8" stroke={t.beyond} strokeWidth="4" paintOrder="stroke">
+                {titleCase(b.name.replace(/^the /, 'The ')).toUpperCase()}
+              </text>
+            </g>
+          ))}
+        </g>
+
+        {/* The seas, named along the open edges. */}
+        <g pointerEvents="none" fill={t.waterInk} fontStyle="italic" letterSpacing=".14em">
+          {map.seas.map((x) => (
+            <text key={x.name} textAnchor="middle" fontSize="14" transform={`translate(${x.x} ${x.y}) rotate(${x.turn})`}>{titleCase(x.name.replace(/^the /, 'The '))}</text>
           ))}
         </g>
 
@@ -237,7 +248,7 @@ export function SettingMap({ s }: { s: Setting }) {
         <rect x="14" y="14" width={map.w - 28} height={map.h - 28} fill="none" stroke={t.ink} strokeWidth=".8" pointerEvents="none" />
       </svg>
       <figcaption>
-        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. The shores of neighbouring worlds come in from the edges they lie beyond, each with its name. The sea is drawn plain; lakes and rivers lie on the land. Each place carries its emblem, with the smaller emblems of the cultures kept there. A house marks a site and a cross a dangerous place. Settlements grow with their rank: a small circle for a village, a diamond for a trading post, a ringed dot for a town, battlements for a fortress town, a double ring for a city and a starred ring for the capital. Click any of them to read about it.</span>
+        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. A neighbouring world is joined on by land and runs off its edge of the sheet, behind a dot-and-dash frontier; a side without one faces a named sea. Lakes and rivers are named too. The sea is drawn plain; lakes and rivers lie on the land. Each place carries its emblem, with the smaller emblems of the cultures kept there. A house marks a site and a cross a dangerous place. Settlements grow with their rank: a small circle for a village, a diamond for a trading post, a ringed dot for a town, battlements for a fortress town, a double ring for a city and a starred ring for the capital. Click any of them to read about it.</span>
         <button onClick={save}>Save map</button>
       </figcaption>
     </figure>

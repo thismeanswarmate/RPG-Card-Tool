@@ -10,7 +10,7 @@ import { KIND_LABEL, type Kind } from './lore'
 import { LAND_FORMS, titleCase } from './names'
 import { RollRows } from './Roller'
 import {
-  ageNames, SIDES, builtKind, builtText, charText, DATED, decksOf, DRAWN_DEF, drawnKind, drawnText, worldDrawn, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
+  ageNames, SIDES, beyondOf, seasOf, builtKind, builtText, charText, DATED, decksOf, DRAWN_DEF, drawnKind, drawnText, worldDrawn, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
   type Answers, type Side, type Built, type Char, type Drawn, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import {
@@ -666,11 +666,11 @@ function Gazetteer({ s }: { s: SettingData }) {
       </section>
 
       {/* The worlds beyond the map: a name each, and the side it lies on. */}
-      {(s.beyond?.length ?? 0) > 0 && (
+      {(beyondOf(s).length > 0 || roots.length > 0) && (
         <section className="beyond">
-          <h3>Bordering worlds</h3>
+          <h3>Bordering worlds and seas</h3>
           <ul>
-            {[...s.beyond!].sort((a, b) => SIDES.indexOf(a.side) - SIDES.indexOf(b.side)).map((b) => (
+            {beyondOf(s).map((b) => (
               <li key={b.id} className="named">
                 <span className="side">{editing ? (
                   <select value={b.side} aria-label="Side" onChange={(e) => edit((d) => moveBeyond(d, b.id, e.target.value as Side))}>
@@ -680,6 +680,9 @@ function Gazetteer({ s }: { s: SettingData }) {
                 <b><Name id={b.id} s={s} /></b>
                 {editing && <button className="link" onClick={() => edit((d) => removeBeyond(d, b.id))} aria-label={`Remove ${s.names[b.id]}`}>Remove</button>}
               </li>
+            ))}
+            {roots.length > 0 && seasOf(s).map((x) => (
+              <li key={x.side}><span className="side">To the {x.side}</span><span>{upper(x.name)}</span></li>
             ))}
           </ul>
         </section>
@@ -694,7 +697,7 @@ function Gazetteer({ s }: { s: SettingData }) {
           <span>Add to the world</span>
           <button onClick={() => add((d) => addDrawn(d, 'race'))}>+ Race</button>
           {!worldDrawn(s, 'history').length && <button onClick={() => add((d) => addDrawn(d, 'history'))}>+ History</button>}
-          {(s.beyond?.length ?? 0) < SIDES.length && <button onClick={() => edit((d) => { addBeyond(d) })}>+ Bordering world</button>}
+          {beyondOf(s).length < SIDES.length && <button onClick={() => edit((d) => { addBeyond(d) })}>+ Bordering world</button>}
         </div>
       )}
 

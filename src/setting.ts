@@ -84,9 +84,23 @@ export interface Setting {
 }
 
 export interface Beyond { id: string; side: Side }
-/** The eight sides a neighbouring world can lie on, clockwise from the north. */
-export const SIDES = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'] as const
+/** The four sides a neighbouring world can lie on. A side without one faces the open sea. */
+export const SIDES = ['north', 'east', 'south', 'west'] as const
 export type Side = (typeof SIDES)[number]
+
+/** The neighbouring worlds of a setting: one at most on each side, each joined to it by land. */
+export const beyondOf = (s: Pick<Setting, 'beyond' | 'names'>): Beyond[] =>
+  SIDES.flatMap((side) => { const b = s.beyond?.find((x) => x.side === side && s.names[x.id]); return b ? [b] : [] })
+/** The seas on the sides with no neighbouring world, each named in the setting's own manner. */
+export function seasOf(s: Pick<Setting, 'beyond' | 'names' | 'seed' | 'specs' | 'id'>): { side: Side; name: string }[] {
+  const taken = beyondOf(s).map((b) => b.side)
+  const tongue = TONGUES[s.specs.world?.tongue ?? 0] ?? TONGUES[0]
+  return SIDES.filter((side) => !taken.includes(side)).map((side) => {
+    const rng = rngFrom(`${s.seed}:${s.id}:sea:${side}`)
+    const w = tongue.word(rng)
+    return { side, name: [`the ${w} Ocean`, `the Sea of ${w}`, `the ${w} Sea`, `the ${w} Deep`, `the Gulf of ${w}`][Math.floor(rng() * 5)] }
+  })
+}
 
 /** A race, a culture or the history of a setting. A culture belongs to a place and may be mostly of one race. */
 export interface Drawn { id: string; tool: 'race' | 'culture' | 'history'; home?: string; race?: string; sections: Section[] }
@@ -341,9 +355,7 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
     const list = (s.beyond ??= [])
     const free = SIDES.filter((side) => !list.some((b) => b.side === side))
     if (!free.length) return undefined
-    // The four main sides fill first, so that a world with two neighbours has them north and west, not at two corners.
-    const main = free.filter((side) => !side.includes('-'))
-    const b: Beyond = { id: nextId('n', list), side: pick(main.length ? main : free) }
+    const b: Beyond = { id: nextId('n', list), side: pick([...free]) }
     list.push(b)
     name(b.id, { kind: 'world', tongue: Math.floor(rng() * TONGUES.length), genres })
     return b
@@ -474,7 +486,8 @@ export function generateSetting(answers: Answers, seed: string): Setting {
     w.tieAll()
 
     // 7. The worlds beyond the map's edges: names only.
-    for (let i = 0; i < { region: 2, country: 3, continent: 3 }[answers.size] + (rng() < 0.4 ? 1 : 0); i++) w.neighbour()
+    // One to three sides are joined to a neighbour; the rest face the sea.
+    for (let i = 0; i < 1 + Math.floor(rng() * 3); i++) w.neighbour()
     return s
   })
 }
@@ -574,9 +587,14 @@ export function worldProse(s: Setting): { text: string[]; prompts: string[] } {
     s.people.length || s.hooks.length ? `${upper(count(s.people.length))} ${s.people.length === 1 ? 'person stands' : 'people stand'} out in what follows, and ${count(s.hooks.length)} ${s.hooks.length === 1 ? 'story is' : 'stories are'} already under way.` : '',
   ].filter(Boolean).join(' ')
   // What lies past the edges, side by side: "the Kuhali Coast to the north and the Mera Vale to the east".
-  const sides = [...(s.beyond ?? [])].sort((a, b) => SIDES.indexOf(a.side) - SIDES.indexOf(b.side)).filter((b) => s.names[b.id]).map((b) => `${s.names[b.id]} to the ${b.side}`)
+  const sides = beyondOf(s).map((b) => `${s.names[b.id]} to the ${b.side}`)
+  const seas = roots.length ? seasOf(s).map((x) => `${x.name} to the ${x.side}`) : []
+  const around = [
+    sides.length ? `It is joined by land to ${listOf(sides)}.` : '',
+    seas.length ? `${sides.length ? 'Its other shores face' : 'It is bounded by'} ${listOf(seas)}.` : '',
+  ].filter(Boolean).join(' ')
   const meta = chronicle({}, CARDS, [], s.meta)[0]
-  if (sides.length) return { text: [`${opening} Beyond it ${sides.length === 1 ? 'lies' : 'lie'} ${listOf(sides)}.`, ...(meta?.text ?? [])], prompts: meta?.prompts ?? [] }
+  if (around) return { text: [`${opening} ${around}`, ...(meta?.text ?? [])], prompts: meta?.prompts ?? [] }
   return { text: [opening, ...(meta?.text ?? [])], prompts: meta?.prompts ?? [] }
 }
 

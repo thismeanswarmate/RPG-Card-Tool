@@ -10,8 +10,8 @@
 import { typeKey } from './settlement'
 import { EXPANSION_COLORS } from './expansions'
 import { cueText, rootOf, subtree } from './logic'
-import { rngFrom, type Rng } from './names'
-import { rootsOf, terrainOf, type Setting } from './setting'
+import { rngFrom, type Rng , TONGUES } from './names'
+import { rootsOf, terrainOf, type Setting , beyondOf, seasOf } from './setting'
 import { TERRAIN_COLORS } from './starter'
 import { cardsOf } from './store'
 
@@ -57,13 +57,15 @@ export interface MapData {
   h: number
   regions: MapRegion[]
   routes: { a: string; b: string; d: string }[]
-  /** Still water inside the land, as outlines. */
-  lakes: { d: string }[]
-  /** Running water: each a line from its source to the sea or to a lake. */
-  rivers: { d: string }[]
+  /** Still water inside the land: its outline, its name, and where the name goes. */
+  lakes: { d: string; name: string; x: number; y: number }[]
+  /** Running water: each a line from its source to the sea or to a lake, with its name and the stretch the name is set along, running left to right. */
+  rivers: { d: string; name: string; along: string }[]
+  /** The named seas on the sides with no neighbouring world, lettered along those edges. */
+  seas: { name: string; x: number; y: number; turn: number }[]
   scale: { px: number; label: string }
-  /** The names of neighbouring worlds, each set at the edge of the sheet on its side: where, and turned how far. */
-  beyond: { id: string; name: string; x: number; y: number; turn: number; /** Its shore, coming in from the edge of the sheet. */ d: string }[]
+  /** Neighbouring worlds: the land of each, joined to this one and running off its edge of the sheet, and where its name goes. */
+  beyond: { id: string; name: string; x: number; y: number; /** A quarter turn for a name set up one of the two sides. */ turn: number; d: string }[]
   theme: 'parchment' | 'blueprint'
 }
 
@@ -180,6 +182,17 @@ export function buildMap(s: Setting): MapData {
   const nearest = pts.map((p, i) => Math.min(pts.length > 1 ? Infinity : 520 * SCALE, ...pts.filter((_, j) => j !== i).map((q) => Math.hypot(p[0] - q[0], p[1] - q[1]))))
   const typical = [...nearest].sort((a, b) => a - b)[Math.floor(nearest.length / 2)] || 260
   const reach = Math.min(200, Math.max(110, typical * 0.9))
+  // Neighbouring worlds: each is given a centre of its own out past the last places on its side, so that it
+  // shares a border with them like any other place and its land carries on off the sheet.
+  const OUT: Record<string, P> = { north: [0, -1], east: [1, 0], south: [0, 1], west: [-1, 0] }
+  const outer = beyondOf(s)
+  const mid: P = [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length]
+  const outerAt = outer.map((b): P => {
+    const d = OUT[b.side]
+    const far = Math.max(...pts.map((p) => (p[0] - mid[0]) * d[0] + (p[1] - mid[1]) * d[1]))
+    return [mid[0] + d[0] * (far + typical * 1.05), mid[1] + d[1] * (far + typical * 1.05)]
+  })
+  const centres = [...pts, ...outerAt]
 
   const seed = Math.floor(rng() * 1e6)
   const edge = noise(seed), dx = noise(seed + 1), dy = noise(seed + 2)
@@ -211,10 +224,10 @@ export function buildMap(s: Setting): MapData {
   const weight = loads.map((v) => Math.min(2.1, Math.max(0.45, (0.5 + (0.5 * v) / mean) * Math.exp((rng() - 0.45) * 1.25))))
   // Each place's radius for drawing borders. Where a large place would otherwise push a border past a
   // small neighbour's centre, the large one is reined in until the small one keeps its ground.
-  const radius = weight.map((v) => 92 * v)
+  const radius = [...weight.map((v) => 92 * v), ...outerAt.map(() => 104)]
   for (let pass = 0, changed = true; changed && pass < 60; pass++) {
     changed = false
-    pts.forEach((p, i) => pts.forEach((q, j) => {
+    centres.forEach((p, i) => centres.forEach((q, j) => {
       if (i === j || radius[i] <= radius[j]) return
       const room = 0.4 * ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2)
       if (radius[i] ** 2 - radius[j] ** 2 > room + 1e-6) { radius[i] = Math.sqrt(room + radius[j] ** 2); changed = true }
@@ -225,22 +238,12 @@ export function buildMap(s: Setting): MapData {
   // Some places are wilder than the rest: their coasts throw out more headlands and their borders wander further.
   const wild = roots.map(() => (rng() < 0.4 ? 0.6 + rng() * 0.4 : 0))
 
-  const lakes: { c: P; r: number; poly: P[]; region: number }[] = []
-  const regions = roots.map((id, i): MapRegion => {
-    const [gx, gy] = pts[i]
-    // A lopsided blob: an uneven edge, two or three lobes at angles of its own, stretched along one axis.
-    const lean = rng() * Math.PI, stretch = 0.78 + rng() * 0.5 + (rng() < 0.5 ? -0.16 : 0.3) * wild[i]
-    const lobes = [rng() * Math.PI * 2, rng() * Math.PI * 2, rng() * Math.PI * 2]
-    let poly: P[] = Array.from({ length: 72 }, (_, k) => {
-      const a = (k / 72) * Math.PI * 2
-      const r = Math.max(74, reach * weight[i] ** 0.9)
-        * (0.72 + 0.5 * edge(i * 7.3 + Math.cos(a) * 1.9 + 5, Math.sin(a) * 1.9 + 5))
-        * Math.max(0.55, 1 + (0.2 + 0.2 * wild[i]) * Math.sin(a * 2 + lobes[0]) + (0.14 + 0.18 * wild[i]) * Math.sin(a * 3 + lobes[1]) + 0.2 * wild[i] * Math.sin(a * 5 + lobes[2]))
-      const [u, v] = [Math.cos(a) * r * stretch, (Math.sin(a) * r) / stretch]
-      return [gx + u * Math.cos(lean) - v * Math.sin(lean), gy + u * Math.sin(lean) + v * Math.cos(lean)]
-    })
+  /** Fit a blob to the ground its centre may take, stretch it to meet its neighbours, and draw its edge in short uneven steps. */
+  const outline = (i: number, blob: P[]): P[] => {
+    const [gx, gy] = centres[i]
+    let poly = blob
     // The ground this place may take: everything nearer to it than to its neighbours, by the rule below.
-    const borders = pts.flatMap((q, j) => {
+    const borders = centres.flatMap((q, j) => {
       if (j === i) return []
       const span = (q[0] - gx) ** 2 + (q[1] - gy) ** 2
       const share = 0.5 + (radius[i] ** 2 - radius[j] ** 2) / (2 * span)
@@ -256,7 +259,7 @@ export function buildMap(s: Setting): MapData {
       const k = (limit * 1.1 + 8) / (far || 1)
       return [gx + (x - gx) * k, gy + (y - gy) * k]
     })
-    pts.forEach((q, j) => {
+    centres.forEach((q, j) => {
       if (j === i) return
       // Where the border falls between the two centres. Each place has a radius that grows with its weight,
       // and the border is the line of equal "power" between the two circles. Borders drawn by this rule
@@ -272,6 +275,24 @@ export function buildMap(s: Setting): MapData {
       const steps = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 9))
       for (let t = 0; t < steps; t++) fine.push(push([a[0] + ((b[0] - a[0]) * t) / steps, a[1] + ((b[1] - a[1]) * t) / steps]))
     })
+    return fine
+  }
+
+  const lakes: { c: P; r: number; poly: P[]; region: number }[] = []
+  const regions = roots.map((id, i): MapRegion => {
+    const [gx, gy] = pts[i]
+    // A lopsided blob: an uneven edge, two or three lobes at angles of its own, stretched along one axis.
+    const lean = rng() * Math.PI, stretch = 0.78 + rng() * 0.5 + (rng() < 0.5 ? -0.16 : 0.3) * wild[i]
+    const lobes = [rng() * Math.PI * 2, rng() * Math.PI * 2, rng() * Math.PI * 2]
+    let poly: P[] = Array.from({ length: 72 }, (_, k) => {
+      const a = (k / 72) * Math.PI * 2
+      const r = Math.max(74, reach * weight[i] ** 0.9)
+        * (0.72 + 0.5 * edge(i * 7.3 + Math.cos(a) * 1.9 + 5, Math.sin(a) * 1.9 + 5))
+        * Math.max(0.55, 1 + (0.2 + 0.2 * wild[i]) * Math.sin(a * 2 + lobes[0]) + (0.14 + 0.18 * wild[i]) * Math.sin(a * 3 + lobes[1]) + 0.2 * wild[i] * Math.sin(a * 5 + lobes[2]))
+      const [u, v] = [Math.cos(a) * r * stretch, (Math.sin(a) * r) / stretch]
+      return [gx + u * Math.cos(lean) - v * Math.sin(lean), gy + u * Math.sin(lean) + v * Math.cos(lean)]
+    })
+    const fine = outline(i, poly)
     // The name goes at the roomiest spot in the region, wherever its shape has left that.
     const [cx, cy] = heart(fine)
 
@@ -351,15 +372,26 @@ export function buildMap(s: Setting): MapData {
     }
   })
 
+  // The land of each neighbouring world: a broad blob about its centre, fitted against the places it borders.
+  const lands = outerAt.map((c, n) => {
+    const i = pts.length + n
+    return outline(i, Array.from({ length: 72 }, (_, k): P => {
+      const a = (k / 72) * Math.PI * 2
+      const r = typical * 1.6 * (0.8 + 0.4 * edge(i * 7.3 + Math.cos(a) * 1.9 + 5, Math.sin(a) * 1.9 + 5))
+      return [c[0] + Math.cos(a) * r, c[1] + Math.sin(a) * r]
+    }))
+  })
+
   // Rivers. Each rises inside a place and runs to that place's own stretch of open coast, or failing that to its
   // lake; a lake near the coast drains to the sea. A river keeps to its place and stays clear of the lettering.
   const coastOf = regions.map((r, i) => r.points.filter((p, k) => {
     if (k % 3) return false
     const out = Math.hypot(p[0] - r.x, p[1] - r.y) || 1
     const beyond: P = [p[0] + ((p[0] - r.x) / out) * 14, p[1] + ((p[1] - r.y) / out) * 14]
-    return !regions.some((o, j) => j !== i && inside(beyond, o.points)) && !inside(beyond, r.points)
+    return !regions.some((o, j) => j !== i && inside(beyond, o.points)) && !inside(beyond, r.points) && !lands.some((l) => inside(beyond, l))
   }))
   const rivers: P[][] = []
+  const riverHome: number[] = []
   regions.forEach((r, i) => {
     const pool = lakes.find((l) => l.region === i)
     const coast = coastOf[i]
@@ -394,6 +426,7 @@ export function buildMap(s: Setting): MapData {
       // The mouth runs on a little past the shore, so that the river opens into the sea.
       if (coast.length) { const out = Math.hypot(end[0] - r.x, end[1] - r.y) || 1; body.push(end, [end[0] + ((end[0] - r.x) / out) * 7, end[1] + ((end[1] - r.y) / out) * 7]) }
       rivers.push(body)
+      riverHome.push(i)
       break
     }
   })
@@ -424,11 +457,19 @@ export function buildMap(s: Setting): MapData {
     return { a, b, d: `M${r1(ax)} ${r1(ay)}Q${r1(mx)} ${r1(my)} ${r1(bx)} ${r1(by)}` }
   })
 
-  // Trim the sheet to the land, leaving an even border of sea all round.
+  // Trim the sheet: an even border of sea on each open side, and on a side with a neighbouring world, far
+  // enough out that its land runs off the edge.
   const all = regions.flatMap((r) => r.points)
-  // With neighbouring worlds to show along the edges, the sea is left wider so their shores have room.
-  const PAD = s.beyond?.length ? 132 : 96
-  const tx = PAD - Math.min(...all.map((p) => p[0])), ty = PAD + 26 - Math.min(...all.map((p) => p[1]))
+  const PAD = 96
+  const box = { x0: Math.min(...all.map((p) => p[0])) - PAD, y0: Math.min(...all.map((p) => p[1])) - PAD - 26, x1: Math.max(...all.map((p) => p[0])) + PAD, y1: Math.max(...all.map((p) => p[1])) + PAD }
+  outer.forEach((b, n) => {
+    const [cx, cy] = outerAt[n], cut = typical * 0.32
+    if (b.side === 'north') box.y0 = Math.min(box.y0 + PAD - 40, cy - cut)
+    if (b.side === 'south') box.y1 = Math.max(box.y1 - PAD + 40, cy + cut)
+    if (b.side === 'west') box.x0 = Math.min(box.x0 + PAD - 40, cx - cut)
+    if (b.side === 'east') box.x1 = Math.max(box.x1 - PAD + 40, cx + cut)
+  })
+  const tx = -box.x0, ty = -box.y0
   const moved = regions.map((r) => {
     const points = r.points.map(([x, y]): P => [x + tx, y + ty])
     return {
@@ -438,42 +479,54 @@ export function buildMap(s: Setting): MapData {
     }
   })
   const at = ([x, y]: P) => `${r1(x + tx)} ${r1(y + ty)}`
-  const lakePaths = lakes.map((l) => ({ d: `M${l.poly.map(at).join('L')}Z` }))
-  const riverPaths = rivers.map((line) => ({ d: `M${line.map(at).join('L')}` }))
-  const shifted = routes.map((r) => ({ ...r, d: r.d.replace(/(-?[\d.]+) (-?[\d.]+)/g, (_, x: string, y: string) => `${r1(+x + tx)} ${r1(+y + ty)}`) }))
-  const width = Math.max(...all.map((p) => p[0])) + tx + PAD
-  const height = Math.max(...all.map((p) => p[1])) + ty + PAD
-
-  // Neighbouring worlds are lettered along the edge they lie beyond: across the top and bottom, and up the two sides.
-  const [W, H] = [Math.round(width), Math.round(height)]
-  const edgeSpot: Record<string, [number, number, number]> = {
-    north: [W / 2, 40, 0], south: [W / 2, H - 28, 0], east: [W - 36, H / 2, 90], west: [36, H / 2, -90],
-    'north-east': [W - 36, H * 0.27, 90], 'south-east': [W - 36, H * 0.76, 90], 'north-west': [36, H * 0.3, -90], 'south-west': [36, H * 0.73, -90],
+  // Names for the water, each made from the setting's seed in the tongue of the place it lies in.
+  const waterName = (kind: 'lake' | 'river', region: number) => {
+    const made = rngFrom(`${s.seed}:${s.id}:${kind}:${roots[region]}`)
+    const tongue = TONGUES[s.specs[roots[region]]?.tongue ?? 0] ?? TONGUES[0]
+    const w = tongue.word(made)
+    const forms = kind === 'lake' ? [`Lake ${w}`, `${w} Mere`, `${w} Water`, `Lake ${w}`, `${w} Tarn`] : [`River ${w}`, `the ${w}`, `${w} Run`, `River ${w}`, `${w} Water`]
+    return forms[Math.floor(made() * forms.length)]
   }
-  const shown = (s.beyond ?? []).filter((b) => s.names[b.id] && edgeSpot[b.side])
-  const beyond = shown.map((b, n) => {
-    const [x, y, turn] = edgeSpot[b.side]
-    // Its shore: a strip of land along its stretch of the edge, deepest in the middle and uneven all along.
-    // `along` runs down the edge and `into` points from the edge into the sheet.
-    const along: P = turn ? [0, 1] : [1, 0]
-    const into: P = turn === 90 ? [-1, 0] : turn === -90 ? [1, 0] : b.side === 'north' ? [0, 1] : [0, -1]
-    const edgeAt: P = turn === 90 ? [W, y] : turn === -90 ? [0, y] : [x, b.side === 'north' ? 0 : H]
-    const sharing = shown.filter((o) => (edgeSpot[o.side][2] === turn) && (turn !== 0 || o.side === b.side)).length
-    const half = (turn ? H : W) * (sharing > 1 ? 0.115 : 0.27)
-    const steps = Math.max(14, Math.round((half * 2) / 12))
-    const shore = Array.from({ length: steps + 1 }, (_, k): P => {
-      const t = k / steps
-      const depth = (Math.sin(t * Math.PI) ** 0.55) * 78 * (0.55 + 0.75 * edge(n * 5.3 + t * 4.2 + 11, n * 2.9 + 3)) + 6 * Math.sin(t * 23 + n)
-      const run = (t - 0.5) * half * 2
-      return [edgeAt[0] + along[0] * run + into[0] * depth, edgeAt[1] + along[1] * run + into[1] * depth]
-    })
-    // Closed well outside the sheet, so only the shore itself is ever seen.
-    const out = (p: P): P => [p[0] - into[0] * 60, p[1] - into[1] * 60]
-    const d = `M${[out(shore[0]), ...shore, out(shore[shore.length - 1])].map(([px, py]) => `${r1(px)} ${r1(py)}`).join('L')}Z`
-    return { id: b.id, name: s.names[b.id], x: r1(x), y: r1(y), turn, d }
+  const lakePaths = lakes.map((l) => ({
+    d: `M${l.poly.map(at).join('L')}Z`, name: waterName('lake', l.region),
+    x: r1(l.c[0] + tx), y: r1(Math.max(...l.poly.map((p) => p[1])) + ty + 9),
+  }))
+  const riverPaths = rivers.map((line, n) => {
+    // The name is set along the middle of the river, read from left to right whichever way the water runs.
+    const stretch = line.slice(Math.floor(line.length * 0.12), Math.ceil(line.length * 0.88))
+    const read = stretch[0][0] <= stretch[stretch.length - 1][0] ? stretch : [...stretch].reverse()
+    return { d: `M${line.map(at).join('L')}`, name: waterName('river', riverHome[n]), along: `M${read.map(at).join('L')}` }
   })
+  const shifted = routes.map((r) => ({ ...r, d: r.d.replace(/(-?[\d.]+) (-?[\d.]+)/g, (_, x: string, y: string) => `${r1(+x + tx)} ${r1(+y + ty)}`) }))
+  const width = box.x1 - box.x0
+  const height = box.y1 - box.y0
+
+  // Neighbouring worlds: the land of each as it falls on the sheet, and its name where that land is roomiest.
+  const [W, H] = [Math.round(width), Math.round(height)]
+  const beyond = outer.map((b, n) => {
+    const land = lands[n].map(([x, y]): P => [x + tx, y + ty])
+    let seen = land
+    for (const [m, nrm] of [[[0, 0], [-1, 0]], [[W, 0], [1, 0]], [[0, 0], [0, -1]], [[0, H], [0, 1]]] as [P, P][]) seen = clip(seen, m, nrm)
+    // The cut along the sheet's edge is one long straight side; it is broken into short steps so that the
+    // roomiest spot is measured from it as from the rest of the outline.
+    const stepped = seen.flatMap((a, k): P[] => {
+      const c = seen[(k + 1) % seen.length], n = Math.max(1, Math.round(Math.hypot(c[0] - a[0], c[1] - a[1]) / 12))
+      return Array.from({ length: n }, (_, j): P => [a[0] + ((c[0] - a[0]) * j) / n, a[1] + ((c[1] - a[1]) * j) / n])
+    })
+    const [hx, hy] = stepped.length > 2 ? heart(stepped) : [W / 2, H / 2]
+    // Lettered across for a neighbour above or below and up the side for one to the left or right, and kept
+    // far enough from the corners of the sheet that the whole name shows.
+    const turn = b.side === 'west' ? -90 : b.side === 'east' ? 90 : 0
+    const half = s.names[b.id].length * 6.4 + 12
+    const keep = (v: number, max: number) => Math.min(Math.max(v, Math.min(half, max / 2)), Math.max(max - half, max / 2))
+    const [x, y] = turn ? [hx, keep(hy, H)] : [keep(hx, W), hy]
+    return { id: b.id, name: s.names[b.id], x: r1(x), y: r1(y), turn, d: pathOf(land) }
+  })
+  // The seas, lettered along the open edges: across the top and bottom, and up the two sides.
+  const edgeSpot: Record<string, [number, number, number]> = { north: [W / 2, 40, 0], south: [W / 2, H - 28, 0], east: [W - 36, H / 2, 90], west: [36, H / 2, -90] }
+  const seas = seasOf(s).map((x) => ({ name: x.name, x: r1(edgeSpot[x.side][0]), y: r1(edgeSpot[x.side][1]), turn: edgeSpot[x.side][2] }))
   const [px, label] = MILES[s.answers.size] ?? MILES.country
-  return { beyond, w: Math.round(width), h: Math.round(height), regions: moved, routes: shifted, lakes: lakePaths, rivers: riverPaths, scale: { px, label }, theme }
+  return { beyond, seas, w: Math.round(width), h: Math.round(height), regions: moved, routes: shifted, lakes: lakePaths, rivers: riverPaths, scale: { px, label }, theme }
 }
 
 export const siteKind = (s: Setting, id: string) => cueText(CARDS, s.board[id])

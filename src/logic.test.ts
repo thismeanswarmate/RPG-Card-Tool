@@ -1048,7 +1048,8 @@ describe('mentions in descriptions', async () => {
       for (const id of added) expect(s.names[id]).toBeTruthy()
       expect([...s.entities, ...s.people, ...s.built!].every((x) => x.home === root)).toBe(true)
       // A kind of site that is not yet on the map can be added too, and then stops being offered.
-      const site = B.choices(s, 'site')[0]
+      // A kind of site whose word is not already part of some name here, since words inside names are left alone.
+      const site = B.choices(s, 'site').find((c) => !Object.values(s.names).some((n) => n.toLowerCase().includes(c.text.toLowerCase())))!
       const [hit] = B.findMentions(s, `Past the ${site.text.toLowerCase()}.`).filter((p) => typeof p !== 'string') as { mention: import('./settingBuild').Mention }[]
       expect(B.mentionKind(hit.mention)).toBe('site')
       const made = B.addMention(s, hit.mention, root)!
@@ -1668,63 +1669,114 @@ describe('water on the map, and no gaps between places', async () => {
   }, 30000)
 })
 
-describe('bordering worlds', async () => {
+describe('bordering worlds and named water', async () => {
   const G = await import('./setting')
   const B = await import('./settingBuild')
   const M = await import('./mapgen')
-  it('names the worlds beyond a generated setting, each on a side of its own', () => {
-    for (const [size, least] of [['region', 2], ['country', 3], ['continent', 3]] as const) for (let n = 0; n < 8; n++) {
+  const within = (p: [number, number], poly: [number, number][]) => {
+    let hit = false
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j]
+      if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) hit = !hit
+    }
+    return hit
+  }
+  const coords = (d: string) => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [+m[1], +m[2]] as [number, number])
+
+  it('gives a generated setting one to three neighbours, one a side, and a named sea on every other side', () => {
+    const counts = new Set<number>()
+    for (const size of ['region', 'country', 'continent'] as const) for (let n = 0; n < 8; n++) {
       const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size }, `beyond-${size}-${n}`)
-      expect(s.beyond!.length).toBeGreaterThanOrEqual(least)
-      expect(s.beyond!.length).toBeLessThanOrEqual(least + 1)
-      expect(new Set(s.beyond!.map((b) => b.side)).size).toBe(s.beyond!.length)
-      // With four or fewer, they keep to the four main sides.
-      for (const b of s.beyond!) { expect(['north', 'east', 'south', 'west']).toContain(b.side); expect(s.names[b.id]).toMatch(/^the \w+/) }
-      expect(new Set([s.names.world, ...s.beyond!.map((b) => s.names[b.id])]).size).toBe(s.beyond!.length + 1)
+      const worlds = G.beyondOf(s), seas = G.seasOf(s)
+      counts.add(worlds.length)
+      expect(worlds.length).toBeGreaterThanOrEqual(1)
+      expect(worlds.length).toBeLessThanOrEqual(3)
+      expect([...worlds.map((b) => b.side), ...seas.map((x) => x.side)].sort()).toEqual([...G.SIDES].sort())
+      for (const x of seas) expect(x.name).toMatch(/^the (\S+ (Ocean|Sea|Deep)|(Sea|Gulf) of \S+)$/)
+      expect(G.seasOf(s)).toEqual(seas)
       const opening = G.worldProse(s).text[0]
-      for (const b of s.beyond!) expect(opening).toContain(`${s.names[b.id]} to the ${b.side}`)
-      expect(opening).toMatch(/ Beyond it lie .+ and .+\.$/)
-      const map = M.buildMap(s)
-      expect(map.beyond.map((b) => b.name).sort()).toEqual(s.beyond!.map((b) => s.names[b.id]).sort())
-      for (const b of map.beyond) expect(b.x > 0 && b.y > 0 && b.x < map.w && b.y < map.h).toBe(true)
-      // Each has a shore that comes into the sheet from its own edge and stops well short of the land.
-      const land = map.regions.flatMap((r) => r.points)
-      for (const b of map.beyond) {
-        const pts = [...b.d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [+m[1], +m[2]])
-        const seen = pts.filter(([x, y]) => x > 0 && y > 0 && x < map.w && y < map.h)
-        expect(seen.length).toBeGreaterThan(8)
-        for (const [x, y] of seen) {
-          expect(Math.min(x, y, map.w - x, map.h - y)).toBeLessThan(105)
-          expect(Math.min(...land.map((p) => Math.hypot(p[0] - x, p[1] - y)))).toBeGreaterThan(24)
-        }
-        // Its name is lettered on its own land.
-        expect(Math.min(...seen.map(([x, y]) => Math.hypot(x - b.x, y - b.y)))).toBeLessThan(90)
-      }
+      for (const b of worlds) expect(opening).toContain(`${s.names[b.id]} to the ${b.side}`)
+      for (const x of seas) expect(opening).toContain(`${x.name} to the ${x.side}`)
+      expect(opening).toMatch(/It is joined by land to .+\. Its other shores face .+\.$/)
       expect(G.generateSetting({ ...G.DEFAULT_ANSWERS, size }, `beyond-${size}-${n}`).beyond).toEqual(s.beyond)
     }
+    expect(counts.size).toBeGreaterThan(1)
   })
-  it('adds, renames, moves and removes them by hand', () => {
+
+  it('joins each neighbour to the land and runs it off its own edge of the sheet', () => {
+    for (let n = 0; n < 10; n++) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: n % 2 ? 'country' : 'region' }, `joined-${n}`)
+      const map = M.buildMap(s)
+      expect(map.beyond.map((b) => b.id)).toEqual(G.beyondOf(s).map((b) => b.id))
+      expect(map.seas.map((x) => x.name)).toEqual(G.seasOf(s).map((x) => x.name))
+      const ours = map.regions.flatMap((r) => r.points)
+      for (const b of map.beyond) {
+        const side = G.beyondOf(s).find((x) => x.id === b.id)!.side
+        const land = coords(b.d)
+        // It reaches past its own edge of the sheet …
+        const past = { north: land.some((p) => p[1] < 0), south: land.some((p) => p[1] > map.h), west: land.some((p) => p[0] < 0), east: land.some((p) => p[0] > map.w) }
+        expect(past[side], `${side} runs off the sheet`).toBe(true)
+        // … and touches this world's land, with no sea between.
+        const gap = Math.min(...land.map((p) => Math.min(...ours.map((q) => Math.hypot(p[0] - q[0], p[1] - q[1])))))
+        expect(gap, `${side} is joined on`).toBeLessThan(12)
+        // Its name sits on its own land, on the sheet.
+        expect(b.x > 0 && b.y > 0 && b.x < map.w && b.y < map.h).toBe(true)
+        expect(within([b.x, b.y], land)).toBe(true)
+        // … and well in from the edge of the sheet, so that it is not cut off.
+        expect(Math.min(b.x, b.y, map.w - b.x, map.h - b.y), `${side} name clear of the edge`).toBeGreaterThan(22)
+        // No place of this world lies under it.
+        for (const r of map.regions) expect(within([r.x, r.y], land)).toBe(false)
+      }
+      for (const x of map.seas) expect(x.x > 0 && x.y > 0 && x.x < map.w && x.y < map.h).toBe(true)
+    }
+  })
+
+  it('names every lake and river, the same way each time', () => {
+    let lakes = 0, rivers = 0
+    for (let n = 0; n < 8; n++) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: 'continent', lands: ['temperate', 'coast'] }, `named-water-${n}`)
+      const map = M.buildMap(s)
+      expect(M.buildMap(s)).toEqual(map)
+      for (const l of map.lakes) { lakes++; expect(l.name).toMatch(/^(Lake \S+|\S+ (Mere|Water|Tarn))$/); expect(Number.isFinite(l.x) && Number.isFinite(l.y)).toBe(true) }
+      for (const r of map.rivers) {
+        rivers++
+        expect(r.name).toMatch(/^(River \S+|the \S+|\S+ (Run|Water))$/)
+        const along = coords(r.along)
+        expect(along.length).toBeGreaterThanOrEqual(3)
+        // Set to be read from left to right.
+        expect(along[0][0]).toBeLessThanOrEqual(along[along.length - 1][0])
+      }
+    }
+    expect(lakes).toBeGreaterThan(10)
+    expect(rivers).toBeGreaterThan(10)
+  })
+
+  it('adds, renames, moves and removes neighbours by hand, four at most', () => {
     const s = B.newManual(['fantasy'], ['temperate'])
-    expect(G.worldProse(s).text[0]).not.toContain('Beyond it')
-    const ids = Array.from({ length: 9 }, () => B.addBeyond(s))
-    expect(ids.slice(0, 8).every(Boolean)).toBe(true)
-    expect(ids[8]).toBeUndefined()
-    expect(s.beyond!.map((b) => b.side).sort()).toEqual([...G.SIDES].sort())
-    expect(s.beyond!.slice(0, 4).map((b) => b.side).sort()).toEqual(['east', 'north', 'south', 'west'])
+    expect(G.worldProse(s).text[0]).not.toMatch(/joined by land|bounded by/)
+    B.addPlace(s)
+    expect(G.worldProse(s).text[0]).toMatch(/ It is bounded by the .+ to the north, .+ to the east, .+ to the south and .+ to the west\.$/)
+    const ids = Array.from({ length: 5 }, () => B.addBeyond(s))
+    expect(ids.slice(0, 4).every(Boolean)).toBe(true)
+    expect(ids[4]).toBeUndefined()
+    expect(G.beyondOf(s).map((b) => b.side)).toEqual([...G.SIDES])
+    expect(G.seasOf(s)).toEqual([])
+    expect(M.buildMap(s).beyond).toHaveLength(4)
     const [a, b] = s.beyond!
     const [sideA, sideB] = [a.side, b.side]
     B.moveBeyond(s, a.id, sideB)
     expect([a.side, b.side]).toEqual([sideB, sideA])
     s.names[a.id] = G.rename(s, a.id)
-    expect(s.names[a.id]).toMatch(/^the \w+/)
     B.removeBeyond(s, a.id)
-    expect(s.beyond).toHaveLength(7)
-    expect(s.names[a.id]).toBeUndefined()
-    for (let i = 0; i < 6; i++) B.removeBeyond(s, s.beyond![0].id)
-    expect(G.worldProse(s).text[0]).toMatch(/ Beyond it lies the .+ to the \S+\.$/)
-    B.addPlace(s)
+    expect(G.beyondOf(s)).toHaveLength(3)
+    expect(G.seasOf(s).map((x) => x.side)).toEqual([sideB])
+    for (let i = 0; i < 2; i++) B.removeBeyond(s, s.beyond![0].id)
+    expect(G.worldProse(s).text[0]).toMatch(/ It is joined by land to the .+ to the \S+\. Its other shores face .+\.$/)
     expect(M.buildMap(s).beyond).toHaveLength(1)
-    expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN/)
+    // A neighbour left over from an earlier version on a corner side is simply not shown.
+    s.beyond!.push({ id: 'n9', side: 'north-east' as never }); s.names.n9 = 'the Old Corner'
+    expect(G.beyondOf(s)).toHaveLength(1)
+    expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN|Old Corner/)
   })
 })
 
