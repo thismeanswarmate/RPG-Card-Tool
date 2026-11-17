@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { EXPANSION_CARDS, EXPANSIONS } from './expansions'
 import { STARTER } from './starter'
 import { useStore } from './store'
+import { ThemeIcon } from './ThemeIcon'
 import { TYPE_INFO, TYPES, type CardDef, type CardType, type Cue } from './types'
 
 const LABELS: Record<CardType, string[]> = {
@@ -60,11 +61,11 @@ export function Decks({ onClose }: { onClose: () => void }) {
           <button onClick={onClose}>Close</button>
         </header>
         <div className="deck-row">
-          <label><input type="checkbox" checked={!s.disabled.includes('starter')} onChange={() => s.toggleDeck('starter')} /> Starter deck</label>
+          <label><input type="checkbox" checked={!s.disabled.includes('starter')} onChange={() => s.toggleDeck('starter')} /> <ThemeIcon deck="starter" plain /> Starter deck</label>
           <span className="count">{STARTER.length} cards</span>
         </div>
         <div className="deck-row">
-          <label><input type="checkbox" checked={!s.disabled.includes('custom')} onChange={() => s.toggleDeck('custom')} /> My cards</label>
+          <label><input type="checkbox" checked={!s.disabled.includes('custom')} onChange={() => s.toggleDeck('custom')} /> <ThemeIcon deck="custom" plain /> My cards</label>
           <span className="count">{s.custom.length} cards</span>
         </div>
         <h3>
@@ -81,7 +82,7 @@ export function Decks({ onClose }: { onClose: () => void }) {
               <div className="deck-row">
                 <label>
                   <input type="checkbox" checked={on.length > 0} onChange={() => s.toggleExpansion(x.id)}
-                    ref={(el) => { if (el) el.indeterminate = on.length > 0 && on.length < x.types.length }} /> {x.name}
+                    ref={(el) => { if (el) el.indeterminate = on.length > 0 && on.length < x.types.length }} /> <ThemeIcon deck={x.id} plain /> {x.name}
                 </label>
                 <span className="count">{on.length ? `${count} of ${total}` : total} cards</span>
               </div>

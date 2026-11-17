@@ -14,13 +14,14 @@ import {
 } from './setting'
 import {
   addAge, addBuilt, addDrawn, addMention, addPerson, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
-  goneWith, redrawPlace, remove, removeStory, rerollStory, toggleDeck, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
+  goneWith, redrawPlace, remove, removeStory, rerollStory, roleTheme, themeOf, toggleDeck, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
 } from './settingBuild'
 import { siteKind } from './mapgen'
 import { SettingMap } from './SettingMap'
 import { useSettings } from './settingStore'
 import { cardsOf } from './store'
 import { STORY_CARDS } from './story'
+import { ThemeIcon } from './ThemeIcon'
 import { ToolNav } from './ToolNav'
 import type { CardType } from './types'
 
@@ -148,7 +149,7 @@ function Pick({ s, root, type, label, current, optional }: { s: SettingData; roo
   const edit = useSettings((x) => x.edit)
   return (
     <div className="draw">
-      <span className="draw-label">{label}</span>
+      <span className="draw-label">{label} <ThemeIcon deck={current && themeOf(current)} /></span>
       {current && drawn(current).map((c) => (
         <button key={c.value} className={c.value === chosen(s, current) ? 'opt on' : 'opt'} aria-pressed={c.value === chosen(s, current)}
           onClick={() => edit((d) => choose(d, root, type, c.value, current))}>{c.text}</button>
@@ -170,11 +171,11 @@ function SettingDecks({ s, onClose }: { s: SettingData; onClose(): void }) {
       onToggle={(id) => { const [group, deck] = id.split(':'); edit((d) => toggleDeck(d, group as 'world' | 'story' | 'deities' | 'animal', deck)) }}
       intro="Tick the decks this setting draws on. What is already in the setting stays; the choice applies to whatever is added or redrawn from now on."
       groups={[
-        { title: 'Lands, sites and descriptions', items: Object.entries(WORLD_DECKS).map(([id, label]) => ({ id: `world:${id}`, label, note: `${WORLD_CARDS.filter((c) => c.deck === id).length} cards`, on: now.world.includes(id) })) },
-        { title: 'People and stories', items: Object.entries(STORY_DECKS).map(([id, label]) => ({ id: `story:${id}`, label, note: `${STORY_CARDS.filter((c) => c.deck === id && ['character', 'drive', 'obstacle'].includes(c.kind)).length} cards`, on: now.story.includes(id) })) },
+        { title: 'Lands, sites and descriptions', items: Object.entries(WORLD_DECKS).map(([id, label]) => ({ id: `world:${id}`, label, icon: id, note: `${WORLD_CARDS.filter((c) => c.deck === id).length} cards`, on: now.world.includes(id) })) },
+        { title: 'People and stories', items: Object.entries(STORY_DECKS).map(([id, label]) => ({ id: `story:${id}`, label, icon: id, note: `${STORY_CARDS.filter((c) => c.deck === id && ['character', 'drive', 'obstacle'].includes(c.kind)).length} cards`, on: now.story.includes(id) })) },
         { title: 'Powers and races', items: [
           { id: 'deities:', label: 'Deities', note: 'gods, and details that mention them', on: now.deities },
-          { id: 'animal:', label: 'Animal races', note: 'beast-folk traits for races', on: !!now.animal },
+          { id: 'animal:', label: 'Animal races', icon: 'animal', note: 'beast-folk traits for races', on: !!now.animal },
         ] },
       ]} />
   )
@@ -454,7 +455,7 @@ function EditRow({ id, s, what, person }: { id: string; s: SettingData; what: st
   return (
     <>
     <div className="draw">
-      <span className="draw-label">{person ? 'Role' : 'Kind'}</span>
+      <span className="draw-label">{person ? 'Role' : 'Kind'} <ThemeIcon deck={person ? roleTheme(s, what) : undefined} /></span>
       {whatOptions(s, id).map((w) => (
         <button key={w} className={w === what ? 'opt on' : 'opt'} aria-pressed={w === what} onClick={() => edit((d) => setWhat(d, id, w))}>{w}</button>
       ))}

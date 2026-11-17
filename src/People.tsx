@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { cardText, GENRES, portrait, SLOT_INFO, SLOTS, type Slot } from './people'
 import { useLookup, usePeople } from './peopleStore'
 import { ToolPicture } from './PictureBox'
+import { ThemeIcon } from './ThemeIcon'
 import { ToolNav } from './ToolNav'
 
 function CustomCards({ onClose }: { onClose: () => void }) {
@@ -95,7 +96,7 @@ export function People() {
               return (
                 <section key={slot} className={`pcard slot-${slot}${card ? '' : ' blank'}${locked ? ' locked' : ''}`}>
                   <header>
-                    <b>{SLOT_INFO[slot].label}</b>
+                    <b>{SLOT_INFO[slot].label} <ThemeIcon deck={card ? (card.set in GENRES || card.set === 'core' ? card.set : 'custom') : undefined} /></b>
                     <small>{card && card.set !== 'core' ? (GENRES[card.set] ?? 'My card') : SLOT_INFO[slot].blurb}</small>
                   </header>
                   <p>{card ? cardText(card, person, cards) : '—'}</p>

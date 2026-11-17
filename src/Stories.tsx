@@ -3,6 +3,7 @@ import { DeckDialog, type DeckGroup } from './DeckDialog'
 import { CARD, deckOn, KIND_INFO, PACKS, PATTERN, PATTERNS, slotsOf, STORY_CARDS, write, type CardKind } from './story'
 import { useStories } from './storyStore'
 import { ToolPicture } from './PictureBox'
+import { ThemeIcon } from './ThemeIcon'
 import { ToolNav } from './ToolNav'
 
 export function Stories() {
@@ -13,7 +14,7 @@ export function Stories() {
     const cards = STORY_CARDS.filter((c) => c.deck === id)
     const kinds = [...new Set(cards.map((c) => c.kind))] as CardKind[]
     return {
-      id: id === 'core' ? '-core' : id, label, note: `${cards.length} cards`, on: deckOn(id, s.packs),
+      id: id === 'core' ? '-core' : id, label, icon: id, note: `${cards.length} cards`, on: deckOn(id, s.packs),
       parts: kinds.map((k) => ({ id: `-${id}:${k}`, label: KIND_INFO[k].label, on: !s.packs.includes(`-${id}:${k}`) })),
     }
   }
@@ -77,7 +78,7 @@ export function Stories() {
               return (
                 <section key={def.id} className={`pcard sk-${card?.kind ?? def.kind}${card ? '' : ' blank'}${held?.locked ? ' locked' : ''}`}>
                   <header>
-                    <b>{def.label}</b>
+                    <b>{def.label} <ThemeIcon deck={card?.deck} /></b>
                     <small>{card ? KIND_INFO[card.kind].label : def.optional ? 'Optional' : KIND_INFO[def.kind].hint}</small>
                   </header>
                   <p>{card ? card.cues[held.active] : '—'}</p>

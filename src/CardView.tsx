@@ -1,6 +1,7 @@
 import { cueAt } from './logic'
 import { EXPANSION_COLORS } from './expansions'
 import { TERRAIN_COLORS } from './starter'
+import { ThemeIcon } from './ThemeIcon'
 import { TYPE_INFO, type CardDef, type Edge } from './types'
 
 const EDGE = ['top', 'right', 'bottom', 'left']
@@ -28,11 +29,14 @@ interface Props {
 export function CardView({ def, active, edge, selected, onCue }: Props) {
   const cls = `card ${def.type}${selected ? ' selected' : ''}`
   const info = TYPE_INFO[def.type]
+  // The mark of the deck the card came from, in its corner.
+  const theme = <span className="theme-corner"><ThemeIcon deck={def.deck} size={12} /></span>
   const pick = (i: number) => onCue && ((e: React.MouseEvent) => { e.stopPropagation(); onCue(i) })
 
   if (def.type === 'terrain')
     return (
       <div className={cls} style={terrainStyle(def)}>
+        {theme}
         <span className="terrain-name">{def.cues[0].text}</span>
       </div>
     )
@@ -43,6 +47,7 @@ export function CardView({ def, active, edge, selected, onCue }: Props) {
     const side = edge === 1 || edge === 3
     return (
       <div className={`${cls} halves ${side ? 'side' : ''}`}>
+        {theme}
         {order.map((i, n) => (
           <div key={i} className={`half ${i === active ? 'on' : ''} ${side ? (n ? 'right' : 'left') : ''}`} onClick={pick(i)}>
             <span>
@@ -59,6 +64,7 @@ export function CardView({ def, active, edge, selected, onCue }: Props) {
   if (edge !== undefined)
     return (
       <div className={cls}>
+        {theme}
         <div className={`band strip ${EDGE[edge]} on`}><span>{def.cues[active].text}</span></div>
       </div>
     )
@@ -66,6 +72,7 @@ export function CardView({ def, active, edge, selected, onCue }: Props) {
   if (def.cues.length === 1)
     return (
       <div className={`${cls} single`}>
+        {theme}
         <em className="glyph">{info.glyph}</em>
         <b>{def.cues[0].text}</b>
         {def.cues[0].sub && <i>{def.cues[0].sub}</i>}
@@ -74,6 +81,7 @@ export function CardView({ def, active, edge, selected, onCue }: Props) {
 
   return (
     <div className={cls}>
+        {theme}
       {[0, 1, 2, 3].map((s) => {
         const i = cueAt(active, undefined, s)
         return (

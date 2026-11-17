@@ -119,6 +119,10 @@ export function choices(s: Setting, type: CardType, current?: string): Choice[] 
     .sort((a, b) => a.text.replace(/^(of|the) /i, '').localeCompare(b.text.replace(/^(of|the) /i, '')))
 }
 export const chosen = (s: Setting, id: string) => `${id}:${s.board[id].active}`
+/** The deck a land, site or describing part came from, and the deck of a person's role. */
+export const themeOf = (id: string) => CARDS[id]?.deck
+export const roleTheme = (s: Setting, role: string) => STORY_CARDS.find((c) => c.kind === 'character' && c.cues.includes(role))?.deck
+
 /** The options that came with one draw: as many as its card has, be that one, two or four. */
 export const drawn = (id: string): Choice[] => CARDS[id].cues.map((cue, i) => ({ value: `${id}:${i}`, text: cue.text }))
 /** What describes a land or a site, by part: the entries that belong to it and so appear in its own description. */

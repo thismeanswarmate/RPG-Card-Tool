@@ -1,8 +1,11 @@
 import { useState } from 'react'
+import { ThemeIcon } from './ThemeIcon'
 
 export interface DeckItem {
   id: string
   label: string
+  /** The deck whose mark to show beside the name, where it has one. */
+  icon?: string
   note?: string
   on: boolean
   /** The kinds of card within the deck, for switching them on and off one by one. */
@@ -39,7 +42,7 @@ export function DeckDialog({ title = 'Decks', intro, groups, onToggle, onClose }
             {g.items.map((item) => (
               <div key={item.id} className="expansion">
                 <div className="deck-row">
-                  <label><input type="checkbox" checked={item.on} onChange={() => onToggle(item.id)} /> {item.label}</label>
+                  <label><input type="checkbox" checked={item.on} onChange={() => onToggle(item.id)} /> <ThemeIcon deck={item.icon} plain /> {item.label}</label>
                   {item.note && <span className="count">{item.note}</span>}
                 </div>
                 {advanced && item.on && item.parts && item.parts.length > 1 && (

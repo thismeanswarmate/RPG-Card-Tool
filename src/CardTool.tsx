@@ -3,6 +3,7 @@ import { cardOf, cardsOf, deckOn, text, type Section, type ToolDef } from './car
 import type { CardToolState } from './cardToolStore'
 import { DeckDialog, type DeckGroup } from './DeckDialog'
 import { ToolPicture } from './PictureBox'
+import { ThemeIcon } from './ThemeIcon'
 import { ToolNav } from './ToolNav'
 
 interface Props {
@@ -31,7 +32,7 @@ export function AspectRows({ def, section, onDraw, onPick, onLock, onClear }: Ro
         const card = held && cardOf(def, held.card)
         return (
           <div key={a.id} className={`draw row${held?.locked ? ' locked' : ''}`}>
-            <span className="draw-label" title={a.hint}>{a.label}</span>
+            <span className="draw-label" title={a.hint}>{a.label} <ThemeIcon deck={card?.deck} /></span>
             {card?.cues.map((cue, k) => (
               <button key={k} className={k === held!.active ? 'opt on' : 'opt'} aria-pressed={k === held!.active} disabled={held!.locked} onClick={() => onPick(a.id, k)}>{cue}</button>
             ))}
@@ -58,7 +59,7 @@ export function CardTool({ def, useStore, plural, single, blurb }: Props) {
   const deck = (id: string, label: string) => {
     const cards = cardsOf(def).filter((c) => c.deck === id)
     return {
-      id: id === 'core' ? '-core' : id, label, note: `${cards.length} draws`, on: deckOn(id, s.packs),
+      id: id === 'core' ? '-core' : id, label, icon: id, note: `${cards.length} draws`, on: deckOn(id, s.packs),
       parts: def.aspects.filter((a) => cards.some((c) => c.aspect === a.id)).map((a) => ({ id: `-${id}:${a.id}`, label: a.label, on: !s.packs.includes(`-${id}:${a.id}`) })),
     }
   }
