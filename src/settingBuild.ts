@@ -9,8 +9,8 @@ import { STORY_CARDS } from './story'
 import { cardOf, draw as drawCard, fill as fillCards } from './cardTool'
 import { emblemFrom, ICONS, tidy, type EmblemSpec } from './emblem'
 import { glyphFor, type Glyph } from './mapgen'
-import { ageNames, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
-import { rollAll as rollSettlement, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
+import { ageNames, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, hasCapital, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
+import { rollAll as rollSettlement, rollType, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
 import type { CardType } from './types'
 
@@ -255,8 +255,15 @@ export function builtEdit(s: Setting, id: string, table: string, change: number 
   if (change === 'roll') {
     const tb = builtSteps(b).flatMap((x) => x.tables).find((x) => x.id === table)
     if (!tb) return
-    const options = tb.entries.map((_, i) => i).filter((i) => i !== b.rolls[table])
-    b.rolls[table] = options[rand(options.length)] ?? 0
+    // Rolling a settlement's kind again goes by rarity, like the first roll; anything else is an even draw.
+    if (b.tool === 'settlement' && table === 'type') {
+      let next = b.rolls.type
+      for (let tries = 0; tries < 30 && next === b.rolls.type; tries++) next = rollType(Math.random, hasCapital(s, id))
+      b.rolls.type = next
+    } else {
+      const options = tb.entries.map((_, i) => i).filter((i) => i !== b.rolls[table])
+      b.rolls[table] = options[rand(options.length)] ?? 0
+    }
   } else b.rolls[table] = change
   // A changed result can bring in tables that were not there before; those are rolled, the rest left alone.
   const keep = Object.keys(b.rolls).filter((k) => b.rolls[k] !== undefined)
@@ -265,7 +272,10 @@ export function builtEdit(s: Setting, id: string, table: string, change: number 
 }
 export function builtReroll(s: Setting, id: string) {
   const b = s.built?.find((x) => x.id === id)
-  if (b) b.rolls = (b.tool === 'settlement' ? rollSettlement : rollPeril)(b.rolls, b.locked ?? [])
+  if (!b) return
+  const locked = b.locked ?? []
+  if (b.tool === 'settlement' && !locked.includes('type')) b.rolls = rollSettlement({ ...b.rolls, type: rollType(Math.random, hasCapital(s, id)) }, [...locked, 'type'])
+  else b.rolls = (b.tool === 'settlement' ? rollSettlement : rollPeril)(b.rolls, locked)
 }
 
 /** Add a race or the history to the world, or a culture to a place. A setting has one history. */

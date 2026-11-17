@@ -1534,3 +1534,52 @@ describe('emblems', async () => {
     expect(s.emblems![land]).toBeUndefined()
   })
 })
+
+describe('how common each kind of settlement is in a world', async () => {
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  const T = await import('./settlement')
+  const M = await import('./mapgen')
+  it('rolls kinds by rarity and never a second capital', () => {
+    expect(Object.keys(T.RARITY).sort()).toEqual(Object.keys(T.TYPES).sort())
+    expect(Object.values(T.RARITY).reduce((a, b) => a + b, 0)).toBe(100)
+    const keys = Object.keys(T.TYPES)
+    const tally: Record<string, number> = {}
+    for (let n = 0; n < 6000; n++) { const k = keys[T.rollType(Math.random, false)]; tally[k] = (tally[k] ?? 0) + 1 }
+    expect(tally.village).toBeGreaterThan(tally.town)
+    expect(tally.town).toBeGreaterThan(tally.post)
+    expect(tally.post).toBeGreaterThan(tally.city)
+    expect(tally.city).toBeGreaterThan(tally.capital)
+    expect(tally.capital).toBeGreaterThan(100)
+    for (let n = 0; n < 2000; n++) expect(keys[T.rollType(Math.random, true)]).not.toBe('capital')
+  })
+  it('keeps a generated or hand-built world to one capital, however it is rolled', () => {
+    const capitals = (s: import('./setting').Setting) => s.built!.filter((b) => G.builtKind(b) === 'capital').length
+    let withCapital = 0, kinds = new Set<string>()
+    for (let n = 0; n < 60; n++) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: 'continent', focus: ['everyday'] }, `rare-${n}`)
+      expect(capitals(s)).toBeLessThanOrEqual(1)
+      withCapital += capitals(s)
+      for (const b of s.built!) if (b.tool === 'settlement') kinds.add(G.builtKind(b))
+    }
+    expect(withCapital).toBeGreaterThan(3)
+    expect(withCapital).toBeLessThan(40)
+    expect(kinds.size).toBe(6)
+
+    const s = B.newManual(['fantasy'], ['temperate'])
+    const place = B.addPlace(s)!
+    for (let n = 0; n < 120; n++) B.addBuilt(s, 'settlement', place)
+    expect(capitals(s)).toBe(1)
+    for (const b of s.built!) for (let i = 0; i < 3; i++) { B.builtReroll(s, b.id); B.builtEdit(s, b.id, 'type', 'roll') }
+    expect(capitals(s)).toBeLessThanOrEqual(1)
+    // Asking for one outright is still the builder's choice.
+    const village = s.built!.find((b) => G.builtKind(b) === 'village')!
+    B.builtEdit(s, village.id, 'type', Object.keys(T.TYPES).indexOf('capital'))
+    expect(G.builtKind(village)).toBe('capital')
+    // The map knows each settlement's rank, to draw it by.
+    const marks = M.buildMap(s).regions.flatMap((r) => r.sites).filter((m) => m.kind === 'settlement')
+    expect(marks.length).toBe(s.built!.length)
+    for (const m of marks) expect(Object.keys(T.TYPES)).toContain(m.rank)
+    expect(M.buildMap(s).regions.flatMap((r) => r.sites).filter((m) => m.kind !== 'settlement').every((m) => m.rank === undefined)).toBe(true)
+  })
+})

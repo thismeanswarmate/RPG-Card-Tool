@@ -16,7 +16,7 @@ import { DETAIL, detailParts, detailsFor, newDetail, PRIMARY, slots, type Detail
 import { makeName, rngFrom, titleCase, tonguesFor, type NameSpec, type Rng } from './names'
 import { kindLabel, brief as perilBrief, rollAll as rollPeril } from './peril'
 import type { Rolls } from './roller'
-import { brief as settlementBrief, rollAll as rollSettlement, typeLabel } from './settlement'
+import { brief as settlementBrief, rollAll as rollSettlement, rollType, typeKey, typeLabel } from './settlement'
 import { blank, cardsOf, generateWorld, type WorldSize } from './store'
 import { STORY_CARDS } from './story'
 import type { Held } from './types'
@@ -138,6 +138,9 @@ export function decksOf(s: Pick<Setting, 'answers' | 'decks' | 'manual'>): DeckC
 
 /** A settlement or dangerous place within the setting: where it is, and what its tables rolled. */
 export interface Built { id: string; tool: 'settlement' | 'peril'; home: string; rolls: Rolls; locked?: string[] }
+/** Whether the setting already has a capital, leaving out one settlement if given. */
+export const hasCapital = (s: Pick<Setting, 'built'>, except?: string) =>
+  !!s.built?.some((b) => b.tool === 'settlement' && b.id !== except && typeKey(b.rolls) === 'capital')
 export const builtKind = (b: Built) => (b.tool === 'settlement' ? typeLabel(b.rolls) ?? 'settlement' : kindLabel(b.rolls))
 export function builtText(s: Setting, b: Built): string[] {
   const out = (b.tool === 'settlement' ? settlementBrief : perilBrief)(s.names[b.id].charAt(0).toUpperCase() + s.names[b.id].slice(1), b.rolls)
@@ -317,6 +320,8 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
   /** A settlement or dangerous place, rolled in full and named for where it stands. */
   const build = (tool: Built['tool'], home: string, given: Rolls = {}): Built => {
     const built = (s.built ??= [])
+    // A settlement's kind is drawn by rarity, and a world keeps to one capital, unless the kind was asked for.
+    if (tool === 'settlement' && given.type === undefined) given = { ...given, type: rollType(rng, hasCapital(s)) }
     const rolls = tool === 'settlement' ? rollSettlement(given, Object.keys(given), rng) : rollPeril(given, Object.keys(given), rng)
     const b: Built = { id: nextId('b', built), tool, home, rolls }
     built.push(b)

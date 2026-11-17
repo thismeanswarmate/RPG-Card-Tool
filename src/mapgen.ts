@@ -7,6 +7,7 @@
 // then pushed about by one smooth noise field, which makes coasts and borders wander while keeping
 // shared borders exactly shared.
 
+import { typeKey } from './settlement'
 import { EXPANSION_COLORS } from './expansions'
 import { cueText, rootOf, subtree } from './logic'
 import { rngFrom, type Rng } from './names'
@@ -36,7 +37,7 @@ const GLYPHS: [RegExp, Glyph][] = [
 export const glyphFor = (terrain: string): Glyph => GLYPHS.find(([re]) => re.test(terrain.toLowerCase()))?.[1] ?? 'tuft'
 
 /** A marked spot within a region: a site, a settlement or a dangerous place. */
-export interface MapSite { id: string; name: string; x: number; y: number; kind: 'site' | 'settlement' | 'peril' }
+export interface MapSite { id: string; name: string; x: number; y: number; kind: 'site' | 'settlement' | 'peril'; /** For a settlement, which kind: 'village', 'city', 'capital' and so on. */ rank?: string }
 export interface MapRegion {
   id: string
   name: string
@@ -259,7 +260,8 @@ export function buildMap(s: Setting): MapData {
         const crowded = sites.some((q) => Math.abs(q.x - spot[0]) < 46 && Math.abs(q.y - spot[1]) < 24)
         if (inside(spot, fine) && inside([spot[0], spot[1] + 14], fine) && !lettered(spot) && !crowded) break
       }
-      sites.push({ id: sid, name: s.names[sid], x: r1(spot[0]), y: r1(spot[1]), kind: marks.get(sid)! })
+      const built = s.built?.find((b) => b.id === sid && b.tool === 'settlement')
+      sites.push({ id: sid, name: s.names[sid], x: r1(spot[0]), y: r1(spot[1]), kind: marks.get(sid)!, ...(built ? { rank: typeKey(built.rolls) ?? 'town' } : {}) })
     })
 
     // Scatter the terrain symbol across the region, clear of the lettering, the sites and each other.

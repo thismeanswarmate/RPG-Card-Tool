@@ -104,6 +104,21 @@ const TROUBLE: Table[] = [
 ]
 
 const typeOf = (rolls: Rolls) => (rolls.type === undefined ? undefined : Object.keys(TYPES)[rolls.type])
+/** The kind of settlement rolled, as its key: 'village', 'capital' and so on. */
+export const typeKey = typeOf
+
+/**
+ * How common each kind is within one world, as shares of a hundred. Villages and towns are everywhere,
+ * cities are few, and a world has one capital at most.
+ */
+export const RARITY: Record<string, number> = { village: 34, town: 24, post: 16, fort: 12, city: 10, capital: 4 }
+/** A kind of settlement for a world, by rarity. `capital` says whether the world already has its capital. */
+export function rollType(random: () => number, capital: boolean): number {
+  const keys = Object.keys(TYPES).filter((k) => !(capital && k === 'capital'))
+  let at = random() * keys.reduce((n, k) => n + RARITY[k], 0)
+  for (const k of keys) { at -= RARITY[k]; if (at < 0) return Object.keys(TYPES).indexOf(k) }
+  return Object.keys(TYPES).indexOf(keys[0])
+}
 
 /** The steps and tables that apply, given what has been rolled so far. */
 export function stepsFor(rolls: Rolls): Step[] {

@@ -34,7 +34,7 @@ export function SettingMap({ s }: { s: Setting }) {
   const links = useImages((x) => x.links)
   const tints = useImages((x) => x.tints)
   // Renaming changes the lettering but never the land, so the drawing is redone only when names change.
-  const map = useMemo(() => buildMap(s), [s.id, s.seed, s.names])
+  const map = useMemo(() => buildMap(s), [s.id, s.seed, s.names, s.board, s.built, s.entities, s.people])
   const t = THEMES[map.theme]
   const svg = useRef<SVGSVGElement>(null)
   const title = titleCase(s.names.world.charAt(0).toUpperCase() + s.names.world.slice(1))
@@ -107,10 +107,32 @@ export function SettingMap({ s }: { s: Setting }) {
               {r.sites.map((site) => (
                 <g key={site.id} className="site" onClick={() => go(site.id)}>
                   {site.kind === 'settlement' ? (
-                    // A settlement: the ringed dot of old maps.
-                    <g transform={`translate(${site.x} ${site.y})`}>
-                      <circle r="5.5" fill={t.halo} stroke={t.ink} strokeWidth="1.4" />
-                      <circle r="2.2" fill={t.ink} />
+                    // A settlement, drawn larger and grander the greater it is.
+                    <g transform={`translate(${site.x} ${site.y})`} stroke={t.ink} strokeLinejoin="round">
+                      {site.rank === 'capital' ? (
+                        <>
+                          <circle r="9.5" fill={t.halo} strokeWidth="1.6" />
+                          <circle r="7" fill="none" strokeWidth=".8" />
+                          <path d="M0-6.2L1.8-1.9L6.3-1.9L2.7.9L4 5.4L0 2.700L-4 5.4L-2.7.9L-6.3-1.9L-1.8-1.9Z" fill={t.route} strokeWidth=".6" />
+                        </>
+                      ) : site.rank === 'city' ? (
+                        <>
+                          <circle r="7" fill={t.halo} strokeWidth="1.5" />
+                          <circle r="4.4" fill="none" strokeWidth="1" />
+                          <circle r="2" fill={t.ink} stroke="none" />
+                        </>
+                      ) : site.rank === 'fort' ? (
+                        <path d="M-5.5 5V-4.500h2.200v2h2.200v-2h2.200v2h2.200v-2h2.200V5Z" fill={t.halo} strokeWidth="1.4" />
+                      ) : site.rank === 'post' ? (
+                        <path d="M0-4.500L4.5 0L0 4.500L-4.5 0Z" fill={t.halo} strokeWidth="1.3" />
+                      ) : site.rank === 'village' ? (
+                        <circle r="3" fill={t.halo} strokeWidth="1.4" />
+                      ) : (
+                        <>
+                          <circle r="5" fill={t.halo} strokeWidth="1.4" />
+                          <circle r="2" fill={t.ink} stroke="none" />
+                        </>
+                      )}
                     </g>
                   ) : site.kind === 'peril' ? (
                     // A dangerous place: a cross in the colour of the routes.
@@ -121,7 +143,11 @@ export function SettingMap({ s }: { s: Setting }) {
                   ) : (
                     <path d="M-5 4V-1L0-6L5-1V4Z" transform={`translate(${site.x} ${site.y})`} fill={t.ink} stroke={t.halo} strokeWidth="1" />
                   )}
-                  <text x={site.x} y={site.y + 16} textAnchor="middle" fontSize="9.5" fontStyle="italic" fill={site.kind === 'peril' ? t.route : t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{site.name}</text>
+                  <text x={site.x} y={site.y + (site.rank === 'capital' ? 22 : site.rank === 'city' ? 19 : 16)} textAnchor="middle"
+                    fontSize={site.rank === 'capital' ? 12.5 : site.rank === 'city' ? 11 : site.rank === 'village' || site.rank === 'post' ? 8.5 : 9.5}
+                    fontWeight={site.rank === 'capital' || site.rank === 'city' ? 700 : 400} fontStyle={site.rank === 'capital' ? 'normal' : 'italic'}
+                    letterSpacing={site.rank === 'capital' ? '.08em' : undefined}
+                    fill={site.kind === 'peril' ? t.route : t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{site.rank === 'capital' ? site.name.toUpperCase() : site.name}</text>
                 </g>
               ))}
               {picture && (
@@ -178,7 +204,7 @@ export function SettingMap({ s }: { s: Setting }) {
         <rect x="14" y="14" width={map.w - 28} height={map.h - 28} fill="none" stroke={t.ink} strokeWidth=".8" pointerEvents="none" />
       </svg>
       <figcaption>
-        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. Each place carries its emblem, with the smaller emblems of the cultures kept there. A house marks a site, a ringed dot a settlement and a cross a dangerous place. Click any of them to read about it.</span>
+        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. Each place carries its emblem, with the smaller emblems of the cultures kept there. A house marks a site and a cross a dangerous place. Settlements grow with their rank: a small circle for a village, a diamond for a trading post, a ringed dot for a town, battlements for a fortress town, a double ring for a city and a starred ring for the capital. Click any of them to read about it.</span>
         <button onClick={save}>Save map</button>
       </figcaption>
     </figure>
