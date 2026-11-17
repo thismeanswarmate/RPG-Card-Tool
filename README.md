@@ -1,6 +1,6 @@
 # Storyloom
 
-Ten tools on one page, switched from the top menu.
+Eleven tools on one page, switched from the top menu.
 
 **Perils** builds a dangerous place by rolling on tables, in steps: a premise (theme, what stood there before, and the kind of place and danger), then tables for the place itself and for what makes it dangerous, with a personality for whoever is behind it when the danger can think. Roll everything at once, reroll single tables, pick results by hand and lock the ones to keep. The result is written up as a brief. Ten kinds of place and six kinds of danger, each with tables of its own.
 
@@ -68,3 +68,5 @@ npm run build    # static site in dist/
 **Theme marks.** Every deck has a small mark of its own: a diamond for the core and starter decks, a star for fantasy, a ringed planet for science fiction, a skull for horror, a paw for animal, a magnifying glass for mystery, a snowflake, wave and sun for the frost, coast and desert lands, and so on. The mark is shown on every card and beside every draw, in all the tools, and next to each deck's name in the Decks dialogs, which serve as the key.
 
 **History in every theme.** The optional Fantasy, Science fiction and Horror decks for History now cover every part of an age, from its name to what remains of it, and an Animal deck tells the past of beast-folk. Each can tell a whole history alone with Core unticked. In a setting, the history follows the setting's genres, and the Animal tick box in its Decks dialog applies to the history as well as the races.
+
+**Emblems.** An emblem is put together from a shape, a field pattern, a border, three colours and an icon: ten shapes, twenty-five patterns, eight borders, eighteen colours and over fifty icons, in three arrangements. The Emblems tool shows a sheet of ideas, lets every part be chosen, and saves the result as an SVG. In a setting, every land, race and culture bears an emblem, made from the setting itself and suited to the country where it can be (a coast tends to an anchor or a ship). People, powers, things, settlements and cultures wear the emblems of what they belong to as badges, which lead there when clicked. While editing, an emblem can be redrawn or opened and changed part by part.

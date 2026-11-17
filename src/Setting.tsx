@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { AspectRows } from './CardTool'
 import { allowHint, isDirect } from './comfy'
 import { DeckDialog } from './DeckDialog'
+import { Emblem, EmblemEditor } from './Emblem'
 import { ART, imageIds, imageSpec } from './imagePrompts'
 import { useImages } from './imageStore'
 import { PictureBox } from './PictureBox'
@@ -13,7 +14,7 @@ import {
   type Answers, type Built, type Char, type Drawn, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import {
-  addAge, addBuilt, addDrawn, addMention, addPerson, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
+  addAge, addBuilt, addDrawn, addMention, addPerson, bearsEmblem, belongsTo, emblemOf, rerollEmblem, setEmblem, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
   goneWith, redrawPlace, remove, removeStory, rerollStory, roleTheme, themeOf, toggleDeck, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
 } from './settingBuild'
 import { siteKind } from './mapgen'
@@ -181,6 +182,45 @@ function SettingDecks({ s, onClose }: { s: SettingData; onClose(): void }) {
   )
 }
 
+/** The emblem of a land, race or culture, or nothing for anything else. */
+function Crest({ id, s, size = 26, plain }: { id: string; s: SettingData; size?: number; plain?: boolean }) {
+  const spec = emblemOf(s, id)
+  return spec ? <Emblem spec={spec} size={size} title={plain ? undefined : `Emblem of ${s.names[id]}`} /> : null
+}
+
+/** The lands, races and cultures something belongs to, as their emblems: with names when there is room, and each a way to go there. */
+function Badges({ id, s, compact }: { id: string; s: SettingData; compact?: boolean }) {
+  const ids = belongsTo(s, id)
+  if (!ids.length) return null
+  if (compact) return <span className="badges compact">{ids.map((x) => <Crest key={x} id={x} s={s} size={20} />)}</span>
+  return (
+    <p className="badges">
+      {ids.map((x) => <button key={x} className="badge" onClick={() => go(x)}><Crest id={x} s={s} size={20} plain /> {s.names[x]}</button>)}
+    </p>
+  )
+}
+
+/** While editing, the two ways to change an emblem: draw another, or open it and choose each part. */
+function EmblemButtons({ id, s }: { id: string; s: SettingData }) {
+  const edit = useSettings((x) => x.edit)
+  const [open, setOpen] = useState(false)
+  if (!useContext(EditCtx) || !bearsEmblem(s, id)) return null
+  return (
+    <>
+      <button onClick={() => edit((d) => rerollEmblem(d, id))}>↻ Emblem</button>
+      <button onClick={() => setOpen(true)}>Emblem…</button>
+      {open && (
+        <div className="modal-back" onClick={() => setOpen(false)}>
+          <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+            <header><h2>Emblem of {s.names[id]}</h2><button onClick={() => setOpen(false)}>Done</button></header>
+            <EmblemEditor spec={emblemOf(s, id)!} name={s.names[id]} onChange={(next) => edit((d) => setEmblem(d, id, next))} />
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 /** Which elements are folded down to a single line, and the way to fold or open one. */
 const FoldCtx = createContext<{ folded: Set<string>; toggle(id: string): void }>({ folded: new Set(), toggle: () => {} })
 
@@ -198,9 +238,12 @@ function Mini({ id, s, what, className }: { id: string; s: SettingData; what: st
   return (
     <section id={`set-${id}`} className={`${className} mini`}>
       <button className="mini-row" aria-expanded={false} title="Open" onClick={() => toggle(id)}>
-        {src ? <img src={src} alt="" loading="lazy" /> : <span className="thumb" aria-hidden>{name.replace(/^the /i, '').charAt(0).toUpperCase()}</span>}
+        {/* The picture if there is one; failing that, the emblem of whatever bears one; failing that, an initial. */}
+        {src ? <img src={src} alt="" loading="lazy" /> : bearsEmblem(s, id) ? <Crest id={id} s={s} size={40} /> : <span className="thumb" aria-hidden>{name.replace(/^the /i, '').charAt(0).toUpperCase()}</span>}
+        {src && <Crest id={id} s={s} size={24} />}
         <b>{name.charAt(0).toUpperCase() + name.slice(1)}</b>
         <small>{what}</small>
+        <Badges id={id} s={s} compact />
         <span className="open" aria-hidden>▸</span>
       </button>
     </section>
@@ -292,7 +335,8 @@ function DrawnBlock({ d, s, top }: { d: Drawn; s: SettingData; top?: boolean }) 
   if (useContext(FoldCtx).folded.has(d.id)) return <Mini id={d.id} s={s} what={drawnKind(d)} className={className} />
   return (
     <section id={`set-${d.id}`} className={className}>
-      <h5><FoldButton id={d.id} /><Name id={d.id} s={s} /> <small>{drawnKind(d)}</small></h5>
+      <h5><FoldButton id={d.id} /><Crest id={d.id} s={s} /> <Name id={d.id} s={s} /> <small>{drawnKind(d)}</small></h5>
+      <Badges id={d.id} s={s} />
       <Picture id={d.id} s={s} />
       <Prose s={s} text={drawnText(s, d)} home={d.home} />
       <Refs label={d.tool === 'history' ? 'Dating from it' : 'Tied to'} ids={tiesTo(s, d.id)} s={s} />
@@ -320,6 +364,7 @@ function DrawnBlock({ d, s, top }: { d: Drawn; s: SettingData; top?: boolean }) 
           </details>
           <div className="edit-row">
             <button onClick={() => edit((x) => drawnFill(x, d.id))}>↻ Redraw unlocked</button>
+            <EmblemButtons id={d.id} s={s} />
             {d.tool === 'culture' && races.length > 0 && (
               <select value={d.race ?? ''} aria-label="Kept mostly by" onChange={(e) => edit((x) => setRace(x, d.id, e.target.value || undefined))}>
                 <option value="">Kept by no one race</option>
@@ -344,6 +389,7 @@ function BuiltBlock({ b, s }: { b: Built; s: SettingData }) {
   return (
     <section id={`set-${b.id}`} className={`entry nested built ${b.tool}`}>
       <h5><FoldButton id={b.id} /><Name id={b.id} s={s} /> <small>{what}</small></h5>
+      <Badges id={b.id} s={s} />
       <Picture id={b.id} s={s} />
       <Prose s={s} text={builtText(s, b)} home={b.home} />
       {editing && (
@@ -501,6 +547,7 @@ function EntityBlock({ e, s, children }: { e: Entity; s: SettingData; children?:
   return (
     <section id={`set-${e.id}`} className={`entry nested lk-${e.kind}`}>
       <h5><FoldButton id={e.id} /><Name id={e.id} s={s} /> <small>{what}</small></h5>
+      <Badges id={e.id} s={s} />
       <Picture id={e.id} s={s} />
       <Prose s={s} text={entityText(s, e)} home={e.home} skip={e.what} />
       <Refs label="Tied to" ids={tiesTo(s, e.id)} s={s} />
@@ -515,6 +562,7 @@ function PersonBlock({ c, s }: { c: Char; s: SettingData }) {
   return (
     <section id={`set-${c.id}`} className="entry nested lk-figure">
       <h5><FoldButton id={c.id} /><Name id={c.id} s={s} /> <small>{c.what}</small></h5>
+      <Badges id={c.id} s={s} />
       <Picture id={c.id} s={s} />
       <Prose s={s} text={charText(s, c)} home={c.home} skip={c.what} />
       <Refs label="Tied to" ids={tiesTo(s, c.id).filter((id) => id !== c.faction)} s={s} />
@@ -634,7 +682,7 @@ function Gazetteer({ s }: { s: SettingData }) {
         if (folded.has(r)) return <Mini key={r} id={r} s={s} what={v.aka} className="entry place" />
         return (
           <article key={r} id={`set-${r}`} className="entry place">
-            <h4><FoldButton id={r} /><Name id={r} s={s} /> <small>{v.aka}</small></h4>
+            <h4><FoldButton id={r} /><Crest id={r} s={s} size={32} /> <Name id={r} s={s} /> <small>{v.aka}</small></h4>
             <Picture id={r} s={s} />
             <Prose s={s} text={[v.land.text]} home={r} />
             {editing && (
@@ -645,6 +693,7 @@ function Gazetteer({ s }: { s: SettingData }) {
                 })}
                 <div className="edit-row">
                   <button onClick={() => edit((d) => redrawPlace(d, r))} title="Draw what it is called, its past, what it is like today and what is afoot again, keeping the land and its sites">↻ Redraw all four</button>
+                  <EmblemButtons id={r} s={s} />
                   <button onClick={() => drop(r)}>Remove place</button>
                 </div>
               </>

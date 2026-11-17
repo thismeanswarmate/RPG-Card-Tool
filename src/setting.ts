@@ -9,6 +9,7 @@
 import { cardOf, fill as fillCards, text as cardText, type Section, type ToolDef } from './cardTool'
 import { CULTURES, HISTORY, RACES } from './cardTools'
 import { cardSentence, chronicle, describe, placeName } from './describe'
+import type { EmblemSpec } from './emblem'
 import { GLOSS, ROLE_GLOSS } from './glosses'
 import { cueText, rootOf, shuffle, subtree, type Board } from './logic'
 import { DETAIL, detailParts, detailsFor, newDetail, PRIMARY, slots, type DetailInst, type Kind } from './lore'
@@ -76,6 +77,8 @@ export interface Setting {
   decks?: DeckChoice
   /** The races of the world, the cultures of its places and its history, each drawn on the cards of its own tool. */
   drawn?: Drawn[]
+  /** Emblems changed by hand, by the id of the land, race or culture that bears them; the rest follow from the setting itself. */
+  emblems?: Record<string, EmblemSpec>
 }
 
 /** A race, a culture or the history of a setting. A culture belongs to a place and may be mostly of one race. */

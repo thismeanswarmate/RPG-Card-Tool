@@ -437,3 +437,25 @@ svg.theme { vertical-align: -2px; flex: none; }
 .theme-corner { position: absolute; top: 3px; right: 4px; line-height: 0; z-index: 2; pointer-events: auto; filter: drop-shadow(0 0 1.5px rgb(0 0 0 / .8)); }
 .draw-label svg.theme { margin-left: 2px; }
 .deck-row label svg.theme { margin: 0 2px; }
+
+/* Emblems */
+svg.emblem { flex: none; vertical-align: middle; }
+.emblems { max-width: 900px; margin: 0 auto; padding: 18px 16px 40px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; height: 100%; }
+.emblems h2 { font-size: 24px; color: var(--accent); }
+.emblems h3 { font-size: 15px; display: flex; gap: 8px; align-items: center; }
+.emblem-editor { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+.emblem-big { display: flex; flex-direction: column; gap: 8px; align-items: center; width: 220px; text-align: center; }
+.emblem-parts { flex: 1; min-width: 260px; display: flex; flex-wrap: wrap; gap: 10px 14px; align-content: flex-start; }
+.emblem-parts .pick select { background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; }
+.swatches { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; width: 100%; }
+.swatches > span { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; min-width: 104px; }
+.swatches button { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid transparent; box-shadow: 0 0 0 1px var(--line); }
+.swatches button.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--accent); }
+.emblem-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.emblem-sheet button { background: var(--surface); padding: 6px; border-radius: 8px; display: grid; place-items: center; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 0; }
+.badges.compact { gap: 3px; flex: none; }
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 4px; border-radius: 20px; font-size: 12.5px; color: var(--muted); background: var(--raised); }
+.badge:hover { color: var(--text); }
+.entry h4 svg.emblem, .entry h5 svg.emblem { margin-right: 2px; vertical-align: -6px; }

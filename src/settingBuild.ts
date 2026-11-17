@@ -7,6 +7,8 @@ import { tonguesFor } from './names'
 import { KINDS as PERIL_KINDS, kindLabel, rollAll as rollPeril, stepsFor as perilSteps } from './peril'
 import { STORY_CARDS } from './story'
 import { cardOf, draw as drawCard, fill as fillCards } from './cardTool'
+import { emblemFrom, ICONS, tidy, type EmblemSpec } from './emblem'
+import { glyphFor, type Glyph } from './mapgen'
 import { ageNames, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
 import { rollAll as rollSettlement, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
@@ -327,6 +329,38 @@ export function setRace(s: Setting, id: string, race: string | undefined) {
   if (d) { if (race) d.race = race; else delete d.race }
 }
 
+// Emblems: every land, race and culture bears one. It follows from the setting until it is changed by hand.
+
+/** Icons that suit each kind of country, so that a coast tends to an anchor and a forest to a tree. */
+const SUITS: Record<Glyph, string[]> = {
+  tree: ['Tree', 'Leaf', 'Antlers'], deadtree: ['Tree', 'Mushroom', 'Skull'], peak: ['Mountain', 'Hammer', 'Anvil'], tuft: ['Wheat', 'Horseshoe', 'Sun'],
+  reed: ['Waves', 'Fish', 'Feather'], snow: ['Snowflake', 'Mountain', 'Star'], wave: ['Waves', 'Anchor', 'Ship', 'Fish'], crater: ['Ring', 'Moon and star'],
+  cross: ['Skull', 'Bell', 'Cross'], crystal: ['Diamond', 'Spark'], dune: ['Sun', 'Serpent'], dome: ['Wheel', 'Gate', 'Lightning'],
+}
+const suited = (s: Setting, id: string) =>
+  s.board[id] ? (SUITS[glyphFor(cueText(CARDS, s.board[id]))] ?? []).map((name) => ICONS.findIndex((x) => x[0] === name)).filter((i) => i >= 0) : []
+/** Whether something bears an emblem: a land, a race or a culture. */
+export const bearsEmblem = (s: Setting, id: string) =>
+  !!(s.board[id] && !s.board[id].parent) || !!s.drawn?.some((d) => d.id === id && d.tool !== 'history')
+export function emblemOf(s: Setting, id: string): EmblemSpec | undefined {
+  if (!bearsEmblem(s, id)) return undefined
+  return s.emblems?.[id] ? tidy(s.emblems[id]) : emblemFrom(`${s.id}:${id}`, suited(s, id))
+}
+export function setEmblem(s: Setting, id: string, spec: EmblemSpec) {
+  if (bearsEmblem(s, id)) (s.emblems ??= {})[id] = tidy(spec)
+}
+export const rerollEmblem = (s: Setting, id: string) => setEmblem(s, id, emblemFrom(String(Math.random()), suited(s, id)))
+
+/** The lands, races and cultures something belongs to, in that order: whose emblems it may wear. */
+export function belongsTo(s: Setting, id: string): string[] {
+  const thing = (find(s, id) ?? s.built?.find((b) => b.id === id) ?? s.drawn?.find((d) => d.id === id)) as { home?: string; race?: string; culture?: string; tool?: string } | undefined
+  const home = s.board[id]?.parent ? id : thing?.home
+  const land = home && s.board[home] ? rootOf(s.board, home) : undefined
+  // A settlement keeps the culture of the land it stands in.
+  const local = thing?.tool === 'settlement' && land ? s.drawn?.find((d) => d.tool === 'culture' && d.home === land)?.id : undefined
+  return [...new Set([land, thing?.race, thing?.culture ?? local])].filter((x): x is string => !!x && x !== id && bearsEmblem(s, x))
+}
+
 /** Everything that goes when one thing is removed: a place takes its sites and all that is based there. */
 export function goneWith(s: Setting, id: string): string[] {
   const gone = new Set(s.board[id] ? subtree(s.board, id) : [id])
@@ -337,7 +371,7 @@ export function goneWith(s: Setting, id: string): string[] {
 /** Remove a place, site, power, thing, person or built place, and every mention of it elsewhere. */
 export function remove(s: Setting, id: string) {
   const gone = new Set(goneWith(s, id))
-  for (const g of gone) { delete s.board[g]; delete s.names[g]; delete s.specs[g] }
+  for (const g of gone) { delete s.board[g]; delete s.names[g]; delete s.specs[g]; delete s.emblems?.[g] }
   s.entities = s.entities.filter((e) => !gone.has(e.id))
   s.people = s.people.filter((c) => !gone.has(c.id))
   s.built = (s.built ?? []).filter((b) => !gone.has(b.id))

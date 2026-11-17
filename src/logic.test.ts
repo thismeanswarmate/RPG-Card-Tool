@@ -1471,3 +1471,66 @@ describe('the optional decks for history', async () => {
     }
   })
 })
+
+describe('emblems', async () => {
+  const E = await import('./emblem')
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  it('has a large and well-formed library of parts', () => {
+    expect(E.SHAPES.length).toBeGreaterThanOrEqual(10)
+    expect(E.PATTERNS.length).toBeGreaterThanOrEqual(24)
+    expect(E.BORDERS.length).toBeGreaterThanOrEqual(8)
+    expect(E.ICONS.length).toBeGreaterThanOrEqual(50)
+    expect(E.COLOURS.length).toBeGreaterThanOrEqual(18)
+    for (const list of [E.SHAPES.map((x) => x[0]), E.PATTERNS, E.BORDERS, E.ICONS.map((x) => x[0]), E.COLOURS.map((x) => x[0])]) expect(new Set(list).size).toBe(list.length)
+    for (const [, d] of [...E.SHAPES, ...E.ICONS.map((x) => [x[0], x[1]] as [string, string])]) expect(d).toMatch(/^M[-\d. a-zA-Z]+$/)
+    for (const [, hex] of E.COLOURS) expect(hex).toMatch(/^#[0-9a-f]{6}$/)
+    expect(E.emblemCount()).toBeGreaterThan(1e9)
+  })
+  it('makes the same emblem from the same seed, varied ones from different seeds, and always a legible one', () => {
+    expect(E.emblemFrom('a')).toEqual(E.emblemFrom('a'))
+    const made = Array.from({ length: 600 }, (_, i) => E.emblemFrom(`seed-${i}`))
+    expect(new Set(made.map((m) => JSON.stringify(m))).size).toBeGreaterThan(590)
+    for (const key of ['shape', 'pattern', 'border', 'icon', 'layout'] as const) expect(new Set(made.map((m) => m[key])).size).toBe({ shape: E.SHAPES, pattern: E.PATTERNS, border: E.BORDERS, icon: E.ICONS, layout: E.LAYOUTS }[key].length)
+    for (const m of made) {
+      expect(E.tidy(m)).toEqual(m)
+      expect(m.a).toBeLessThan(E.DEEP)
+      // The icon is never the colour of what lies behind it.
+      expect(m.c).not.toBe(m.a); expect(m.c).not.toBe(m.b); expect(m.b).not.toBe(m.a)
+      expect(E.emblemWords(m)).toMatch(/^an? \w+ [\w ,]+, bearing an? [\w ]+( twice| three times)?$/)
+    }
+    expect(E.tidy({ shape: 99, icon: -1 })).toEqual({ shape: 0, pattern: 0, border: 0, a: 0, b: 0, c: 0, icon: 0, layout: 0 })
+    expect(E.emblemWords({ shape: 0, pattern: 5, border: 0, a: 0, b: 12, c: 13, icon: 12, layout: 0 })).toBe('a crimson shield, quartered with gold, bearing a silver tower')
+    expect(E.emblemWords({ shape: 5, pattern: 0, border: 0, a: 1, b: 12, c: 5, icon: 16, layout: 1 })).toBe('an azure oval, bearing an orange anchor three times')
+  })
+  it('gives every land, race and culture of a setting an emblem, and says who may wear them', () => {
+    const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, lands: ['temperate', 'coast'] }, 'emblems')
+    const bearers = [...G.rootsOf(s), ...s.drawn!.filter((d) => d.tool !== 'history').map((d) => d.id)]
+    for (const id of bearers) {
+      expect(B.emblemOf(s, id)).toEqual(B.emblemOf(s, id))
+      expect(B.emblemOf(s, id)).toBeTruthy()
+    }
+    expect(new Set(bearers.map((id) => JSON.stringify(B.emblemOf(s, id)))).size).toBe(bearers.length)
+    const history = s.drawn!.find((d) => d.tool === 'history')!
+    for (const id of [history.id, s.people[0].id, s.entities[0].id, 'nothing']) expect(B.emblemOf(s, id)).toBeUndefined()
+    for (const c of s.people) expect(B.belongsTo(s, c.id)).toEqual([...new Set([G.homeRoot(s, c.home), c.race!, c.culture!])])
+    const faction = s.entities.find((e) => e.kind === 'faction')!
+    expect(B.belongsTo(s, faction.id)).toEqual([G.homeRoot(s, faction.home!), faction.culture!])
+    const culture = s.drawn!.find((d) => d.tool === 'culture')!
+    expect(B.belongsTo(s, culture.id)).toEqual([culture.home!, culture.race!])
+    const site = G.placeView(s, G.rootsOf(s)[0]).sites[0]
+    expect(B.belongsTo(s, site.id)).toEqual([G.rootsOf(s)[0]])
+    expect(B.belongsTo(s, G.rootsOf(s)[0])).toEqual([])
+    // Change one by hand: it is kept, and goes when its bearer goes.
+    const land = G.rootsOf(s)[0]
+    const mine = { shape: 3, pattern: 5, border: 2, a: 1, b: 13, c: 12, icon: 4, layout: 1 }
+    B.setEmblem(s, land, mine)
+    expect(B.emblemOf(s, land)).toEqual(mine)
+    B.rerollEmblem(s, land)
+    expect(B.emblemOf(s, land)).not.toEqual(mine)
+    B.setEmblem(s, s.people[0].id, mine)
+    expect(s.emblems![s.people[0].id]).toBeUndefined()
+    B.remove(s, land)
+    expect(s.emblems![land]).toBeUndefined()
+  })
+})
