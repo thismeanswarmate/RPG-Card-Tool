@@ -24,8 +24,9 @@ const GLYPH: Record<Glyph, string> = {
 }
 
 const THEMES = {
-  parchment: { paper: '#e9dcc0', edge: '#c9b78f', ink: '#3b2a1a', faint: '#8a7353', sea: '#b9c2b0', route: '#8c3b2a', halo: '#efe4cb' },
-  blueprint: { paper: '#122a44', edge: '#0b1c30', ink: '#d6e8ff', faint: '#7fa3cc', sea: '#1d4266', route: '#ffd27a', halo: '#122a44' },
+  // `ocean` is the open sea, `sea` the paler shallows round the land, and `water` the lakes and rivers.
+  parchment: { paper: '#e9dcc0', edge: '#8fa3a3', ink: '#3b2a1a', faint: '#8a7353', ocean: '#b6cbc9', sea: '#d5e3dd', water: '#9fc0c6', route: '#8c3b2a', halo: '#efe4cb' },
+  blueprint: { paper: '#122a44', edge: '#060f1c', ink: '#d6e8ff', faint: '#7fa3cc', ocean: '#0a1a2e', sea: '#17395c', water: '#2b6a9c', route: '#ffd27a', halo: '#122a44' },
 }
 
 const go = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -56,10 +57,6 @@ export function SettingMap({ s }: { s: Setting }) {
     <figure className="atlas">
       <svg ref={svg} viewBox={`0 0 ${map.w} ${map.h}`} role="img" aria-label={`Map of ${title}`} fontFamily="Georgia, 'Iowan Old Style', serif">
         <defs>
-          <filter id="grain" x="0" y="0" width="100%" height="100%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="4" seed="7" result="n" />
-            <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .55 -.16" />
-          </filter>
           <radialGradient id="vignette" cx="50%" cy="50%" r="72%">
             <stop offset="60%" stopColor={t.edge} stopOpacity="0" />
             <stop offset="100%" stopColor={t.edge} stopOpacity=".85" />
@@ -70,25 +67,41 @@ export function SettingMap({ s }: { s: Setting }) {
           {map.regions.map((r) => <clipPath key={r.id} id={`clip-${r.id}`}><circle cx={r.x} cy={r.y - 44} r="30" /></clipPath>)}
         </defs>
 
-        <rect width={map.w} height={map.h} fill={t.paper} />
-        <rect width={map.w} height={map.h} fill={t.ink} filter="url(#grain)" opacity=".38" />
+        {/* The ocean: one even colour to the edge of the sheet. */}
+        <rect width={map.w} height={map.h} fill={t.ocean} />
 
-        {/* The sea: rings of shallow water around the land, then the coastline itself. */}
+        {/* Rings of shallow water around the land, then the coastline itself. */}
         <g fill="none" strokeLinejoin="round">
-          {[[52, 0.22], [32, 0.26], [16, 0.32]].map(([width, opacity]) => (
+          {[[56, 0.3], [34, 0.4], [16, 0.55]].map(([width, opacity]) => (
             <g key={width} stroke={t.sea} strokeWidth={width} opacity={opacity}>{map.regions.map((r) => <path key={r.id} d={r.d} />)}</g>
           ))}
           <g stroke={t.ink} strokeWidth="4.5">{map.regions.map((r) => <path key={r.id} d={r.d} />)}</g>
         </g>
 
         {/* The land: a wash for each region, with faint borders between them. */}
-        {map.regions.map((r) => <path key={r.id} d={r.d} fill={t.paper} />)}
+        {/* The paper under each wash is drawn a little proud of its outline, which closes any hairline between neighbours. */}
+        {map.regions.map((r) => <path key={r.id} d={r.d} fill={t.paper} stroke={t.paper} strokeWidth="3" strokeLinejoin="round" />)}
         {map.regions.map((r) => (
           // A place with a picture takes its colour from the picture; the rest keep their terrain's.
           <path key={r.id} className="region" d={r.d} fill={tints[`${s.id}:${r.id}`] ? washFor(tints[`${s.id}:${r.id}`], map.theme) : r.colour} fillOpacity=".8" stroke={t.faint} strokeWidth=".9" strokeDasharray="5 4" onClick={() => go(r.id)}>
             <title>{r.name} — {r.terrain}</title>
           </path>
         ))}
+
+        {/* Fresh water: lakes with a shore line, and rivers that widen toward the mouth. */}
+        <g pointerEvents="none" strokeLinejoin="round" strokeLinecap="round">
+          {map.rivers.map((r, i) => (
+            <g key={i} fill="none">
+              <path d={r.d} stroke={t.ink} strokeWidth="3.4" opacity=".55" />
+              <path d={r.d} stroke={t.water} strokeWidth="2" />
+            </g>
+          ))}
+          {map.lakes.map((l, i) => (
+            <g key={i}>
+              <path d={l.d} fill={t.water} stroke={t.ink} strokeWidth="1.3" />
+            </g>
+          ))}
+        </g>
 
         <g pointerEvents="none" opacity=".8">
           {map.regions.flatMap((r) => r.symbols.map((p, i) => (
@@ -204,7 +217,7 @@ export function SettingMap({ s }: { s: Setting }) {
         <rect x="14" y="14" width={map.w - 28} height={map.h - 28} fill="none" stroke={t.ink} strokeWidth=".8" pointerEvents="none" />
       </svg>
       <figcaption>
-        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. Each place carries its emblem, with the smaller emblems of the cultures kept there. A house marks a site and a cross a dangerous place. Settlements grow with their rank: a small circle for a village, a diamond for a trading post, a ringed dot for a town, battlements for a fortress town, a double ring for a city and a starred ring for the capital. Click any of them to read about it.</span>
+        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. The sea is drawn plain; lakes and rivers lie on the land. Each place carries its emblem, with the smaller emblems of the cultures kept there. A house marks a site and a cross a dangerous place. Settlements grow with their rank: a small circle for a village, a diamond for a trading post, a ringed dot for a town, battlements for a fortress town, a double ring for a city and a starred ring for the capital. Click any of them to read about it.</span>
         <button onClick={save}>Save map</button>
       </figcaption>
     </figure>

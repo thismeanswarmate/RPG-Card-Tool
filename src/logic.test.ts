@@ -1583,3 +1583,87 @@ describe('how common each kind of settlement is in a world', async () => {
     expect(M.buildMap(s).regions.flatMap((r) => r.sites).filter((m) => m.kind !== 'settlement').every((m) => m.rank === undefined)).toBe(true)
   })
 })
+
+describe('water on the map, and no gaps between places', async () => {
+  const G = await import('./setting')
+  const M = await import('./mapgen')
+  const within = (p: [number, number], poly: [number, number][]) => {
+    let hit = false
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j]
+      if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) hit = !hit
+    }
+    return hit
+  }
+  const coords = (d: string) => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [+m[1], +m[2]] as [number, number])
+
+  it('leaves no pocket of sea enclosed between places', () => {
+    let pockets = 0, maps = 0
+    for (const size of ['region', 'country', 'continent'] as const) for (let n = 0; n < 6; n++) {
+      const map = M.buildMap(G.generateSetting({ ...G.DEFAULT_ANSWERS, size }, `gaps-${size}-${n}`))
+      maps++
+      // Flood the sea in from the edge of the sheet over a coarse grid; any water it cannot reach is a pocket.
+      const step = 5, cols = Math.ceil(map.w / step), rows = Math.ceil(map.h / step)
+      const land = new Uint8Array(cols * rows)
+      for (const r of map.regions) {
+        const xs = r.points.map((p) => p[0]), ys = r.points.map((p) => p[1])
+        for (let y = Math.max(0, Math.floor(Math.min(...ys) / step)); y <= Math.min(rows - 1, Math.ceil(Math.max(...ys) / step)); y++)
+          for (let x = Math.max(0, Math.floor(Math.min(...xs) / step)); x <= Math.min(cols - 1, Math.ceil(Math.max(...xs) / step)); x++)
+            if (!land[y * cols + x] && within([x * step + step / 2, y * step + step / 2], r.points)) land[y * cols + x] = 1
+      }
+      const seen = new Uint8Array(cols * rows), queue = [0]
+      seen[0] = 1
+      while (queue.length) {
+        const at = queue.pop()!, x = at % cols, y = (at - x) / cols
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, ny = y + dy, k = ny * cols + nx
+          if (nx >= 0 && ny >= 0 && nx < cols && ny < rows && !seen[k] && !land[k]) { seen[k] = 1; queue.push(k) }
+        }
+      }
+      // A pocket is a patch of unreached water at least three cells across; a hairline along a border is only the grid.
+      for (let y = 1; y < rows - 1; y++) for (let x = 1; x < cols - 1; x++) {
+        let open = true
+        for (let dy = -1; dy <= 1 && open; dy++) for (let dx = -1; dx <= 1; dx++) { const k = (y + dy) * cols + x + dx; if (land[k] || seen[k]) { open = false; break } }
+        if (open) { pockets++; y = rows; break }
+      }
+    }
+    expect(maps).toBe(18)
+    expect(pockets).toBe(0)
+    // Closing the gaps must not make the sheet sprawl.
+    for (const size of ['region', 'country', 'continent'] as const) {
+      const map = M.buildMap(G.generateSetting({ ...G.DEFAULT_ANSWERS, size }, `sheet-${size}`))
+      expect(Math.max(map.w, map.h)).toBeLessThan({ region: 1500, country: 2100, continent: 2500 }[size])
+    }
+  }, 30000)
+
+  it('puts lakes inside their places and runs rivers over land to the sea or a lake', () => {
+    let lakes = 0, rivers = 0
+    for (let n = 0; n < 12; n++) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: 'continent', lands: ['temperate', 'coast'] }, `water-${n}`)
+      const map = M.buildMap(s)
+      expect(M.buildMap(s)).toEqual(map)
+      lakes += map.lakes.length; rivers += map.rivers.length
+      for (const lake of map.lakes) {
+        const pts = coords(lake.d)
+        expect(pts.length).toBeGreaterThan(12)
+        const home = map.regions.filter((r) => pts.every((p) => within(p, r.points)))
+        expect(home, 'a lake lies wholly inside one place').toHaveLength(1)
+        // Clear of the place's name and of everything marked in it.
+        const [cx, cy] = [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length]
+        expect(Math.abs(cx - home[0].x) < 60 && Math.abs(cy - home[0].y) < 14).toBe(false)
+        for (const m of home[0].sites) expect(Math.hypot(m.x - cx, m.y - cy)).toBeGreaterThan(18)
+      }
+      for (const river of map.rivers) {
+        const pts = coords(river.d)
+        expect(pts.length).toBeGreaterThanOrEqual(5)
+        // All but the last step, which runs out into the sea, is on land.
+        const onLand = pts.slice(0, -2).filter((p) => map.regions.some((r) => within(p, r.points))).length
+        expect(onLand).toBeGreaterThanOrEqual(pts.length - 3)
+        for (const p of pts) expect(p[0] > 0 && p[1] > 0 && p[0] < map.w && p[1] < map.h).toBe(true)
+      }
+      for (const r of map.regions) for (const sym of r.symbols) for (const river of map.rivers) for (const p of coords(river.d)) expect(Math.hypot(p[0] - sym.x, p[1] - sym.y)).toBeGreaterThanOrEqual(8.5)
+    }
+    expect(lakes).toBeGreaterThan(20)
+    expect(rivers).toBeGreaterThan(20)
+  }, 30000)
+})

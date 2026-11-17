@@ -57,6 +57,10 @@ export interface MapData {
   h: number
   regions: MapRegion[]
   routes: { a: string; b: string; d: string }[]
+  /** Still water inside the land, as outlines. */
+  lakes: { d: string }[]
+  /** Running water: each a line from its source to the sea or to a lake. */
+  rivers: { d: string }[]
   scale: { px: number; label: string }
   theme: 'parchment' | 'blueprint'
 }
@@ -120,6 +124,22 @@ function heart(poly: P[]): P {
       const d = Math.min(...rim.map((q) => Math.hypot((p[0] - q[0]) * 0.8, p[1] - q[1])))
       if (d > room) { room = d; best = p }
     }
+  return best
+}
+
+/** How far a ray from a point at an angle travels before it leaves a polygon the point lies in. */
+function reachOf(poly: P[], from: P, angle: number): number {
+  const [dx, dy] = [Math.cos(angle), Math.sin(angle)]
+  let best = Infinity
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length]
+    const [ex, ey] = [b[0] - a[0], b[1] - a[1]]
+    const den = dx * ey - dy * ex
+    if (Math.abs(den) < 1e-9) continue
+    const t = ((a[0] - from[0]) * ey - (a[1] - from[1]) * ex) / den
+    const u = ((a[0] - from[0]) * dy - (a[1] - from[1]) * dx) / den
+    if (t > 0 && u >= 0 && u <= 1 && t < best) best = t
+  }
   return best
 }
 
@@ -198,9 +218,12 @@ export function buildMap(s: Setting): MapData {
       if (radius[i] ** 2 - radius[j] ** 2 > room + 1e-6) { radius[i] = Math.sqrt(room + radius[j] ** 2); changed = true }
     }))
   }
+  // How far a place will stretch to meet a neighbour's border; beyond this the border is left to the sea.
+  const meet = typical * 1.35
   // Some places are wilder than the rest: their coasts throw out more headlands and their borders wander further.
   const wild = roots.map(() => (rng() < 0.4 ? 0.6 + rng() * 0.4 : 0))
 
+  const lakes: { c: P; r: number; poly: P[]; region: number }[] = []
   const regions = roots.map((id, i): MapRegion => {
     const [gx, gy] = pts[i]
     // A lopsided blob: an uneven edge, two or three lobes at angles of its own, stretched along one axis.
@@ -213,6 +236,23 @@ export function buildMap(s: Setting): MapData {
         * Math.max(0.55, 1 + (0.2 + 0.2 * wild[i]) * Math.sin(a * 2 + lobes[0]) + (0.14 + 0.18 * wild[i]) * Math.sin(a * 3 + lobes[1]) + 0.2 * wild[i] * Math.sin(a * 5 + lobes[2]))
       const [u, v] = [Math.cos(a) * r * stretch, (Math.sin(a) * r) / stretch]
       return [gx + u * Math.cos(lean) - v * Math.sin(lean), gy + u * Math.sin(lean) + v * Math.cos(lean)]
+    })
+    // The ground this place may take: everything nearer to it than to its neighbours, by the rule below.
+    const borders = pts.flatMap((q, j) => {
+      if (j === i) return []
+      const span = (q[0] - gx) ** 2 + (q[1] - gy) ** 2
+      const share = 0.5 + (radius[i] ** 2 - radius[j] ** 2) / (2 * span)
+      return [[[gx + (q[0] - gx) * share, gy + (q[1] - gy) * share], [q[0] - gx, q[1] - gy]] as [P, P]]
+    })
+    let cell: P[] = Array.from({ length: 48 }, (_, k): P => [gx + Math.cos((k / 48) * Math.PI * 2) * 5000, gy + Math.sin((k / 48) * Math.PI * 2) * 5000])
+    for (const [m, n] of borders) cell = clip(cell, m, n)
+    // Where a neighbour's border lies within reach, the place is stretched out to meet it, so that no gap of
+    // sea is left between two places that lie side by side. Only its open sides keep the blob's own outline.
+    if (inside([gx, gy], cell)) poly = poly.map(([x, y]): P => {
+      const far = Math.hypot(x - gx, y - gy), limit = reachOf(cell, [gx, gy], Math.atan2(y - gy, x - gx))
+      if (limit > meet || far >= limit * 1.1 + 8) return [x, y]
+      const k = (limit * 1.1 + 8) / (far || 1)
+      return [gx + (x - gx) * k, gy + (y - gy) * k]
     })
     pts.forEach((q, j) => {
       if (j === i) return
@@ -234,6 +274,30 @@ export function buildMap(s: Setting): MapData {
     const [cx, cy] = heart(fine)
 
     const terrain = terrainOf(s, id)
+    // A lake, in wet country more often than dry: a small uneven pool set well inside the place, clear of its name.
+    const wet = /marsh|lagoon|flood|lake|fen|delta|estuary|mangrove|bog|river|fjord|atoll|archipelago/i.test(terrain)
+    const dry = /dune|desert|salt|badland|waste|glacier|tundra|canyon/i.test(terrain)
+    const pools: { c: P; r: number; poly: P[] }[] = []
+    if (rng() < (wet ? 0.75 : dry ? 0.12 : 0.4)) {
+      const fxs = fine.map((p) => p[0]), fys = fine.map((p) => p[1])
+      const [bx0, by0, bx1, by1] = [Math.min(...fxs), Math.min(...fys), Math.max(...fxs), Math.max(...fys)]
+      for (let tries = 0; tries < 60 && !pools.length; tries++) {
+        const c: P = [bx0 + rng() * (bx1 - bx0), by0 + rng() * (by1 - by0)]
+        const r = 13 + rng() * 15
+        const room = Array.from({ length: 8 }, (_, k): P => [c[0] + Math.cos((k / 8) * Math.PI * 2) * (r * 1.9 + 8), c[1] + Math.sin((k / 8) * Math.PI * 2) * (r * 1.9 + 8)])
+        if (!inside(c, fine) || room.some((p) => !inside(p, fine))) continue
+        if (Math.abs(c[0] - cx) < 84 + r && c[1] > cy - 60 - r && c[1] < cy + 30 + r) continue
+        const tilt = rng() * Math.PI, squash = 0.6 + rng() * 0.35, phase = rng() * 9
+        const poly = Array.from({ length: 22 }, (_, k): P => {
+          const a = (k / 22) * Math.PI * 2
+          const rr = r * (0.78 + 0.34 * edge(i * 3.1 + Math.cos(a) * 1.4 + phase, Math.sin(a) * 1.4 + phase))
+          const [u, v] = [Math.cos(a) * rr, Math.sin(a) * rr * squash]
+          return [c[0] + u * Math.cos(tilt) - v * Math.sin(tilt), c[1] + u * Math.sin(tilt) + v * Math.cos(tilt)]
+        })
+        pools.push({ c, r, poly })
+      }
+    }
+    lakes.push(...pools.map((p) => ({ ...p, region: i })))
     const glyph = glyphFor(terrain)
     const base = (TERRAIN_COLORS[terrain] ?? EXPANSION_COLORS[terrain] ?? ['#8a8f7a'])[0]
 
@@ -258,6 +322,7 @@ export function buildMap(s: Setting): MapData {
         const r = rings[Math.floor(tries / 14)]
         spot = [cx + Math.cos(a) * r * 0.95, cy + Math.sin(a) * r + (Math.sin(a) >= 0 ? 16 : -10)]
         const crowded = sites.some((q) => Math.abs(q.x - spot[0]) < 46 && Math.abs(q.y - spot[1]) < 24)
+          || pools.some((p) => Math.hypot(p.c[0] - spot[0], p.c[1] - spot[1]) < p.r + 22)
         if (inside(spot, fine) && inside([spot[0], spot[1] + 14], fine) && !lettered(spot) && !crowded) break
       }
       const built = s.built?.find((b) => b.id === sid && b.tool === 'settlement')
@@ -273,6 +338,7 @@ export function buildMap(s: Setting): MapData {
       if (!inside(p, fine) || !inside([p[0], p[1] + 9], fine) || !inside([p[0] - 9, p[1]], fine) || !inside([p[0] + 9, p[1]], fine)) continue
       if (Math.abs(p[0] - cx) < 66 && Math.abs(p[1] - cy) < 28) continue
       if (sites.some((q) => Math.abs(p[0] - q.x) < 58 && Math.abs(p[1] - q.y) < 24)) continue
+      if (pools.some((q) => Math.hypot(p[0] - q.c[0], p[1] - q.c[1]) < q.r + 12)) continue
       if (symbols.some((q) => Math.hypot(p[0] - q.x, p[1] - q.y) < 24)) continue
       symbols.push({ x: r1(p[0]), y: r1(p[1]), k: r1(0.85 + rng() * 0.4) })
     }
@@ -282,6 +348,56 @@ export function buildMap(s: Setting): MapData {
       colour: washFor(base, theme), glyph, symbols: symbols.sort((a, b) => a.y - b.y), sites,
     }
   })
+
+  // Rivers. Each rises inside a place and runs to that place's own stretch of open coast, or failing that to its
+  // lake; a lake near the coast drains to the sea. A river keeps to its place and stays clear of the lettering.
+  const coastOf = regions.map((r, i) => r.points.filter((p, k) => {
+    if (k % 3) return false
+    const out = Math.hypot(p[0] - r.x, p[1] - r.y) || 1
+    const beyond: P = [p[0] + ((p[0] - r.x) / out) * 14, p[1] + ((p[1] - r.y) / out) * 14]
+    return !regions.some((o, j) => j !== i && inside(beyond, o.points)) && !inside(beyond, r.points)
+  }))
+  const rivers: P[][] = []
+  regions.forEach((r, i) => {
+    const pool = lakes.find((l) => l.region === i)
+    const coast = coastOf[i]
+    if (!coast.length && !pool) return
+    if (rng() > (pool ? 0.8 : 0.55)) return
+    const lettered = (p: P) => Math.abs(p[0] - r.x) < 76 && p[1] > r.y - 54 && p[1] < r.y + 24
+    for (let tries = 0; tries < 24; tries++) {
+      // From the lake to the sea where there is both; otherwise from a spring somewhere inland to the sea or the lake.
+      const fromLake = !!pool && coast.length > 0 && tries < 12
+      const start: P = fromLake ? pool!.c : (() => {
+        const a = rng() * Math.PI * 2, d = 30 + rng() * 60
+        return [r.x + Math.cos(a) * d, r.y + Math.sin(a) * d * 0.8] as P
+      })()
+      if (!inside(start, r.points) || (!fromLake && lettered(start))) continue
+      const end: P | undefined = coast.length
+        ? [...coast].sort((p, q) => Math.hypot(p[0] - start[0], p[1] - start[1]) - Math.hypot(q[0] - start[0], q[1] - start[1]))[Math.floor(rng() * Math.min(4, coast.length))]
+        : pool!.c
+      if (!end) continue
+      const len = Math.hypot(end[0] - start[0], end[1] - start[1])
+      if (len < 46 || len > 330) continue
+      const [nx, ny] = [-(end[1] - start[1]) / len, (end[0] - start[0]) / len]
+      const sway = (rng() - 0.5) * 2, phase = rng() * 20
+      const steps = Math.max(8, Math.round(len / 11))
+      const line = Array.from({ length: steps + 1 }, (_, k): P => {
+        const t = k / steps
+        // Two bends laid over each other, pinned at both ends.
+        const off = Math.sin(t * Math.PI) * (len * 0.13 * sway + (edge(phase + t * 3.2, i * 1.7) - 0.5) * 34) + Math.sin(t * Math.PI * 3 + phase) * 5 * Math.sin(t * Math.PI)
+        return [start[0] + (end[0] - start[0]) * t + nx * off, start[1] + (end[1] - start[1]) * t + ny * off]
+      })
+      const body = line.slice(fromLake ? Math.ceil((pool!.r * 0.8) / 11) : 0, coast.length ? line.length - 1 : line.length - Math.ceil((pool!.r * 0.8) / 11))
+      if (body.length < 5 || body.some((p) => !inside(p, r.points) || lettered(p))) continue
+      // The mouth runs on a little past the shore, so that the river opens into the sea.
+      if (coast.length) { const out = Math.hypot(end[0] - r.x, end[1] - r.y) || 1; body.push(end, [end[0] + ((end[0] - r.x) / out) * 7, end[1] + ((end[1] - r.y) / out) * 7]) }
+      rivers.push(body)
+      break
+    }
+  })
+  // Nothing is drawn standing in a river.
+  const wetAt = (x: number, y: number) => rivers.some((line) => line.some((p) => Math.hypot(p[0] - x, p[1] - y) < 9))
+  for (const r of regions) r.symbols = r.symbols.filter((p) => !wetAt(p.x, p.y))
 
   // Routes: one for every pair of places that something in the setting connects.
   const index = new Map(roots.map((r, i) => [r, i]))
@@ -318,12 +434,15 @@ export function buildMap(s: Setting): MapData {
       sites: r.sites.map((p) => ({ ...p, x: r1(p.x + tx), y: r1(p.y + ty) })),
     }
   })
+  const at = ([x, y]: P) => `${r1(x + tx)} ${r1(y + ty)}`
+  const lakePaths = lakes.map((l) => ({ d: `M${l.poly.map(at).join('L')}Z` }))
+  const riverPaths = rivers.map((line) => ({ d: `M${line.map(at).join('L')}` }))
   const shifted = routes.map((r) => ({ ...r, d: r.d.replace(/(-?[\d.]+) (-?[\d.]+)/g, (_, x: string, y: string) => `${r1(+x + tx)} ${r1(+y + ty)}`) }))
   const width = Math.max(...all.map((p) => p[0])) + tx + PAD
   const height = Math.max(...all.map((p) => p[1])) + ty + PAD
 
   const [px, label] = MILES[s.answers.size] ?? MILES.country
-  return { w: Math.round(width), h: Math.round(height), regions: moved, routes: shifted, scale: { px, label }, theme }
+  return { w: Math.round(width), h: Math.round(height), regions: moved, routes: shifted, lakes: lakePaths, rivers: riverPaths, scale: { px, label }, theme }
 }
 
 export const siteKind = (s: Setting, id: string) => cueText(CARDS, s.board[id])
