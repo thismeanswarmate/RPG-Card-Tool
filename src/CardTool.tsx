@@ -64,7 +64,7 @@ export function CardTool({ def, useStore, plural, single, blurb }: Props) {
   }
   const groups: DeckGroup[] = [
     { title: 'Main deck', items: [deck('core', 'Core')] },
-    { title: 'Genres', items: Object.entries(def.packs).map(([id, label]) => deck(id, label)) },
+    { title: 'Optional decks', items: Object.entries(def.packs).map(([id, label]) => deck(id, label)) },
   ]
   const copy = async () => {
     try { await navigator.clipboard.writeText([item.name, ...prose].filter(Boolean).join('\n\n')); setCopied(true); setTimeout(() => setCopied(false), 1500) }

@@ -167,12 +167,15 @@ function SettingDecks({ s, onClose }: { s: SettingData; onClose(): void }) {
   const now = decksOf(s)
   return (
     <DeckDialog onClose={onClose}
-      onToggle={(id) => { const [group, deck] = id.split(':'); edit((d) => toggleDeck(d, group as 'world' | 'story' | 'deities', deck)) }}
+      onToggle={(id) => { const [group, deck] = id.split(':'); edit((d) => toggleDeck(d, group as 'world' | 'story' | 'deities' | 'animal', deck)) }}
       intro="Tick the decks this setting draws on. What is already in the setting stays; the choice applies to whatever is added or redrawn from now on."
       groups={[
         { title: 'Lands, sites and descriptions', items: Object.entries(WORLD_DECKS).map(([id, label]) => ({ id: `world:${id}`, label, note: `${WORLD_CARDS.filter((c) => c.deck === id).length} cards`, on: now.world.includes(id) })) },
         { title: 'People and stories', items: Object.entries(STORY_DECKS).map(([id, label]) => ({ id: `story:${id}`, label, note: `${STORY_CARDS.filter((c) => c.deck === id && ['character', 'drive', 'obstacle'].includes(c.kind)).length} cards`, on: now.story.includes(id) })) },
-        { title: 'Powers', items: [{ id: 'deities:', label: 'Deities', note: 'gods, and details that mention them', on: now.deities }] },
+        { title: 'Powers and races', items: [
+          { id: 'deities:', label: 'Deities', note: 'gods, and details that mention them', on: now.deities },
+          { id: 'animal:', label: 'Animal races', note: 'beast-folk traits for races', on: !!now.animal },
+        ] },
       ]} />
   )
 }

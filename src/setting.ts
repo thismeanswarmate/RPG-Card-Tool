@@ -86,7 +86,7 @@ export const drawnKind = (d: Drawn) => (d.tool === 'history' ? `history · ${d.s
 /** The decks a setting's races, cultures and history draw on, in the form the card tools take. */
 export const drawnPacks = (s: Pick<Setting, 'answers' | 'decks' | 'manual'>) => {
   const story = decksOf(s).story
-  return [...story.filter((d) => d in RACES.packs), ...(story.includes('core') ? [] : ['-core'])]
+  return [...story.filter((d) => d in RACES.packs), ...(decksOf(s).animal ? ['animal'] : []), ...(story.includes('core') ? [] : ['-core'])]
 }
 const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth']
 const cueOf = (d: Drawn, section: number, aspect: string) => {
@@ -120,7 +120,7 @@ export function drawnText(s: Setting, d: Drawn): string[] {
 }
 
 /** The decks a setting draws on: lands and sites, people and stories, and whether there are gods. */
-export interface DeckChoice { world: string[]; story: string[]; deities: boolean }
+export interface DeckChoice { world: string[]; story: string[]; deities: boolean; /** Whether races may draw on the animal deck. */ animal?: boolean }
 export const WORLD_DECKS: Record<string, string> = { starter: 'Starter', fantasy: 'Fantasy', scifi: 'Science fiction', horror: 'Horror', frost: 'Frost', coast: 'Coast', dry: 'Desert' }
 export const STORY_DECKS: Record<string, string> = { core: 'Core', fantasy: 'Fantasy', scifi: 'Science fiction', horror: 'Horror', mystery: 'Mystery' }
 export function decksOf(s: Pick<Setting, 'answers' | 'decks' | 'manual'>): DeckChoice {

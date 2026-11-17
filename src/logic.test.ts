@@ -1166,7 +1166,8 @@ describe('races, cultures and history', async () => {
     for (let n = 0; n < 60; n++) {
       expect(E.draw(T.RACES, 'origin', ['-core', 'horror'])!.card).toMatch(/^horror:/)
       expect(E.draw(T.RACES, 'origin', ['fantasy', '-fantasy:origin'])!.card).toMatch(/^core:/)
-      expect(E.draw(T.RACES, 'home', ['-core', 'horror'])!.card).toMatch(/^core:/)
+      expect(E.draw(T.CULTURES, 'taboo', ['-core', 'horror'])!.card).toMatch(/^core:/)
+      expect(E.draw(T.RACES, 'home', ['-core', 'animal'])!.card).toMatch(/^animal:/)
     }
     const item = E.blank(T.HISTORY, 'x')
     expect(item.sections).toHaveLength(3)
@@ -1405,5 +1406,44 @@ describe('ages are names, not offers', async () => {
   it('does not mark a word inside the name of an age', () => {
     const s = G.generateSetting(G.DEFAULT_ANSWERS, 'age-names')
     for (const age of G.ageNames(s)) expect(B.findMentions(s, `It was founded in ${age}.`)).toEqual([`It was founded in ${age}.`])
+  })
+})
+
+describe('the genre and animal decks for races', async () => {
+  const E = await import('./cardTool')
+  const T = await import('./cardTools')
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  it('covers every aspect in each optional deck', () => {
+    const cards = E.cardsOf(T.RACES)
+    expect(Object.keys(T.RACES.packs)).toEqual(['fantasy', 'scifi', 'horror', 'animal'])
+    for (const deck of Object.keys(T.RACES.packs)) for (const a of T.RACES.aspects) {
+      const n = cards.filter((c) => c.deck === deck && c.aspect === a.id).length
+      expect(n, `${deck}:${a.id}`).toBeGreaterThanOrEqual(1)
+      if (['form', 'mark', 'origin', 'home'].includes(a.id)) expect(n, `${deck}:${a.id}`).toBeGreaterThanOrEqual(2)
+    }
+  })
+  it('writes a whole race from one optional deck alone', () => {
+    for (const deck of Object.keys(T.RACES.packs)) for (let n = 0; n < 40; n++) {
+      const item = E.blank(T.RACES, 'x'); item.name = 'The Velmar'
+      E.fill(T.RACES, item, 0, ['-core', deck])
+      for (const held of Object.values(item.sections[0].slots)) expect(held!.card.startsWith(`${deck}:`), held!.card).toBe(true)
+      const text = E.text(T.RACES, item)[0]
+      expect(text).toMatch(/^The Velmar are .+\.$/)
+      expect(text).not.toMatch(/undefined|  |\.\.| ,/)
+    }
+  })
+  it('lets a setting switch the animal deck on for its races', () => {
+    const s = B.newManual(['fantasy'], ['temperate'])
+    expect(G.drawnPacks(s)).toEqual(['fantasy'])
+    B.toggleDeck(s, 'animal')
+    expect(G.drawnPacks(s)).toEqual(['fantasy', 'animal'])
+    B.toggleDeck(s, 'story', 'core'); B.toggleDeck(s, 'story', 'fantasy')
+    expect(G.drawnPacks(s)).toEqual(['animal', '-core'])
+    B.addDrawn(s, 'race')
+    expect(s.drawn).toHaveLength(1)
+    for (const d of s.drawn!) for (const held of Object.values(d.sections[0].slots)) expect(held!.card).toMatch(/^animal:/)
+    B.toggleDeck(s, 'animal')
+    expect(G.drawnPacks(s)).toEqual(['-core'])
   })
 })

@@ -38,10 +38,10 @@ function unused(s: Setting, type: CardType) {
 }
 
 /** Put a deck in or out of the mix for whatever is added from now on. */
-export function toggleDeck(s: Setting, group: 'world' | 'story' | 'deities', id = '') {
+export function toggleDeck(s: Setting, group: 'world' | 'story' | 'deities' | 'animal', id = '') {
   const now = decksOf(s)
   const flip = (list: string[]) => (list.includes(id) ? list.filter((d) => d !== id) : [...list, id])
-  s.decks = group === 'deities' ? { ...now, deities: !now.deities } : { ...now, [group]: flip(now[group]) }
+  s.decks = group === 'deities' ? { ...now, deities: !now.deities } : group === 'animal' ? { ...now, animal: !now.animal } : { ...now, [group]: flip(now[group]) }
 }
 
 /** One of them at random, preferring the themed decks for terrain. */
