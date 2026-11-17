@@ -1970,6 +1970,22 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     expect(rim / isles).toBeGreaterThan(0.75)
   })
 
+  it('leaves no scrap of a place stranded inside a bordering world', () => {
+    // A piece of one of our places, cut off from it and lying in a neighbour's land, is the neighbour's.
+    const polys = (d: string) => d.split('Z').filter(Boolean).map((x) => coords(x))
+    let neighbours = 0
+    for (let n = 0; n < 10; n++) {
+      const map = M.buildMap(G.generateSetting({ ...G.DEFAULT_ANSWERS, size: 'continent', lands: ['temperate', 'coast', 'frost'] }, `stray-${n}`))
+      const beyond = map.beyond.flatMap((b) => polys(b.d))
+      neighbours += map.beyond.length
+      for (const r of map.regions) for (const piece of polys(r.d).slice(1)) {
+        const c: [number, number] = [piece.reduce((a, p) => a + p[0], 0) / piece.length, piece.reduce((a, p) => a + p[1], 0) / piece.length]
+        expect(beyond.some((b) => M.inside(c, b)), `a piece of ${r.name} lies in a bordering world`).toBe(false)
+      }
+    }
+    expect(neighbours).toBeGreaterThan(5)
+  })
+
   it('draws islands as islands, an atoll as a ring, and marsh full of pools', () => {
     const board = (terrain: string) => {
       const s = B.newManual(['fantasy'], ['temperate', 'coast'])

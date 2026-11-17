@@ -91,7 +91,7 @@ function noise(seed: number) {
   }
 }
 
-const inside = (p: P, poly: P[]) => {
+export const inside = (p: P, poly: P[]) => {
   let hit = false
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const [xi, yi] = poly[i], [xj, yj] = poly[j]
@@ -415,6 +415,32 @@ export function buildMap(s: Setting): MapData {
     let near = 0, least = Infinity
     centres.forEach((c, i) => { const power = (x - c[0]) ** 2 + (y - c[1]) ** 2 - radius[i] ** 2; if (power < least) { least = power; near = i } })
     own[k] = near
+  }
+  // A scrap of one of our places that is cut off from the place itself and lies against a neighbouring world's
+  // land belongs to that world: otherwise it shows as a stray patch of our colour inside the neighbour.
+  if (outer.length) {
+    const part = new Int32Array(cols * rows).fill(-1)
+    const home = pts.map((p) => (Math.floor(p[1] / g) + PADC) * cols + Math.floor(p[0] / g) + PADC)
+    let parts = 0
+    for (let start = 0; start < own.length; start++) {
+      if (own[start] < 0 || own[start] >= N || part[start] >= 0) continue
+      const label = own[start], cells = [start], touch = new Map<number, number>()
+      part[start] = parts
+      for (let n = 0; n < cells.length; n++) {
+        const k = cells[n], x = k % cols, y = (k - x) / cols
+        for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue
+          const j = ny * cols + nx
+          if (own[j] === label && part[j] < 0) { part[j] = parts; cells.push(j) }
+          else if (own[j] >= N) touch.set(own[j], (touch.get(own[j]) ?? 0) + 1)
+        }
+      }
+      parts++
+      if (touch.size && !cells.includes(home[label])) {
+        const to = [...touch].sort((a, b) => b[1] - a[1])[0][0]
+        for (const k of cells) own[k] = to
+      }
+    }
   }
   const ownerAt = (x: number, y: number) => {
     const cx = Math.floor(x / g) + PADC, cy = Math.floor(y / g) + PADC
