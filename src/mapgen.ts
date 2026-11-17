@@ -321,7 +321,7 @@ export function buildMap(s: Setting): MapData {
       // How far this cell lies inside the place's own ground, from the border with whoever is next nearest.
       const inFromBorder = near !== nearOurs ? 0 : next === Infinity ? Infinity : (next - least) / (2 * Math.hypot(centres[near][0] - centres[nextAt][0], centres[near][1] - centres[nextAt][1]) || 1)
       // Open water lies all round the group, so that it stands off from the mainland and never joins it.
-      const moat = inFromBorder < 30
+      const moat = inFromBorder < 38
       // Small islets for shoals and reefs, long thin ones for a barrier chain.
       const grain = kind.grain ?? 31
       const core = grain < 25 ? 0.07 : 0.13
@@ -369,6 +369,8 @@ export function buildMap(s: Setting): MapData {
     if ((y0 < 40 && open('north')) || (y0 > H - 40 && open('south')) || (x0 < 40 && open('west')) || (x0 > W - 40 && open('east'))) ground = -1
     if (ground > SEA) own[cy * cols + cx] = near < N ? nearOurs : near
     else if (band > SEA) own[cy * cols + cx] = N + bandOf
+    // The water between and around a group of islands is meant to be there, however narrow its channels.
+    if (own[cy * cols + cx] < 0 && kind.shape === 'isles') meant[cy * cols + cx] = 1
   }
 
   // No sea is left shut in: water that the open sea cannot reach becomes the land of whoever is nearest. The sea
