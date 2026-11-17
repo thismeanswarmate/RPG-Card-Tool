@@ -175,7 +175,7 @@ function SettingDecks({ s, onClose }: { s: SettingData; onClose(): void }) {
         { title: 'People and stories', items: Object.entries(STORY_DECKS).map(([id, label]) => ({ id: `story:${id}`, label, icon: id, note: `${STORY_CARDS.filter((c) => c.deck === id && ['character', 'drive', 'obstacle'].includes(c.kind)).length} cards`, on: now.story.includes(id) })) },
         { title: 'Powers and races', items: [
           { id: 'deities:', label: 'Deities', note: 'gods, and details that mention them', on: now.deities },
-          { id: 'animal:', label: 'Animal races', icon: 'animal', note: 'beast-folk traits for races', on: !!now.animal },
+          { id: 'animal:', label: 'Animal', icon: 'animal', note: 'beast-folk traits for races, and their past for the history', on: !!now.animal },
         ] },
       ]} />
   )

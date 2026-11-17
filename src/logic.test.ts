@@ -1447,3 +1447,27 @@ describe('the genre and animal decks for races', async () => {
     expect(G.drawnPacks(s)).toEqual(['-core'])
   })
 })
+
+describe('the optional decks for history', async () => {
+  const E = await import('./cardTool')
+  const T = await import('./cardTools')
+  it('covers every aspect of an age in each optional deck, and can tell a whole history alone', () => {
+    const cards = E.cardsOf(T.HISTORY)
+    expect(Object.keys(T.HISTORY.packs)).toEqual(['fantasy', 'scifi', 'horror', 'animal'])
+    for (const deck of Object.keys(T.HISTORY.packs)) {
+      for (const a of T.HISTORY.aspects) expect(cards.filter((c) => c.deck === deck && c.aspect === a.id).length, `${deck}:${a.id}`).toBeGreaterThanOrEqual(2)
+      for (let n = 0; n < 30; n++) {
+        const item = E.blank(T.HISTORY, 'x'); item.name = 'The Chronicle of Lorel'
+        item.sections = [{ slots: {} }, { slots: {} }]
+        item.sections.forEach((_, i) => E.fill(T.HISTORY, item, i, ['-core', deck]))
+        for (const section of item.sections) for (const held of Object.values(section.slots)) expect(held!.card.startsWith(`${deck}:`), held!.card).toBe(true)
+        const text = E.text(T.HISTORY, item)
+        expect(text).toHaveLength(3)
+        for (const age of text.slice(1)) expect(age).toMatch(/^The Age of .+ began when .+\. In those years .+ held sway\. Under them .+, but .+\. It ended when .+\. What remains of it is .+\.$/)
+        // Two ages of one history never share a draw.
+        const all = item.sections.flatMap((x) => Object.values(x.slots).map((h) => h!.card))
+        expect(new Set(all).size).toBe(all.length)
+      }
+    }
+  })
+})

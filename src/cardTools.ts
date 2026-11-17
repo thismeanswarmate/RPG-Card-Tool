@@ -279,7 +279,8 @@ const AGES = ['one age', 'two ages', 'three ages', 'four ages', 'five ages', 'si
 
 export const HISTORY: ToolDef = {
   id: 'history',
-  packs: PACKS,
+  // The genres, and an optional deck for the past of beast-folk.
+  packs: { ...PACKS, animal: 'Animal' },
   picture: { lead: 'A grand historical scene, as a mural might show it.', shape: 'wide' },
   sections: { label: 'Age', start: 3, max: 8 },
   name: (taken) => `The Chronicle of ${word(taken)}`,
@@ -288,55 +289,83 @@ export const HISTORY: ToolDef = {
     // "The Age of …"
     { id: 'name', label: 'The Age of', hint: 'What the age is called', cues: {
       core: `Ash; Long Roads; Quiet Bells; Salt; the Three Crowns; Open Hands; Iron; Rivers; Lanterns; Hunger; Sails; Broken Oaths;
-        the Long Summer; Stone; Wolves; Letters; the Empty Throne; Bridges; Harvests; Smoke; the Many Kings; Glass; Wandering; Thorns` } },
+        the Long Summer; Stone; Wolves; Letters; the Empty Throne; Bridges; Harvests; Smoke; the Many Kings; Glass; Wandering; Thorns`,
+      fantasy: `Dragons; the Elder Kings; Wild Magic; the Sundered Crown; Sleeping Gods; the Nine Towers; Starfall; the Green Court`,
+      scifi: `First Landing; the Long Silence; the Machines; the Great Fleets; Thin Air; the Two Suns; the Quiet Network; the Exodus`,
+      horror: `the Long Night; Plague Bells; the Black Harvest; Whispers; the Hungry Earth; Empty Cradles; the Red Moon; the Shut Doors`,
+      animal: `the Great Herds; Claw and Feather; the First Speech; the Long Migration; the Shared Fire; the Broken Pack; Tall Grass; the Antlered Crown` } },
     // "… began when …"
     { id: 'began', label: 'Began when', hint: 'What started it', cues: {
       core: `a river changed its course; the old line of rulers died out; a stranger arrived with a new way of doing things; the harvests failed three years running;
         two rival peoples made peace; a great city fell; a new metal was found in the hills; the sea rose; a law was written down for the first time;
         a long war simply stopped; the roads were opened; a child was crowned; a sickness passed, leaving half the houses empty; a mountain pass was discovered;
         the old gods fell silent; a marriage joined two crowns; the first ships came back from the far shore; a prophet began to preach; a comet was seen for forty nights; the forests began to die`,
-      fantasy: `a dragon woke; the last great wizard vanished; a door opened under the hill; the dead rose to defend their graves`,
-      scifi: `the first ship landed; the signal from home stopped; the machines were switched on; the sky was closed`,
-      horror: `the thing in the lake was first seen; the sun dimmed for a year; the wells turned; a village vanished overnight` } },
+      fantasy: `a dragon woke; the last great wizard vanished; a door opened under the hill; the dead rose to defend their graves;
+        a sword was drawn from a stone; the elder folk sailed away for good; magic first woke in common people; a star fell and was forged into a crown`,
+      scifi: `the first ship landed; the signal from home stopped; the machines were switched on; the sky was closed;
+        the colony ships made planetfall; a thinking machine was first switched on; a signal arrived from a dead star; the home world went quiet`,
+      horror: `the thing in the lake was first seen; the sun dimmed for a year; the wells turned; a village vanished overnight;
+        the dead first refused to stay buried; a bargain was struck at a crossroads; something answered the prayers; the fog came in and did not lift`,
+      animal: `the beasts first spoke; the herds turned north and did not return; the packs chose a single leader; the hunters and the hunted made a truce; the great birds came down from the peaks; the rivers filled with salmon as never before; the first den was dug that did not belong to one family; a white stag was seen at midwinter` } },
     // "In those years … held sway."
     { id: 'power', label: 'Who held sway', hint: 'Who mattered most', cues: {
       core: `a league of river towns; a line of warrior queens; the priests of a single temple; merchant families; a conqueror and then her quarrelling heirs;
         no one, and everyone suffered for it; the horse clans of the plains; an empire ruled from far away; a council of free cities; the keepers of the granaries;
         a brotherhood of builders; two dynasties in turn; the judges; pirates grown respectable; a people now entirely forgotten; an order of healers;
         the mountain holds; the great guilds; a single remarkable family; whoever held the bridge`,
-      fantasy: `a circle of mages; the court of the fair folk; a dragon and those who served it; a dynasty of undying kings`,
-      scifi: `the founding company; a council of machine minds; the captains of the fleet; whoever controlled the air`,
-      horror: `a cult that met by night; a family that did not age; fear, and those who sold protection from it; something that wore a crown` } },
+      fantasy: `a circle of mages; the court of the fair folk; a dragon and those who served it; a dynasty of undying kings;
+        the high kings of the elder folk; an order of dragon-riders; the lords under the mountain; a prophet-queen and her nine paladins`,
+      scifi: `the founding company; a council of machine minds; the captains of the fleet; whoever controlled the air;
+        the charter companies; a parliament of linked minds; the admirals of the long patrol; the engineers who kept the air`,
+      horror: `a cult that met by night; a family that did not age; fear, and those who sold protection from it; something that wore a crown;
+        the witch-finders; a court of pale nobles; the gravediggers’ guild; whatever lived in the well`,
+      animal: `the wolf-lords of the high forest; a council of old owls; the herd-mothers; the lion courts of the plains; the river clans of otter and beaver; the crows, who traded in secrets; the bear-kings, who ruled by sleeping lightly; the queens of the great hives` } },
     // "Under them …"
     { id: 'deed', label: 'Under them', hint: 'What was achieved', cues: {
       core: `the great roads were laid; the first laws were carved in stone; the marshes were drained and farmed; trade reached the far coasts; the walls were raised;
         the calendar was fixed; learning flourished, and libraries were founded; the land knew peace for three generations; the mines were opened; the old tongues were written down;
         the fleets were built; the borders doubled; the first coins were struck; cities grew where there had been villages; the temples were built;
         the forests were cleared for fields; bridges were thrown across every river; the arts were prized above war; the canals were dug; the tribes were made one people`,
-      fantasy: `the great spells were woven; the dragons were bound by treaty; the standing stones were raised; the roads between worlds were charted`,
-      scifi: `the planet was made to breathe; the archive was completed; the gates were opened; the long count of the stars began`,
-      horror: `the pits were dug, and filled; the wards were set; the bargain was struck; the old places were sealed` } },
+      fantasy: `the great spells were woven; the dragons were bound by treaty; the standing stones were raised; the roads between worlds were charted;
+        the great wards were laid along the borders; the giants were driven back beyond the ice; cities were sung up out of the rock; the first schools of magic were founded`,
+      scifi: `the planet was made to breathe; the archive was completed; the gates were opened; the long count of the stars began;
+        the orbital elevators were raised; a hundred worlds were seeded; the great archive was written into the ice; the first minds were copied`,
+      horror: `the pits were dug, and filled; the wards were set; the bargain was struck; the old places were sealed;
+        every door was marked and every window barred; the forest was burned back a mile; the sick were walled up with the well; a great cathedral was raised over the pit`,
+      animal: `the hunting laws were agreed; the long trails were worn across the continent; the dams were built and the valleys flooded; the small peoples were given a voice in council; the winter stores were first held in common; the cliff-cities were hollowed out; every pack was made to keep its borders; the old songs were taught to the young of every kind` } },
     // "… but …"
     { id: 'loss', label: 'But', hint: 'What it cost', cues: {
       core: `the forests were spent to do it; the poor paid for all of it; the old songs were forgotten; the rivers ran foul; it was built on the labour of the conquered;
         the neighbours never forgave it; faith withered; the countryside emptied; too much depended on too few; the knowledge was kept from the many;
         the treasury was ruined; the old families were destroyed; a people was driven out; no one planned for what came after; the winters grew harder;
-        it bred a pride that would be punished; the borders could not be held; the young were sent away to die; corruption crept in from the top; the truth of it was never written down` } },
+        it bred a pride that would be punished; the borders could not be held; the young were sent away to die; corruption crept in from the top; the truth of it was never written down`,
+      fantasy: `the old forests were felled for it; every spell cast then is still being paid for; the small folk were pushed to the margins; the gods grew jealous; a dark thing was buried rather than destroyed; the dragons never forgave it; too many true names were written down; the fair folk closed their doors to mortals`,
+      scifi: `the home world was stripped to pay for it; the machines were never asked; half the colonies were written off; no one alive understood how it worked; the gene lines were narrowed past mending; the sky was filled with wreckage; memory itself became a thing to be bought; those who stayed behind were forgotten`,
+      horror: `it was built on bones; the innocent burned with the guilty; no one could say afterwards who had been spared, or why; something was owed, and still is; the children born then were never quite right; the ground would not take seed for years; faith curdled into fear; the survivors would not speak of it`,
+      animal: `the prey peoples paid for the peace; the solitary kinds were driven out; the wild places grew crowded; the old instincts were shamed and hidden; the strong ate first, by law; the grazing was ruined for a generation; no one asked the birds; it made the packs soft` } },
     // "It ended when …"
     { id: 'end', label: 'Ended when', hint: 'How it finished', cues: {
       core: `the heirs fought among themselves; the money ran out; a plague came up the trade roads; the capital burned; invaders came over the mountains;
         the people simply stopped obeying; a flood took the low country; the last ruler died without naming an heir; a treaty was broken; the mines gave out;
         a rival power rose in the south; the army turned on its masters; a winter lasted two years; the truth about its founders came out; the great bridge fell;
         a new faith swept the old one away; the fleet was lost in a single storm; the cities emptied; a child asked the wrong question in public; it faded so slowly that no one marked the day`,
-      fantasy: `the magic failed; the dragon returned; the prophecy was fulfilled, though not as expected; the gods took sides`,
-      scifi: `the machines stopped; contact was lost; the reactor failed; the second fleet arrived`,
-      horror: `the wards broke; the debt was called in; the dark came early and stayed; the thing beneath woke` } },
+      fantasy: `the magic failed; the dragon returned; the prophecy was fulfilled, though not as expected; the gods took sides;
+        the last dragon was slain; the crown was broken into pieces; the dark lord rose in the east; the elder folk and the mountain folk went to war`,
+      scifi: `the machines stopped; contact was lost; the reactor failed; the second fleet arrived;
+        the jump gates closed; the network woke and chose its own ends; a plague crossed between ships; the fuel ran out`,
+      horror: `the wards broke; the debt was called in; the dark came early and stayed; the thing beneath woke;
+        the last witch was hanged; the bells stopped; someone finally paid the price; the sun came back, weaker`,
+      animal: `the herds scattered; a hard winter broke the truce; the two-legged folk came with fire; the pack turned on its leader; the rivers failed; the young would not keep the old borders; a sickness passed from kind to kind; the great birds flew away for good` } },
     // "What remains of it is …"
     { id: 'remains', label: 'What remains', hint: 'What it left behind', cues: {
       core: `a calendar still in use; roads that run straight to nowhere; a handful of words in the common speech; ruins that farmers plough around; a grudge between two peoples;
         the laws, mostly; a festival whose meaning is forgotten; a line of pretenders to a vanished throne; walls too large for the towns they guard; a song every child knows;
         coins that still turn up in fields; a faith kept by a few old families; the names of the months; a library no one can read; a border that makes no sense;
-        the shape of the fields; a sealed tomb; proverbs; a debt that is still being paid; nothing but the name` } },
+        the shape of the fields; a sealed tomb; proverbs; a debt that is still being paid; nothing but the name`,
+      fantasy: `standing stones that still hum; a sword no one can lift; ruined towers that are larger inside than out; a bloodline that carries the old gift; roads the fair folk still use by night; a sleeping king under a hill; spells that go off when ploughs strike them; the oaths, which still bind`,
+      scifi: `dead satellites still in orbit; machines that obey orders no one remembers giving; a dialect of old command words; sealed vaults that open to the right blood; a beacon still calling for help; cities under domes of cracked glass; a ship in the ice, intact; debts owed to a company that no longer exists`,
+      horror: `a pit that is never filled in; a rhyme children skip to; doors painted red for luck; a family that keeps to itself; graves weighted with iron; a night each year when no one goes out; the smell, in certain cellars; something that still walks the boundary`,
+      animal: `trails still followed without knowing why; borders marked by scent and stone; a truce at the water-holes; the names of the constellations; a taboo against eating one’s neighbours; howling at the full moon; antlers hung over doors; a wariness of fire` } },
   ],
   write: (g) => join(
     g('began') ? `${g('name') ? `The Age of ${g('name')}` : 'This age'} began when ${g('began')}.` : g('name') ? `Then came the Age of ${g('name')}.` : '',
