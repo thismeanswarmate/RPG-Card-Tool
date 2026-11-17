@@ -376,31 +376,58 @@ export function buildMap(s: Setting): MapData {
     }
   })
 
-  // The land of each neighbouring world: a broad blob about its centre, fitted against the places it borders.
+  // Trim the sheet: an even border of sea on each open side, and on a side with a neighbouring world, far
+  // enough out that its land runs off the edge.
+  const all = regions.flatMap((r) => r.points)
+  // Each open side gets a sea of its own width: some a narrow strait's worth, some a broad ocean.
+  const sea = () => 64 + rng() * rng() * 330
+  const box = { x0: Math.min(...all.map((p) => p[0])) - sea(), y0: Math.min(...all.map((p) => p[1])) - sea() - 26, x1: Math.max(...all.map((p) => p[0])) + sea(), y1: Math.max(...all.map((p) => p[1])) + sea() }
+  outer.forEach((b, n) => {
+    const [cx, cy] = outerAt[n], cut = typical * 0.32
+    if (b.side === 'north') box.y0 = Math.min(Math.min(...all.map((p) => p[1])) - 40, cy - cut)
+    if (b.side === 'south') box.y1 = Math.max(Math.max(...all.map((p) => p[1])) + 40, cy + cut)
+    if (b.side === 'west') box.x0 = Math.min(Math.min(...all.map((p) => p[0])) - 40, cx - cut)
+    if (b.side === 'east') box.x1 = Math.max(Math.max(...all.map((p) => p[0])) + 40, cx + cut)
+  })
+  // The land of each neighbouring world: a band along the whole of its edge of the sheet, corners and all,
+  // with an uneven shore, swelling inward opposite its centre until it runs under the places it borders.
+  // Two neighbours on adjoining sides overlap in the corner between them, so no corner is left to the sea.
   const lands = outerAt.map((c, n) => {
-    const i = pts.length + n
-    // Each neighbour is a different size and has an uneven outline of its own, so the seas between them differ.
-    const size = 1.25 + rng() * 0.95, lobes = [rng() * Math.PI * 2, rng() * Math.PI * 2]
-    return outline(i, Array.from({ length: 72 }, (_, k): P => {
-      const a = (k / 72) * Math.PI * 2
-      const r = typical * size * (0.62 + 0.7 * edge(i * 7.3 + Math.cos(a) * 2.4 + 5, Math.sin(a) * 2.4 + 5)) * (1 + 0.2 * Math.sin(a * 2 + lobes[0]) + 0.16 * Math.sin(a * 3 + lobes[1]))
-      return [c[0] + Math.cos(a) * r, c[1] + Math.sin(a) * r]
-    }))
+    const side = outer[n].side
+    const flat = side === 'north' || side === 'south'
+    // `edgeAt` is where the sheet ends on this side, `sign` points from there into the sheet.
+    const edgeAt = side === 'north' ? box.y0 : side === 'south' ? box.y1 : side === 'west' ? box.x0 : box.x1
+    const sign = side === 'north' || side === 'west' ? 1 : -1
+    const [from, to] = flat ? [box.x0 - 80, box.x1 + 80] : [box.y0 - 80, box.y1 + 80]
+    const centre = flat ? c[0] : c[1]
+    const swell = Math.abs((flat ? c[1] : c[0]) - edgeAt) + typical * 0.72
+    const phase = rng() * 50
+    const steps = Math.round((to - from) / 12)
+    const shore = Array.from({ length: steps + 1 }, (_, k): P => {
+      const at = from + ((to - from) * k) / steps
+      const depth = 44 + 120 * edge(phase + at / 150, n * 3.7 + 1) + swell * Math.exp(-(((at - centre) / (typical * 1.15)) ** 2))
+      return flat ? [at, edgeAt + sign * depth] : [edgeAt + sign * depth, at]
+    })
+    // Closed far outside the sheet, so that only the shore is ever seen.
+    const out = (p: P): P => (flat ? [p[0], edgeAt - sign * 400] : [edgeAt - sign * 400, p[1]])
+    return [out(shore[0]), ...shore, out(shore[shore.length - 1])]
   })
 
   // Rivers. Each rises inside a place and runs to that place's own stretch of open coast, or failing that to its
   // lake; a lake near the coast drains to the sea. A river keeps to its place and stays clear of the lettering.
+  // Where each place lies, to rule most of them out at a glance.
+  const boxes = regions.map((r) => { const xs = r.points.map((p) => p[0]), ys = r.points.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] })
+  const inPlace = (p: P, j: number) => p[0] >= boxes[j][0] && p[0] <= boxes[j][2] && p[1] >= boxes[j][1] && p[1] <= boxes[j][3] && inside(p, regions[j].points)
   const coastOf = regions.map((r, i) => r.points.filter((p, k) => {
     if (k % 3) return false
     const out = Math.hypot(p[0] - r.x, p[1] - r.y) || 1
     const beyond: P = [p[0] + ((p[0] - r.x) / out) * 14, p[1] + ((p[1] - r.y) / out) * 14]
-    return !regions.some((o, j) => j !== i && inside(beyond, o.points)) && !inside(beyond, r.points) && !lands.some((l) => inside(beyond, l))
+    return !regions.some((_, j) => inPlace(beyond, j)) && !lands.some((l) => inside(beyond, l))
   }))
   const rivers: P[][] = []
   const riverHome: number[] = []
   // A river may now cross from place to place on its way down, so what it must keep clear of is everything on the map.
-  const boxes = regions.map((r) => { const xs = r.points.map((p) => p[0]), ys = r.points.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] })
-  const onLand = (p: P) => regions.some((o, j) => p[0] >= boxes[j][0] && p[0] <= boxes[j][2] && p[1] >= boxes[j][1] && p[1] <= boxes[j][3] && inside(p, o.points))
+  const onLand = (p: P) => regions.some((_, j) => inPlace(p, j))
   const letteredAt = (p: P) => regions.some((o) => Math.abs(p[0] - o.x) < 76 && p[1] > o.y - 54 && p[1] < o.y + 24)
   const marked = regions.flatMap((o) => o.sites)
   const shores = coastOf.flatMap((list, j) => list.map((p) => ({ p, j })))
@@ -419,7 +446,8 @@ export function buildMap(s: Setting): MapData {
       // How far it means to run: anything from a short stream to a river that crosses several places.
       const want = 70 + rng() * 620
       const far = (q: P) => Math.hypot(q[0] - start[0], q[1] - start[1])
-      const mouth = shores.length ? [...shores].sort((p, q) => Math.abs(far(p.p) - want) - Math.abs(far(q.p) - want))[Math.floor(rng() * Math.min(4, shores.length))] : undefined
+      // The mouth is the best of a handful of stretches of coast picked at random: the one nearest the length it means to run.
+      const mouth = shores.length ? Array.from({ length: 24 }, () => shores[Math.floor(rng() * shores.length)]).sort((p, q) => Math.abs(far(p.p) - want) - Math.abs(far(q.p) - want))[0] : undefined
       const end: P = mouth ? mouth.p : pool!.c
       const len = far(end)
       if (len < 46 || len > 760) continue
@@ -471,19 +499,6 @@ export function buildMap(s: Setting): MapData {
     return { a, b, d: `M${r1(ax)} ${r1(ay)}Q${r1(mx)} ${r1(my)} ${r1(bx)} ${r1(by)}` }
   })
 
-  // Trim the sheet: an even border of sea on each open side, and on a side with a neighbouring world, far
-  // enough out that its land runs off the edge.
-  const all = regions.flatMap((r) => r.points)
-  // Each open side gets a sea of its own width: some a narrow strait's worth, some a broad ocean.
-  const sea = () => 64 + rng() * rng() * 330
-  const box = { x0: Math.min(...all.map((p) => p[0])) - sea(), y0: Math.min(...all.map((p) => p[1])) - sea() - 26, x1: Math.max(...all.map((p) => p[0])) + sea(), y1: Math.max(...all.map((p) => p[1])) + sea() }
-  outer.forEach((b, n) => {
-    const [cx, cy] = outerAt[n], cut = typical * 0.32
-    if (b.side === 'north') box.y0 = Math.min(Math.min(...all.map((p) => p[1])) - 40, cy - cut)
-    if (b.side === 'south') box.y1 = Math.max(Math.max(...all.map((p) => p[1])) + 40, cy + cut)
-    if (b.side === 'west') box.x0 = Math.min(Math.min(...all.map((p) => p[0])) - 40, cx - cut)
-    if (b.side === 'east') box.x1 = Math.max(Math.max(...all.map((p) => p[0])) + 40, cx + cut)
-  })
   const tx = -box.x0, ty = -box.y0
   const moved = regions.map((r) => {
     const points = r.points.map(([x, y]): P => [x + tx, y + ty])
@@ -518,24 +533,30 @@ export function buildMap(s: Setting): MapData {
 
   // Neighbouring worlds: the land of each as it falls on the sheet, and its name where that land is roomiest.
   const [W, H] = [Math.round(width), Math.round(height)]
+  const ours = moved.flatMap((r) => r.points.filter((_, k) => k % 6 === 0))
+  // Where each place lies, to rule most of them out at a glance.
+  const spans = moved.map((r) => { const xs = r.points.map((p) => p[0]), ys = r.points.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] })
   const beyond = outer.map((b, n) => {
     const land = lands[n].map(([x, y]): P => [x + tx, y + ty])
-    let seen = land
-    for (const [m, nrm] of [[[0, 0], [-1, 0]], [[W, 0], [1, 0]], [[0, 0], [0, -1]], [[0, H], [0, 1]]] as [P, P][]) seen = clip(seen, m, nrm)
-    // The cut along the sheet's edge is one long straight side; it is broken into short steps so that the
-    // roomiest spot is measured from it as from the rest of the outline.
-    const stepped = seen.flatMap((a, k): P[] => {
-      const c = seen[(k + 1) % seen.length], n = Math.max(1, Math.round(Math.hypot(c[0] - a[0], c[1] - a[1]) / 12))
-      return Array.from({ length: n }, (_, j): P => [a[0] + ((c[0] - a[0]) * j) / n, a[1] + ((c[1] - a[1]) * j) / n])
-    })
-    const [hx, hy] = stepped.length > 2 ? heart(stepped) : [W / 2, H / 2]
-    // Lettered across for a neighbour above or below and up the side for one to the left or right, and kept
-    // far enough from the corners of the sheet that the whole name shows.
+    // Lettered across for a neighbour above or below and up the side for one to the left or right. The name goes
+    // where its land is roomiest on the sheet: clear of this world's places and far enough from the sheet's
+    // corners that the whole of it shows.
     const turn = b.side === 'west' ? -90 : b.side === 'east' ? 90 : 0
     const half = s.names[b.id].length * 6.4 + 12
-    const keep = (v: number, max: number) => Math.min(Math.max(v, Math.min(half, max / 2)), Math.max(max - half, max / 2))
-    const [x, y] = turn ? [hx, keep(hy, H)] : [keep(hx, W), hy]
-    return { id: b.id, name: s.names[b.id], x: r1(x), y: r1(y), turn, d: pathOf(land) }
+    const rim = land.filter((_, k) => k % 2 === 0)
+    let best: P = [W / 2, H / 2], room = -1
+    for (let gx = 22; gx < W - 20; gx += 22) for (let gy = 22; gy < H - 20; gy += 22) {
+      // Along its own line of lettering it needs half its length each way; across it, only a little.
+      if (turn ? gy < half + 14 || gy > H - half - 14 : gx < half + 14 || gx > W - half - 14) continue
+      const p: P = [gx, gy]
+      if (!inside(p, land) || moved.some((r, k) => gx >= spans[k][0] && gx <= spans[k][2] && gy >= spans[k][1] && gy <= spans[k][3] && inside(p, r.points))) continue
+      const d = Math.min(
+        ...rim.map((q) => Math.hypot(p[0] - q[0], p[1] - q[1])), ...ours.map((q) => Math.hypot(p[0] - q[0], p[1] - q[1])),
+        turn ? Math.min(gx, W - gx) : Math.min(gy, H - gy),
+      )
+      if (d > room) { room = d; best = p }
+    }
+    return { id: b.id, name: s.names[b.id], x: r1(best[0]), y: r1(best[1]), turn, d: pathOf(land) }
   })
   // The seas, lettered along the open edges: across the top and bottom, and up the two sides.
   const edgeSpot: Record<string, [number, number, number]> = { north: [W / 2, 40, 0], south: [W / 2, H - 28, 0], east: [W - 36, H / 2, 90], west: [36, H / 2, -90] }

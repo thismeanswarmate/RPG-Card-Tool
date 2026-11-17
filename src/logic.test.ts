@@ -1716,16 +1716,19 @@ describe('bordering worlds and named water', async () => {
         // It reaches past its own edge of the sheet …
         const past = { north: land.some((p) => p[1] < 0), south: land.some((p) => p[1] > map.h), west: land.some((p) => p[0] < 0), east: land.some((p) => p[0] > map.w) }
         expect(past[side], `${side} runs off the sheet`).toBe(true)
-        // … and touches this world's land, with no sea between.
-        const gap = Math.min(...land.map((p) => Math.min(...ours.map((q) => Math.hypot(p[0] - q[0], p[1] - q[1])))))
-        expect(gap, `${side} is joined on`).toBeLessThan(12)
-        // Its name sits on its own land, on the sheet.
+        // … and runs in under this world's land, so the two are joined with no sea between.
+        expect(ours.some((q) => within(q as [number, number], land)), `${side} is joined on`).toBe(true)
+        // It fills both corners at the ends of its edge.
+        const corners: Record<string, [number, number][]> = {
+          north: [[6, 6], [map.w - 6, 6]], south: [[6, map.h - 6], [map.w - 6, map.h - 6]], west: [[6, 6], [6, map.h - 6]], east: [[map.w - 6, 6], [map.w - 6, map.h - 6]],
+        }
+        for (const c of corners[side]) expect(within(c, land), `${side} fills its corners`).toBe(true)
+        // Its name sits on its own land, on the sheet, and not on top of this world.
         expect(b.x > 0 && b.y > 0 && b.x < map.w && b.y < map.h).toBe(true)
         expect(within([b.x, b.y], land)).toBe(true)
+        expect(map.regions.some((r) => within([b.x, b.y], r.points as [number, number][]))).toBe(false)
         // … and well in from the edge of the sheet, so that it is not cut off.
         expect(Math.min(b.x, b.y, map.w - b.x, map.h - b.y), `${side} name clear of the edge`).toBeGreaterThan(22)
-        // No place of this world lies under it.
-        for (const r of map.regions) expect(within([r.x, r.y], land)).toBe(false)
       }
       for (const x of map.seas) expect(x.x > 0 && x.y > 0 && x.x < map.w && x.y < map.h).toBe(true)
     }

@@ -80,6 +80,13 @@ export function SettingMap({ s }: { s: Setting }) {
 
         {/* Neighbouring worlds: plain land joined to this one and running off the sheet. */}
         {map.beyond.map((b) => <path key={b.id} d={b.d} fill={t.beyond} stroke={t.beyond} strokeWidth="3" strokeLinejoin="round" pointerEvents="none" />)}
+        {/* The frontier: this world's outline in dots and dashes. Its inner half is covered by the land drawn next, and over
+            the sea it falls on the coastline, so it shows only where a neighbouring world lies against it. */}
+        {map.beyond.length > 0 && (
+          <g fill="none" stroke={t.ink} strokeWidth="4" strokeDasharray="9 4 2 4" strokeLinejoin="round" pointerEvents="none">
+            {map.regions.map((r) => <path key={r.id} d={r.d} />)}
+          </g>
+        )}
 
         {/* The land: a wash for each region, with faint borders between them. */}
         {/* The paper under each wash is drawn a little proud of its outline, which closes any hairline between neighbours. */}
@@ -205,11 +212,10 @@ export function SettingMap({ s }: { s: Setting }) {
           {map.lakes.map((l, i) => <text key={i} x={l.x} y={l.y} textAnchor="middle">{l.name}</text>)}
         </g>
 
-        {/* The frontier with each neighbouring world, and its name on its own land. */}
+        {/* The name of each neighbouring world, on its own land. */}
         <g pointerEvents="none">
           {map.beyond.map((b) => (
             <g key={b.id}>
-              <path d={b.d} fill="none" stroke={t.ink} strokeWidth="1.8" strokeDasharray="9 4 2 4" strokeLinejoin="round" opacity=".8" />
               <text transform={`translate(${b.x} ${b.y}) rotate(${b.turn})`} textAnchor="middle" fontSize="15" fontStyle="italic" letterSpacing=".16em" fill={t.ink} opacity=".8" stroke={t.beyond} strokeWidth="4" paintOrder="stroke">
                 {titleCase(b.name.replace(/^the /, 'The ')).toUpperCase()}
               </text>
