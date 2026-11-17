@@ -25,8 +25,8 @@ const GLYPH: Record<Glyph, string> = {
 
 const THEMES = {
   // `ocean` is the open sea, `sea` the paler shallows round the land, and `water` the lakes and rivers.
-  parchment: { paper: '#e9dcc0', edge: '#8fa3a3', ink: '#3b2a1a', faint: '#8a7353', ocean: '#b6cbc9', sea: '#d5e3dd', water: '#9fc0c6', route: '#8c3b2a', halo: '#efe4cb' },
-  blueprint: { paper: '#122a44', edge: '#060f1c', ink: '#d6e8ff', faint: '#7fa3cc', ocean: '#0a1a2e', sea: '#17395c', water: '#2b6a9c', route: '#ffd27a', halo: '#122a44' },
+  parchment: { paper: '#e9dcc0', edge: '#8fa3a3', ink: '#3b2a1a', faint: '#8a7353', ocean: '#b6cbc9', sea: '#d5e3dd', water: '#9fc0c6', beyond: '#d3cbb6', route: '#8c3b2a', halo: '#efe4cb' },
+  blueprint: { paper: '#122a44', edge: '#060f1c', ink: '#d6e8ff', faint: '#7fa3cc', ocean: '#0a1a2e', sea: '#17395c', water: '#2b6a9c', beyond: '#1a2f47', route: '#ffd27a', halo: '#122a44' },
 }
 
 const go = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -69,6 +69,17 @@ export function SettingMap({ s }: { s: Setting }) {
 
         {/* The ocean: one even colour to the edge of the sheet. */}
         <rect width={map.w} height={map.h} fill={t.ocean} />
+
+        {/* The shores of neighbouring worlds, coming in from the edges: shallows, a coastline, and land left plain. */}
+        <g strokeLinejoin="round" pointerEvents="none">
+          {map.beyond.map((b) => (
+            <g key={b.id}>
+              <path d={b.d} fill="none" stroke={t.sea} strokeWidth="30" opacity=".4" />
+              <path d={b.d} fill="none" stroke={t.sea} strokeWidth="14" opacity=".55" />
+              <path d={b.d} fill={t.beyond} stroke={t.ink} strokeWidth="2.2" />
+            </g>
+          ))}
+        </g>
 
         {/* Rings of shallow water around the land, then the coastline itself. */}
         <g fill="none" strokeLinejoin="round">
@@ -226,7 +237,7 @@ export function SettingMap({ s }: { s: Setting }) {
         <rect x="14" y="14" width={map.w - 28} height={map.h - 28} fill="none" stroke={t.ink} strokeWidth=".8" pointerEvents="none" />
       </svg>
       <figcaption>
-        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. Neighbouring worlds are named along the edges they lie beyond. The sea is drawn plain; lakes and rivers lie on the land. Each place carries its emblem, with the smaller emblems of the cultures kept there. A house marks a site and a cross a dangerous place. Settlements grow with their rank: a small circle for a village, a diamond for a trading post, a ringed dot for a town, battlements for a fortress town, a double ring for a city and a starred ring for the capital. Click any of them to read about it.</span>
+        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. The shores of neighbouring worlds come in from the edges they lie beyond, each with its name. The sea is drawn plain; lakes and rivers lie on the land. Each place carries its emblem, with the smaller emblems of the cultures kept there. A house marks a site and a cross a dangerous place. Settlements grow with their rank: a small circle for a village, a diamond for a trading post, a ringed dot for a town, battlements for a fortress town, a double ring for a city and a starred ring for the capital. Click any of them to read about it.</span>
         <button onClick={save}>Save map</button>
       </figcaption>
     </figure>

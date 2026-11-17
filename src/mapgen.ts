@@ -63,7 +63,7 @@ export interface MapData {
   rivers: { d: string }[]
   scale: { px: number; label: string }
   /** The names of neighbouring worlds, each set at the edge of the sheet on its side: where, and turned how far. */
-  beyond: { id: string; name: string; x: number; y: number; turn: number }[]
+  beyond: { id: string; name: string; x: number; y: number; turn: number; /** Its shore, coming in from the edge of the sheet. */ d: string }[]
   theme: 'parchment' | 'blueprint'
 }
 
@@ -426,7 +426,8 @@ export function buildMap(s: Setting): MapData {
 
   // Trim the sheet to the land, leaving an even border of sea all round.
   const all = regions.flatMap((r) => r.points)
-  const PAD = 96
+  // With neighbouring worlds to show along the edges, the sea is left wider so their shores have room.
+  const PAD = s.beyond?.length ? 132 : 96
   const tx = PAD - Math.min(...all.map((p) => p[0])), ty = PAD + 26 - Math.min(...all.map((p) => p[1]))
   const moved = regions.map((r) => {
     const points = r.points.map(([x, y]): P => [x + tx, y + ty])
@@ -449,9 +450,27 @@ export function buildMap(s: Setting): MapData {
     north: [W / 2, 40, 0], south: [W / 2, H - 28, 0], east: [W - 36, H / 2, 90], west: [36, H / 2, -90],
     'north-east': [W - 36, H * 0.27, 90], 'south-east': [W - 36, H * 0.76, 90], 'north-west': [36, H * 0.3, -90], 'south-west': [36, H * 0.73, -90],
   }
-  const beyond = (s.beyond ?? []).filter((b) => s.names[b.id] && edgeSpot[b.side]).map((b) => {
+  const shown = (s.beyond ?? []).filter((b) => s.names[b.id] && edgeSpot[b.side])
+  const beyond = shown.map((b, n) => {
     const [x, y, turn] = edgeSpot[b.side]
-    return { id: b.id, name: s.names[b.id], x: r1(x), y: r1(y), turn }
+    // Its shore: a strip of land along its stretch of the edge, deepest in the middle and uneven all along.
+    // `along` runs down the edge and `into` points from the edge into the sheet.
+    const along: P = turn ? [0, 1] : [1, 0]
+    const into: P = turn === 90 ? [-1, 0] : turn === -90 ? [1, 0] : b.side === 'north' ? [0, 1] : [0, -1]
+    const edgeAt: P = turn === 90 ? [W, y] : turn === -90 ? [0, y] : [x, b.side === 'north' ? 0 : H]
+    const sharing = shown.filter((o) => (edgeSpot[o.side][2] === turn) && (turn !== 0 || o.side === b.side)).length
+    const half = (turn ? H : W) * (sharing > 1 ? 0.115 : 0.27)
+    const steps = Math.max(14, Math.round((half * 2) / 12))
+    const shore = Array.from({ length: steps + 1 }, (_, k): P => {
+      const t = k / steps
+      const depth = (Math.sin(t * Math.PI) ** 0.55) * 78 * (0.55 + 0.75 * edge(n * 5.3 + t * 4.2 + 11, n * 2.9 + 3)) + 6 * Math.sin(t * 23 + n)
+      const run = (t - 0.5) * half * 2
+      return [edgeAt[0] + along[0] * run + into[0] * depth, edgeAt[1] + along[1] * run + into[1] * depth]
+    })
+    // Closed well outside the sheet, so only the shore itself is ever seen.
+    const out = (p: P): P => [p[0] - into[0] * 60, p[1] - into[1] * 60]
+    const d = `M${[out(shore[0]), ...shore, out(shore[shore.length - 1])].map(([px, py]) => `${r1(px)} ${r1(py)}`).join('L')}Z`
+    return { id: b.id, name: s.names[b.id], x: r1(x), y: r1(y), turn, d }
   })
   const [px, label] = MILES[s.answers.size] ?? MILES.country
   return { beyond, w: Math.round(width), h: Math.round(height), regions: moved, routes: shifted, lakes: lakePaths, rivers: riverPaths, scale: { px, label }, theme }

@@ -1687,6 +1687,19 @@ describe('bordering worlds', async () => {
       const map = M.buildMap(s)
       expect(map.beyond.map((b) => b.name).sort()).toEqual(s.beyond!.map((b) => s.names[b.id]).sort())
       for (const b of map.beyond) expect(b.x > 0 && b.y > 0 && b.x < map.w && b.y < map.h).toBe(true)
+      // Each has a shore that comes into the sheet from its own edge and stops well short of the land.
+      const land = map.regions.flatMap((r) => r.points)
+      for (const b of map.beyond) {
+        const pts = [...b.d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [+m[1], +m[2]])
+        const seen = pts.filter(([x, y]) => x > 0 && y > 0 && x < map.w && y < map.h)
+        expect(seen.length).toBeGreaterThan(8)
+        for (const [x, y] of seen) {
+          expect(Math.min(x, y, map.w - x, map.h - y)).toBeLessThan(105)
+          expect(Math.min(...land.map((p) => Math.hypot(p[0] - x, p[1] - y)))).toBeGreaterThan(24)
+        }
+        // Its name is lettered on its own land.
+        expect(Math.min(...seen.map(([x, y]) => Math.hypot(x - b.x, y - b.y)))).toBeLessThan(90)
+      }
       expect(G.generateSetting({ ...G.DEFAULT_ANSWERS, size }, `beyond-${size}-${n}`).beyond).toEqual(s.beyond)
     }
   })
