@@ -2013,6 +2013,26 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     expect(T.landOf('Methane Sea').shape).toBe('land')
     expect(T.landOf('Methane Sea').pools).toEqual([1, 1])
     expect(T.landOf('Wadi').river).toBeGreaterThan(0.5)
+    // Lakes: every land has a least and a greatest size and a lean toward small ones, and these go by the land.
+    // Forest holds far broader waters than steppe or desert, a rift the longest of all, and marsh mostly pools.
+    for (const name of ['Old Forest', 'Steppe', 'Marsh', 'Moor', 'Rift Valley', 'Dunes', 'Caldera']) {
+      const { poolSize, poolSkew } = T.landOf(name)
+      expect(poolSize[1]).toBeGreaterThan(poolSize[0])
+      expect(poolSkew).toBeGreaterThan(1)
+    }
+    expect(T.landOf('Old Forest').poolSize[1]).toBeGreaterThan(100)
+    expect(T.landOf('Old Forest').poolSize[1]).toBeGreaterThan(T.landOf('Steppe').poolSize[1])
+    expect(T.landOf('Steppe').poolSize[1]).toBeGreaterThan(T.landOf('Dunes').poolSize[1])
+    expect(T.landOf('Rift Valley').poolSize[1]).toBeGreaterThan(T.landOf('Old Forest').poolSize[1])
+    expect(T.landOf('Marsh').poolSkew).toBeGreaterThan(T.landOf('Caldera').poolSkew)
+    // Across many forests most lakes are small and a few are broad.
+    const sizes: number[] = []
+    for (let n = 0; n < 14; n++) {
+      const s = board('Old Forest'); s.seed = `forest-${n}`
+      for (const l of M.buildMap(s).lakes) { const pts = coords(l.d), xs = pts.map((p) => p[0]); sizes.push((Math.max(...xs) - Math.min(...xs)) / 2) }
+    }
+    sizes.sort((a, b) => a - b)
+    if (sizes.length > 4) { expect(sizes[sizes.length >> 1]).toBeLessThan(45); expect(sizes[sizes.length - 1]).toBeGreaterThan(sizes[0] * 2) }
     expect(T.sideNearness({ x: 0, y: 0 }, { x0: 0, y0: 0, x1: 10, y1: 10 })).toEqual([1, 0, 0, 1])
   })
 })

@@ -18,8 +18,10 @@ export interface Land {
   common: number
   /** How many lakes or pools it holds, least and most; absent leaves it to how wet it is. */
   pools?: [number, number]
-  /** How large those are across, least and most. */
-  poolSize?: [number, number]
+  /** How large its lakes are, as the least and the greatest radius. */
+  poolSize: [number, number]
+  /** How strongly small lakes outnumber large ones: 1 is even, higher makes a broad water ever rarer. */
+  poolSkew: number
   /** Its lakes are long and narrow, as in a rift. */
   long?: boolean
   /** The chance that a river rises here, where the land calls for one more or less often than its wetness would. */
@@ -34,7 +36,7 @@ export interface Land {
   ringWidth?: number
 }
 
-const BASE: Land = { temp: 0, bound: 0.5, wet: 1, shape: 'land', rugged: 0.35, high: false, common: 2.5 }
+const BASE: Land = { temp: 0, bound: 0.5, wet: 1, shape: 'land', rugged: 0.35, high: false, common: 2.5, poolSize: [9, 95], poolSkew: 3 }
 
 /** Rules in order; every one whose words appear in the name adds its part, later ones over earlier. */
 const RULES: [RegExp, Partial<Land>][] = [
@@ -55,15 +57,24 @@ const RULES: [RegExp, Partial<Land>][] = [
   [/marsh|fen|bog|swamp|mangrove|tidal|wetland|delta|drowned|moor/, { wet: 3 }],
   [/floodplain|estuary|oasis|fjord|tundra|taiga|lagoon/, { wet: 2 }],
   [/dune|erg|desert|salt|dry lake|stony|badland|mesa|ash|asteroid|bone|glacier|ice|snow|wadi|derelict|orbital|dome|frozen/, { wet: 0 }],
+  // The size of lakes: mostly small everywhere, with a greatest size and a lean toward small ones that go by the land.
+  // Forest and taiga hold the broadest waters and highlands long lochs; open grassland keeps to ponds; marsh and
+  // moor are all pools with now and then a mere.
+  [/forest|wood|taiga/, { poolSize: [10, 125], poolSkew: 2.6 }],
+  [/highland|plateau|peak|steps|fjord/, { poolSize: [10, 110], poolSkew: 2.4 }],
+  [/floodplain|estuary|delta|meadow|heath|terraformed/, { poolSize: [9, 85], poolSkew: 3 }],
+  [/steppe|savanna|plain|canyon|cliff|headland|valley|cavern/, { poolSize: [8, 60], poolSkew: 3.6 }],
+  [/marsh|fen|bog|swamp|mangrove|tidal|wetland/, { poolSize: [5, 70], poolSkew: 3.4 }],
+  [/dune|erg|desert|salt|dry lake|stony|badland|mesa|ash|wadi|bone/, { poolSize: [6, 30], poolSkew: 3 }],
   // Thaw ponds on frozen ground, sinkholes in karst, a crater lake in a caldera, long lakes in a rift, one pool in an oasis.
-  [/tundra|permafrost/, { wet: 2, pools: [2, 4], poolSize: [6, 12] }],
-  [/moor/, { pools: [10, 15], poolSize: [5, 17] }],
-  [/karst/, { pools: [1, 3], poolSize: [5, 10], river: 0.25 }],
-  [/caldera/, { pools: [1, 1], poolSize: [20, 30], river: 0.3 }],
-  [/rift/, { pools: [1, 2], poolSize: [20, 34], long: true }],
-  [/oasis/, { pools: [1, 1], poolSize: [8, 13], river: 0 }],
+  [/tundra|permafrost/, { wet: 2, pools: [2, 4], poolSize: [6, 48], poolSkew: 3 }],
+  [/moor/, { pools: [10, 15], poolSize: [5, 60], poolSkew: 3.8 }],
+  [/karst/, { pools: [1, 3], poolSize: [5, 26], poolSkew: 2.5, river: 0.25 }],
+  [/caldera/, { pools: [1, 1], poolSize: [18, 70], poolSkew: 1.6, river: 0.3 }],
+  [/rift/, { pools: [1, 2], poolSize: [22, 150], poolSkew: 1.8, long: true }],
+  [/oasis/, { pools: [1, 1], poolSize: [8, 28], poolSkew: 2.2, river: 0 }],
   // A sea of something other than water is one great lake in its land; a wadi is the bed of a river that sometimes runs.
-  [/methane sea/, { wet: 2, pools: [1, 1], poolSize: [40, 58], river: 0.5 }],
+  [/methane sea/, { wet: 2, pools: [1, 1], poolSize: [45, 160], poolSkew: 1.2, river: 0.5 }],
   [/wadi/, { river: 0.85 }],
   // Country a river made, or that a river always runs through.
   [/floodplain|estuary|delta|canyon/, { river: 1 }],

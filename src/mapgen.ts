@@ -440,25 +440,33 @@ export function buildMap(s: Setting): MapData {
     const fxs = fine.map((p) => p[0]), fys = fine.map((p) => p[1])
     const [bx0, by0, bx1, by1] = [Math.min(...fxs), Math.min(...fys), Math.max(...fxs), Math.max(...fys)]
     const close = kind.wet >= 3 ? 0.5 : 1
-    for (let tries = 0; tries < 50 + want * 30 && pools.length < want; tries++) {
+    // Each kind of land has its own least and greatest lake, and its own lean toward small ones: the higher the
+    // lean, the rarer a broad water. A lake is given a size and then looked for a home; a broad one is tried in
+    // many spots and at many angles before it is made any smaller, so that it is drawn large wherever it can be.
+    const [least, most] = kind.poolSize
+    let wish = 0, goes = 0, made = 0
+    for (let tries = 0; tries < 90 + want * 45 && pools.length < want; tries++) {
+      if (pools.length > made) { made = pools.length; wish = 0 }
+      if (wish && ++goes > (wish > 28 ? 18 : 5)) { wish *= 0.74; goes = 0; if (wish < least) wish = 0 }
+      if (!wish) { wish = least + rng() ** kind.poolSkew * (most - least); goes = 0 }
+      const r = wish
       const c: P = [bx0 + rng() * (bx1 - bx0), by0 + rng() * (by1 - by0)]
-      // Marsh pools are small and many; elsewhere mostly ponds, now and then a broad water.
-      const r = (kind.poolSize ? kind.poolSize[0] + rng() * (kind.poolSize[1] - kind.poolSize[0]) : kind.wet >= 3 ? 5 + rng() ** 1.6 * 19 : 10 + rng() ** 1.5 * 46) * (tries < 36 ? 1 : 0.6)
-      const room = Array.from({ length: 8 }, (_, k): P => [c[0] + Math.cos((k / 8) * Math.PI * 2) * (r * 1.45 + 8 * close), c[1] + Math.sin((k / 8) * Math.PI * 2) * (r * 1.45 + 8 * close)])
-      if (!inside(c, fine) || room.some((p) => !inside(p, fine))) continue
-      if (Math.abs(c[0] - cx) < 84 + r && c[1] > cy - 60 - r && c[1] < cy + 30 + r) continue
+      if (!inside(c, fine)) continue
       if (pools.some((q) => Math.hypot(q.c[0] - c[0], q.c[1] - c[1]) < q.r + r + 14 * close)) continue
       // A rift's lakes are long and narrow; a crater lake is nearly round.
-      const tilt = rng() * Math.PI, squash = kind.long ? 0.24 + rng() * 0.12 : kind.poolSize && kind.pools?.[1] === 1 ? 0.85 : 0.42 + rng() * 0.55, phase = rng() * 9, arms = [rng() * Math.PI * 2, rng() * Math.PI * 2]
-      const poly = Array.from({ length: 34 }, (_, k): P => {
-        const a = (k / 34) * Math.PI * 2
+      const tilt = rng() * Math.PI, squash = kind.long ? 0.24 + rng() * 0.12 : kind.pools?.[1] === 1 ? 0.85 : 0.42 + rng() * 0.55, phase = rng() * 9, arms = [rng() * Math.PI * 2, rng() * Math.PI * 2]
+      const around = Math.max(34, Math.round(r * 0.8))
+      const poly = Array.from({ length: around }, (_, k): P => {
+        const a = (k / around) * Math.PI * 2
         // An uneven shore with a bay or two: noise, and two slow swells at angles of their own.
         const rr = r * (0.6 + 0.62 * edge(i * 3.1 + Math.cos(a) * 1.7 + phase, Math.sin(a) * 1.7 + phase)) * (1 + 0.2 * Math.sin(a * 2 + arms[0]) + 0.14 * Math.sin(a * 3 + arms[1]))
         const [u, v] = [Math.cos(a) * rr, Math.sin(a) * rr * squash]
         return [c[0] + u * Math.cos(tilt) - v * Math.sin(tilt), c[1] + u * Math.sin(tilt) + v * Math.cos(tilt)]
       })
-      // Its whole shore, bays and all, must lie within the place.
-      if (poly.some((q) => !inside(q, fine))) continue
+      // Its whole shore, bays and all, must lie within the place with a little ground to spare, and clear of the place's name.
+      const spare = 5 + 5 * close
+      if (poly.some((q) => { const l = Math.hypot(q[0] - c[0], q[1] - c[1]) || 1; return !inside(q, fine) || !inside([q[0] + ((q[0] - c[0]) / l) * spare, q[1] + ((q[1] - c[1]) / l) * spare], fine) })) continue
+      if (inside([cx, cy - 15], poly) || poly.some((q) => Math.abs(q[0] - cx) < 88 && q[1] > cy - 62 && q[1] < cy + 32)) continue
       pools.push({ c, r, poly })
     }
     lakes.push(...pools.map((p) => ({ ...p, region: i })))
@@ -474,6 +482,9 @@ export function buildMap(s: Setting): MapData {
     const hubs = [...marks.keys()]
     const turn = rng() * Math.PI * 2
     const sites: MapSite[] = []
+    // Whether a spot lies in a lake or within a little of its shore, by the lake's true outline.
+    const wet = (p: { c: P; r: number; poly: P[] }, at: P, by: number) =>
+      Math.hypot(p.c[0] - at[0], p.c[1] - at[1]) < p.r * 1.7 + by && (inside(at, p.poly) || p.poly.some((q) => Math.hypot(q[0] - at[0], q[1] - at[1]) < by))
     hubs.forEach((sid, k) => {
       let a = turn + (k / Math.max(1, hubs.length)) * Math.PI * 2
       let spot: P = [cx, cy]
@@ -487,7 +498,7 @@ export function buildMap(s: Setting): MapData {
         const r = rings[Math.floor(tries / 14)]
         spot = [cx + Math.cos(a) * r * 0.95, cy + Math.sin(a) * r + (Math.sin(a) >= 0 ? 16 : -10)]
         const crowded = sites.some((q) => Math.abs(q.x - spot[0]) < 46 && Math.abs(q.y - spot[1]) < 24)
-          || pools.some((p) => Math.hypot(p.c[0] - spot[0], p.c[1] - spot[1]) < p.r + 22)
+          || pools.some((p) => wet(p, spot, 18))
         if (inside(spot, fine) && inside([spot[0], spot[1] + 14], fine) && !lettered(spot) && !crowded) { found = true; break }
       }
       // On a small island or among many pools there may be no clear spot: then any dry ground close in will do,
@@ -496,7 +507,7 @@ export function buildMap(s: Setting): MapData {
         spot = [cx, cy]
         search: for (const r of [34, 22, 48, 12, 64]) for (let t = 0; t < 12; t++) {
           const b = a + (t / 12) * Math.PI * 2, at: P = [cx + Math.cos(b) * r, cy + Math.sin(b) * r]
-          if (inside(at, fine) && !pools.some((p) => Math.hypot(p.c[0] - at[0], p.c[1] - at[1]) < p.r + 6) && !sites.some((q) => Math.hypot(q.x - at[0], q.y - at[1]) < 14)) { spot = at; break search }
+          if (inside(at, fine) && !pools.some((p) => wet(p, at, 8)) && !sites.some((q) => Math.hypot(q.x - at[0], q.y - at[1]) < 14)) { spot = at; break search }
         }
       }
       const built = s.built?.find((b) => b.id === sid && b.tool === 'settlement')
@@ -575,7 +586,7 @@ export function buildMap(s: Setting): MapData {
       const body = line.slice(fromLake ? Math.ceil((pool!.r * 0.8) / 11) : 0, mouth ? line.length - 1 : line.length - Math.ceil((pools[0].r * 0.8) / 11))
       if (body.length < 5) continue
       if (body.some((p) => letteredAt(p) || !onLand(p) || marked.some((m) => Math.hypot(m.x - p[0], m.y - p[1]) < 12)
-        || lakes.some((l) => l !== pool && (mouth || l !== pools[0]) && Math.hypot(l.c[0] - p[0], l.c[1] - p[1]) < l.r + 8)
+        || lakes.some((l) => l !== pool && (mouth || l !== pools[0]) && (Math.hypot(l.c[0] - p[0], l.c[1] - p[1]) < l.r + 8 || inside(p, l.poly)))
         || rivers.some((other) => other.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 14)))) continue
       // The mouth runs on a little past the shore, so that the river opens into the sea.
       if (mouth) body.push(end, [end[0] + mouth.out[0] * 9, end[1] + mouth.out[1] * 9])
