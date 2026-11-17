@@ -62,7 +62,8 @@ export interface MapData {
   /** Still water inside the land: its outline, its name, and where the name goes. */
   lakes: { d: string; name: string; x: number; y: number }[]
   /** Running water: each a line from its source to the sea or to a lake, with its name and the stretch the name is set along, running left to right. */
-  rivers: { d: string; name: string; along: string }[]
+  /** `d` is the river's course; `shape` its water as an outline, wider and narrower along its length and run on into the lake or sea at each end. */
+  rivers: { d: string; shape: string; name: string; along: string }[]
   /** The named seas on the sides with no neighbouring world, lettered along those edges. */
   seas: { name: string; x: number; y: number; turn: number }[]
   scale: { px: number; label: string }
@@ -476,7 +477,7 @@ export function buildMap(s: Setting): MapData {
       let spot: P = [cx, cy]
       let found = false
       // Step round the centre until the mark sits on its own land, clear of the place's lettering and of the marks before it.
-      const half = s.names[id].length * 5.4 + 14
+      const half = s.names[id].length * 5.4 + 30
       const lettered = (p: P) => Math.abs(p[0] - cx) < half + s.names[sid].length * 2.4 && p[1] > cy - 52 && p[1] < cy + 22
       // Each ring is walked right round before moving to the next: the usual distance first, then nearer and farther.
       const rings = [60, 42, 80, 100, 26, 122, 146]
@@ -532,6 +533,8 @@ export function buildMap(s: Setting): MapData {
   // every name and mark, and runs through no lake but the one it leaves or feeds.
   const rivers: P[][] = []
   const riverHome: number[] = []
+  // Where each river's water runs on to past its drawn course: into the middle of the lake it leaves, and of the lake or out into the sea it reaches.
+  const riverEnds: { head?: P; tail: P; sea: boolean }[] = []
   const letteredAt = (p: P) => regions.some((o) => Math.abs(p[0] - o.x) < 76 && p[1] > o.y - 54 && p[1] < o.y + 24)
   const marked = regions.flatMap((o) => o.sites)
   regions.forEach((r, i) => {
@@ -576,6 +579,7 @@ export function buildMap(s: Setting): MapData {
       if (mouth) body.push(end, [end[0] + mouth.out[0] * 9, end[1] + mouth.out[1] * 9])
       rivers.push(body)
       riverHome.push(i)
+      riverEnds.push({ head: fromLake ? pool!.c : undefined, tail: mouth ? [end[0] + mouth.out[0] * 13, end[1] + mouth.out[1] * 13] : pools[0].c, sea: !!mouth })
       made++
     }
   })
@@ -623,7 +627,25 @@ export function buildMap(s: Setting): MapData {
     // The name is set along the middle of the river, read from left to right whichever way the water runs.
     const stretch = line.slice(Math.floor(line.length * 0.12), Math.ceil(line.length * 0.88))
     const read = stretch[0][0] <= stretch[stretch.length - 1][0] ? stretch : [...stretch].reverse()
-    return { d: `M${line.map(at).join('L')}`, name: waterName('river', riverHome[n], n), along: `M${read.map(at).join('L')}` }
+    // The water itself: the course run on into what it joins at each end, rounded, and given a width that grows
+    // toward the mouth and swells and narrows along the way.
+    const ends = riverEnds[n]
+    let course: P[] = [...(ends.head ? [ends.head] : []), ...line, ends.tail]
+    for (let pass = 0; pass < 2; pass++) course = [course[0], ...course.slice(0, -1).flatMap((p, k): P[] => { const q = course[k + 1]; return [[p[0] * 0.75 + q[0] * 0.25, p[1] * 0.75 + q[1] * 0.25], [p[0] * 0.25 + q[0] * 0.75, p[1] * 0.25 + q[1] * 0.75]] }), course[course.length - 1]]
+    const run = course.reduce((a: number[], p, k) => [...a, k ? a[k - 1] + Math.hypot(p[0] - course[k - 1][0], p[1] - course[k - 1][1]) : 0], [])
+    const whole = run[run.length - 1] || 1
+    const half = (k: number) => {
+      const t = run[k] / whole
+      const swell = 1 + 0.3 * Math.sin(run[k] / 31 + n * 1.7) + 0.2 * Math.sin(run[k] / 12 + n * 4.1) + 0.14 * Math.sin(run[k] / 67 + n)
+      // A river that leaves a lake starts broad enough to be seen; one that reaches the sea opens out at its mouth.
+      return (0.9 + (ends.head ? 0.5 : 0) + 2.4 * t ** 0.8 * Math.min(1.5, 0.6 + whole / 400)) * swell * (ends.sea && whole - run[k] < 44 ? 1 + (1 - (whole - run[k]) / 44) * 0.6 : 1)
+    }
+    const side = (sign: number) => course.map((p, k): P => {
+      const a = course[Math.max(0, k - 1)], b = course[Math.min(course.length - 1, k + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+      return [p[0] - sign * ((b[1] - a[1]) / l) * half(k), p[1] + sign * ((b[0] - a[0]) / l) * half(k)]
+    })
+    const shape = `M${[...side(1), ...side(-1).reverse()].map(at).join('L')}Z`
+    return { d: `M${line.map(at).join('L')}`, shape, name: waterName('river', riverHome[n], n), along: `M${read.map(at).join('L')}` }
   })
 
   // Neighbouring worlds: the land of each as it falls on the sheet, its name where that land is roomiest, and a

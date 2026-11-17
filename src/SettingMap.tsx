@@ -1,33 +1,21 @@
 import { useMemo, useRef } from 'react'
 import { Emblem } from './Emblem'
 import { useImages } from './imageStore'
-import { buildMap, washFor, type Glyph } from './mapgen'
+import { buildMap, washFor } from './mapgen'
 import { titleCase } from './names'
 import type { Setting } from './setting'
 import { emblemOf } from './settingBuild'
 
 // The setting drawn as an ink map on parchment (or a blueprint, for science fiction).
 
-const GLYPH: Record<Glyph, string> = {
-  tree: 'M0 7V2M-5 2Q-6.5-5 0-7Q6.5-5 5 2Z',
-  deadtree: 'M0 7V-2M0 1L-5-5M0-2L5-7M-2.5-2L-6-2M2.5-4.5L6-3',
-  peak: 'M-9 5L-2-7L2 0L4.5-3L9 5M-2-7L0 5M-1-2L-4 5',
-  tuft: 'M-4 4Q-4-1-6-3M0 4V-4M4 4Q4-1 6-3',
-  reed: 'M-6 4H6M-3 4V-4M0 4V-6M3 4V-3M-8 7H-3M2 7H7',
-  snow: 'M0-6V6M-5-3L5 3M-5 3L5-3',
-  wave: 'M-8 0Q-4-5 0 0T8 0M-5 5Q-2 2 1 5T7 5',
-  crater: 'M-4.5 0A4.5 3 0 1 0 4.5 0A4.5 3 0 1 0-4.5 0M-2 1A2.5 1.5 0 0 0 2.5 0',
-  cross: 'M0-6V6M-4-2H4',
-  crystal: 'M0-7L4-1L0 7L-4-1ZM-4-1H4M0-7V7',
-  dune: 'M-9 3Q-3-6 3 3M0 3Q5-3 9 3',
-  dome: 'M-6 4A6 6 0 0 1 6 4ZM-8 4H8M0-2V4',
-}
-
 const THEMES = {
   // `ocean` is the open sea, `sea` the paler shallows round the land, and `water` the lakes and rivers.
   parchment: { paper: '#e9dcc0', edge: '#8fa3a3', ink: '#3b2a1a', faint: '#8a7353', ocean: '#b6cbc9', sea: '#d5e3dd', water: '#9fc0c6', waterInk: '#35606e', beyond: '#d3cbb6', route: '#8c3b2a', halo: '#efe4cb' },
   blueprint: { paper: '#122a44', edge: '#060f1c', ink: '#d6e8ff', faint: '#7fa3cc', ocean: '#0a1a2e', sea: '#17395c', water: '#2b6a9c', waterInk: '#9fd0f0', beyond: '#1a2f47', route: '#ffd27a', halo: '#122a44' },
 }
+
+/** Half the width of a place's name as it is lettered on the map. */
+const nameHalf = (name: string) => name.length * 5.3
 
 const go = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
@@ -61,9 +49,9 @@ export function SettingMap({ s }: { s: Setting }) {
             <stop offset="60%" stopColor={t.edge} stopOpacity="0" />
             <stop offset="100%" stopColor={t.edge} stopOpacity=".85" />
           </radialGradient>
-          {Object.entries(GLYPH).map(([k, d]) => (
-            <path key={k} id={`gl-${k}`} d={d} fill="none" stroke={t.ink} strokeWidth="1.15" strokeLinecap="round" strokeLinejoin="round" />
-          ))}
+          {/* The land, for keeping a river's banks off the sea at its mouth; and all fresh water, for keeping its shallows inside it. */}
+          <clipPath id="dry-land">{[...map.regions, ...map.beyond].map((r) => <path key={r.id} d={r.d} />)}</clipPath>
+          <clipPath id="fresh-water">{map.rivers.map((r, i) => <path key={`r${i}`} d={r.shape} />)}{map.lakes.map((l, i) => <path key={`l${i}`} d={l.d} />)}</clipPath>
           {/* The land of the neighbouring worlds, for keeping the frontier line to where it belongs. */}
           <clipPath id="beyond-land">{map.beyond.map((b) => <path key={b.id} d={b.d} />)}</clipPath>
           {map.regions.map((r) => <clipPath key={r.id} id={`clip-${r.id}`}><circle cx={r.x} cy={r.y - 44} r="30" /></clipPath>)}
@@ -82,9 +70,6 @@ export function SettingMap({ s }: { s: Setting }) {
 
         {/* Neighbouring worlds: plain land joined to this one and running off the sheet. */}
         {map.beyond.map((b) => <path key={b.id} d={b.d} fill={t.beyond} stroke={t.beyond} strokeWidth="3" strokeLinejoin="round" pointerEvents="none" />)}
-        <g pointerEvents="none" opacity=".3">
-          {map.beyond.flatMap((b) => b.symbols.map((p, i) => <use key={`${b.id}-${i}`} href="#gl-tuft" transform={`translate(${p.x} ${p.y})`} />))}
-        </g>
         {/* The frontier: this world's outline in dots and dashes. Its inner half is covered by the land drawn next, and over
             the sea it falls on the coastline, so it shows only where a neighbouring world lies against it. */}
         {map.beyond.length > 0 && (
@@ -103,25 +88,26 @@ export function SettingMap({ s }: { s: Setting }) {
           </path>
         ))}
 
-        {/* Fresh water: lakes with a shore line, and rivers that widen toward the mouth. */}
-        <g pointerEvents="none" strokeLinejoin="round" strokeLinecap="round">
-          {map.rivers.map((r, i) => (
-            <g key={i} fill="none">
-              <path d={r.d} stroke={t.ink} strokeWidth="3.4" opacity=".55" />
-              <path d={r.d} stroke={t.water} strokeWidth="2" />
-            </g>
-          ))}
-          {map.lakes.map((l, i) => (
-            <g key={i}>
-              <path d={l.d} fill={t.water} stroke={t.ink} strokeWidth="1.3" />
-            </g>
-          ))}
-        </g>
-
-        <g pointerEvents="none" opacity=".8">
-          {map.regions.flatMap((r) => r.symbols.map((p, i) => (
-            <use key={`${r.id}-${i}`} href={`#gl-${r.glyph}`} transform={`translate(${p.x} ${p.y}) scale(${p.k})`} />
-          )))}
+        {/* Fresh water, drawn as the sea is: a dark shore, the sea's colour, and paler shallows along the banks.
+            Every shore line goes down first and all the water over them, so that where a river meets a lake or
+            the sea the water runs through with no line across it. */}
+        <g pointerEvents="none" strokeLinejoin="round">
+          <g fill="none" stroke={t.ink}>
+            <g strokeWidth="3.6" clipPath="url(#dry-land)">{map.rivers.map((r, i) => <path key={i} d={r.shape} />)}</g>
+            <g strokeWidth="4.5">{map.lakes.map((l, i) => <path key={i} d={l.d} />)}</g>
+          </g>
+          <g fill={t.ocean}>
+            {map.rivers.map((r, i) => <path key={`r${i}`} d={r.shape} />)}
+            {map.lakes.map((l, i) => <path key={`l${i}`} d={l.d} />)}
+          </g>
+          <g fill="none" clipPath="url(#fresh-water)">
+            {[[56, 0.3], [34, 0.4], [16, 0.55]].map(([width, opacity]) => (
+              <g key={width} stroke={t.sea} strokeWidth={width} opacity={opacity}>
+                {map.rivers.map((r, i) => <path key={`r${i}`} d={r.shape} />)}
+                {map.lakes.map((l, i) => <path key={`l${i}`} d={l.d} />)}
+              </g>
+            ))}
+          </g>
         </g>
 
         <g fill="none" stroke={t.route} strokeWidth="1.5" strokeDasharray="1.5 6" strokeLinecap="round" opacity=".7" pointerEvents="none">
@@ -184,25 +170,26 @@ export function SettingMap({ s }: { s: Setting }) {
                   <circle cx={r.x} cy={r.y - 44} r="30" fill="none" stroke={t.ink} strokeWidth="2" />
                 </g>
               )}
-              {/* The land's emblem above its name, or at the corner of its picture, with the emblems of the cultures kept there beside it. */}
+              {/* The land's emblem to the left of its name, and above the name the emblems of the cultures kept there. */}
               {(() => {
                 const land = emblemOf(s, r.id)
                 const kept = (s.drawn ?? []).filter((d) => d.tool === 'culture' && d.home === r.id).slice(0, 3)
-                const at = picture ? { x: r.x + 17, y: r.y - 36, size: 24 } : { x: r.x - 13 - kept.length * 8, y: r.y - 47, size: 26 }
+                // The land's own emblem stands to the left of its name; the name moves over to keep the pair centred.
+                const at = { x: r.x + (land ? 15 : 0) - nameHalf(r.name) - 30, y: r.y - 19, size: 24 }
                 return (
                   <g className="map-emblems">
                     {land && <g onClick={() => go(r.id)}><Emblem spec={land} size={at.size} x={at.x} y={at.y} title={`Emblem of ${r.name}`} /></g>}
                     {kept.map((d, i) => {
                       const spec = emblemOf(s, d.id)
-                      const cx = picture ? r.x - 35 - i * 17 : at.x + at.size + 3 + i * 18
-                      return spec && <g key={d.id} onClick={() => go(d.id)}><Emblem spec={spec} size={17} x={cx} y={picture ? r.y - 31 : r.y - 41} title={`Emblem of ${s.names[d.id]}, kept in ${r.name}`} /></g>
+                      const cx = picture ? r.x - 35 - i * 17 : r.x - kept.length * 9 + i * 18 + 0.5
+                      return spec && <g key={d.id} onClick={() => go(d.id)}><Emblem spec={spec} size={17} x={cx} y={picture ? r.y - 31 : r.y - 40} title={`Emblem of ${s.names[d.id]}, kept in ${r.name}`} /></g>
                     })}
                   </g>
                 )
               })()}
               <g className="place-label" onClick={() => go(r.id)}>
-                <text x={r.x} y={r.y} textAnchor="middle" fontSize="17" fontWeight="700" letterSpacing=".06em" fill={t.ink} stroke={t.halo} strokeWidth="4.5" paintOrder="stroke">{r.name.charAt(0).toUpperCase() + r.name.slice(1)}</text>
-                <text x={r.x} y={r.y + 13} textAnchor="middle" fontSize="8.5" letterSpacing=".16em" fill={t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{r.terrain.toUpperCase()}</text>
+                <text x={r.x + (emblemOf(s, r.id) ? 15 : 0)} y={r.y} textAnchor="middle" fontSize="17" fontWeight="700" letterSpacing=".06em" fill={t.ink} stroke={t.halo} strokeWidth="4.5" paintOrder="stroke">{r.name.charAt(0).toUpperCase() + r.name.slice(1)}</text>
+                <text x={r.x + (emblemOf(s, r.id) ? 15 : 0)} y={r.y + 13} textAnchor="middle" fontSize="8.5" letterSpacing=".16em" fill={t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{r.terrain.toUpperCase()}</text>
               </g>
             </g>
           )
@@ -212,7 +199,7 @@ export function SettingMap({ s }: { s: Setting }) {
         <g pointerEvents="none" fill={t.waterInk} fontStyle="italic" fontSize="8" stroke={t.halo} strokeWidth="2.6" paintOrder="stroke">
           <defs>{map.rivers.map((r, i) => <path key={i} id={`river-${i}`} d={r.along} />)}</defs>
           {map.rivers.map((r, i) => (
-            <text key={i} dy="-3.5"><textPath href={`#river-${i}`} startOffset="50%" textAnchor="middle">{r.name}</textPath></text>
+            <text key={i} dy="-7"><textPath href={`#river-${i}`} startOffset="50%" textAnchor="middle">{r.name}</textPath></text>
           ))}
           {map.lakes.map((l, i) => <text key={i} x={l.x} y={l.y} textAnchor="middle">{l.name}</text>)}
         </g>
@@ -259,7 +246,7 @@ export function SettingMap({ s }: { s: Setting }) {
         <rect x="14" y="14" width={map.w - 28} height={map.h - 28} fill="none" stroke={t.ink} strokeWidth=".8" pointerEvents="none" />
       </svg>
       <figcaption>
-        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. A neighbouring world is joined on by land and runs off its edge of the sheet, behind a dot-and-dash frontier; a side without one faces a named sea. Lakes and rivers are named too. The sea is drawn plain; lakes and rivers lie on the land. Each place carries its emblem, with the smaller emblems of the cultures kept there. A house marks a site and a cross a dangerous place. Settlements grow with their rank: a small circle for a village, a diamond for a trading post, a ringed dot for a town, battlements for a fortress town, a double ring for a city and a starred ring for the capital. Click any of them to read about it.</span>
+        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. A neighbouring world is joined on by land and runs off its edge of the sheet, behind a dot-and-dash frontier; a side without one faces a named sea. Lakes and rivers are named too. Lakes and rivers are drawn as the sea is, and a river swells and narrows on its way to the lake or sea it joins. Each place carries its emblem to the left of its name, with the smaller emblems of the cultures kept there. A house marks a site and a cross a dangerous place. Settlements grow with their rank: a small circle for a village, a diamond for a trading post, a ringed dot for a town, battlements for a fortress town, a double ring for a city and a starred ring for the capital. Click any of them to read about it.</span>
         <button onClick={save}>Save map</button>
       </figcaption>
     </figure>
