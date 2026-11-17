@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Emblem } from './Emblem'
 import { useImages } from './imageStore'
 import { buildMap, washFor } from './mapgen'
@@ -19,12 +19,58 @@ const nameHalf = (name: string) => name.length * 5.3
 
 const go = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
+/** Every layer of the map that the legend can turn on and off, in the order it is listed, each with a small sample of how it is drawn. */
+type Theme = (typeof THEMES)['parchment']
+const LAYERS: { group: string; items: [key: string, label: string, sample: (t: Theme) => ReactNode][] }[] = [
+  { group: 'Land', items: [
+    ['names', 'Land names', (t) => <text x="12" y="12" textAnchor="middle" fontSize="11" fontWeight="700" fill={t.ink}>Aa</text>],
+    ['terrain', 'Kind of land', (t) => <text x="12" y="11" textAnchor="middle" fontSize="6" letterSpacing=".1em" fill={t.ink}>MOOR</text>],
+    ['wash', 'Land colours', () => <><rect x="3" y="3" width="9" height="10" fill="#b9c79a" /><rect x="12" y="3" width="9" height="10" fill="#d8b98c" /></>],
+    ['borders', 'Borders', (t) => <path d="M3 8H21" stroke={t.faint} strokeWidth="1.4" strokeDasharray="4 3" />],
+    ['emblems', 'Land emblems', (t) => <path d="M7 2H17V9Q17 13 12 15Q7 13 7 9Z" fill={t.route} stroke={t.ink} strokeWidth=".8" />],
+    ['cultures', 'Culture emblems', (t) => <path d="M9 4H15V9Q15 11.500 12 13Q9 11.500 9 9Z" fill={t.water} stroke={t.ink} strokeWidth=".8" />],
+    ['pictures', 'Pictures', (t) => <circle cx="12" cy="8" r="6" fill={t.faint} stroke={t.ink} strokeWidth="1.2" />],
+  ] },
+  { group: 'Water', items: [
+    ['shallows', 'Shallows', (t) => <><rect x="2" y="2" width="20" height="12" fill={t.ocean} /><rect x="2" y="2" width="9" height="12" fill={t.sea} /></>],
+    ['lakes', 'Lakes', (t) => <ellipse cx="12" cy="8" rx="8" ry="5" fill={t.sea} stroke={t.ink} strokeWidth=".8" />],
+    ['rivers', 'Rivers', (t) => <><path d="M2 12Q8 2 13 8T22 4" fill="none" stroke={t.ink} strokeWidth="3.4" /><path d="M2 12Q8 2 13 8T22 4" fill="none" stroke={t.sea} strokeWidth="2" /></>],
+    ['waterNames', 'Lake and river names', (t) => <text x="12" y="11" textAnchor="middle" fontSize="8" fontStyle="italic" fill={t.waterInk}>Mere</text>],
+    ['seas', 'Sea names', (t) => <text x="12" y="11" textAnchor="middle" fontSize="8" fontStyle="italic" fill={t.waterInk}>Sea</text>],
+  ] },
+  { group: 'Settlements', items: [
+    ['rank-capital', 'Capital', (t) => <g transform="translate(12 8) scale(.8)" stroke={t.ink}><circle r="9.5" fill={t.halo} strokeWidth="1.6" /><path d="M0-6.2L1.8-1.9L6.3-1.9L2.7.9L4 5.4L0 2.700L-4 5.4L-2.7.9L-6.3-1.9L-1.8-1.9Z" fill={t.route} strokeWidth=".6" /></g>],
+    ['rank-city', 'Cities', (t) => <g transform="translate(12 8)" stroke={t.ink}><circle r="6.5" fill={t.halo} strokeWidth="1.4" /><circle r="4" fill="none" strokeWidth=".9" /><circle r="1.8" fill={t.ink} stroke="none" /></g>],
+    ['rank-fort', 'Fortress towns', (t) => <path transform="translate(12 8)" d="M-5.5 5V-4.500h2.200v2h2.200v-2h2.200v2h2.200v-2h2.200V5Z" fill={t.halo} stroke={t.ink} strokeWidth="1.3" />],
+    ['rank-town', 'Towns', (t) => <g transform="translate(12 8)" stroke={t.ink}><circle r="5" fill={t.halo} strokeWidth="1.4" /><circle r="2" fill={t.ink} stroke="none" /></g>],
+    ['rank-post', 'Trading posts', (t) => <path transform="translate(12 8)" d="M0-4.500L4.5 0L0 4.500L-4.5 0Z" fill={t.halo} stroke={t.ink} strokeWidth="1.3" />],
+    ['rank-village', 'Villages', (t) => <circle cx="12" cy="8" r="3" fill={t.halo} stroke={t.ink} strokeWidth="1.4" />],
+  ] },
+  { group: 'Marks', items: [
+    ['sites', 'Sites', (t) => <path transform="translate(12 9)" d="M-5 4V-1L0-6L5-1V4Z" fill={t.ink} />],
+    ['perils', 'Dangerous places', (t) => <path transform="translate(12 8)" d="M-5-5L5 5M5-5L-5 5" stroke={t.route} strokeWidth="2.2" strokeLinecap="round" />],
+    ['siteNames', 'Names of sites and settlements', (t) => <text x="12" y="11" textAnchor="middle" fontSize="8" fontStyle="italic" fill={t.ink}>Inn</text>],
+  ] },
+  { group: 'Sheet', items: [
+    ['beyond', 'Names of bordering worlds', (t) => <text x="12" y="11" textAnchor="middle" fontSize="6.5" fontStyle="italic" letterSpacing=".1em" fill={t.ink}>VALE</text>],
+    ['frame', 'Title, compass and scale', (t) => <g transform="translate(12 8)" stroke={t.ink} fill={t.ink}><circle r="5" fill="none" strokeWidth=".6" /><path d="M0-7L1.500 0L0 7L-1.5 0Z" strokeWidth=".4" /></g>],
+  ] },
+]
+const HIDDEN_KEY = 'storyloom-map-hidden'
+
 export function SettingMap({ s }: { s: Setting }) {
+  // Which layers are turned off. It is kept for this browser, and is the same for every setting.
+  const [hidden, setHidden] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? '[]') as string[]) } catch { return new Set() } })
+  const keep = (next: Set<string>) => { setHidden(next); try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next])) } catch { /* private window */ } }
+  const on = (key: string) => !hidden.has(key)
+  const toggle = (key: string) => { const next = new Set(hidden); if (next.has(key)) next.delete(key); else next.add(key); keep(next) }
   const links = useImages((x) => x.links)
   const tints = useImages((x) => x.tints)
   // Renaming changes the lettering but never the land, so the drawing is redone only when names change.
   const map = useMemo(() => buildMap(s), [s.id, s.seed, s.names, s.board, s.built, s.entities, s.people, s.beyond])
   const t = THEMES[map.theme]
+  const lakes = on('lakes') ? map.lakes : [], rivers = on('rivers') ? map.rivers : []
+  const shown = (site: (typeof map.regions)[number]['sites'][number]) => on(site.kind === 'settlement' ? `rank-${site.rank ?? 'town'}` : site.kind === 'peril' ? 'perils' : 'sites')
   const svg = useRef<SVGSVGElement>(null)
   const title = titleCase(s.names.world.charAt(0).toUpperCase() + s.names.world.slice(1))
 
@@ -51,7 +97,7 @@ export function SettingMap({ s }: { s: Setting }) {
           </radialGradient>
           {/* The land, for keeping a river's banks off the sea at its mouth; and all fresh water, for keeping its shallows inside it. */}
           <clipPath id="dry-land">{[...map.regions, ...map.beyond].map((r) => <path key={r.id} d={r.d} />)}</clipPath>
-          <clipPath id="fresh-water">{map.rivers.map((r, i) => <path key={`r${i}`} d={r.shape} />)}{map.lakes.map((l, i) => <path key={`l${i}`} d={l.d} />)}</clipPath>
+          <clipPath id="fresh-water">{rivers.map((r, i) => <path key={`r${i}`} d={r.shape} />)}{lakes.map((l, i) => <path key={`l${i}`} d={l.d} />)}</clipPath>
           {/* The land of the neighbouring worlds, for keeping the frontier line to where it belongs. */}
           <clipPath id="beyond-land">{map.beyond.map((b) => <path key={b.id} d={b.d} />)}</clipPath>
           {map.regions.map((r) => <clipPath key={r.id} id={`clip-${r.id}`}><circle cx={r.x} cy={r.y - 44} r="30" /></clipPath>)}
@@ -62,7 +108,7 @@ export function SettingMap({ s }: { s: Setting }) {
 
         {/* Rings of shallow water around the land, then the coastline itself. */}
         <g fill="none" strokeLinejoin="round">
-          {[[56, 0.3], [34, 0.4], [16, 0.55]].map(([width, opacity]) => (
+          {on('shallows') && [[56, 0.3], [34, 0.4], [16, 0.55]].map(([width, opacity]) => (
             <g key={width} stroke={t.sea} strokeWidth={width} opacity={opacity}>{[...map.regions, ...map.beyond].map((r) => <path key={r.id} d={r.d} />)}</g>
           ))}
           <g stroke={t.ink} strokeWidth="4.5">{[...map.regions, ...map.beyond].map((r) => <path key={r.id} d={r.d} />)}</g>
@@ -83,7 +129,7 @@ export function SettingMap({ s }: { s: Setting }) {
         {map.regions.map((r) => <path key={r.id} d={r.d} fill={t.paper} stroke={t.paper} strokeWidth="3" strokeLinejoin="round" />)}
         {map.regions.map((r) => (
           // A place with a picture takes its colour from the picture; the rest keep their terrain's.
-          <path key={r.id} className="region" d={r.d} fill={tints[`${s.id}:${r.id}`] ? washFor(tints[`${s.id}:${r.id}`], map.theme) : r.colour} fillOpacity=".8" stroke={t.faint} strokeWidth=".9" strokeDasharray="5 4" onClick={() => go(r.id)}>
+          <path key={r.id} className="region" d={r.d} fill={!on('wash') ? t.paper : tints[`${s.id}:${r.id}`] ? washFor(tints[`${s.id}:${r.id}`], map.theme) : r.colour} fillOpacity=".8" stroke={on('borders') ? t.faint : 'none'} strokeWidth=".9" strokeDasharray="5 4" onClick={() => go(r.id)}>
             <title>{r.name} — {r.terrain}</title>
           </path>
         ))}
@@ -94,32 +140,29 @@ export function SettingMap({ s }: { s: Setting }) {
         <g pointerEvents="none" strokeLinejoin="round">
           {/* The sea's coast shows only a hairline of ink past the land laid over it; the shores of fresh water are drawn as fine. */}
           <g fill="none" stroke={t.ink}>
-            <g strokeWidth="1.5" clipPath="url(#dry-land)">{map.rivers.map((r, i) => <path key={i} d={r.shape} />)}</g>
-            <g strokeWidth="1.5">{map.lakes.map((l, i) => <path key={i} d={l.d} />)}</g>
+            <g strokeWidth="1.5" clipPath="url(#dry-land)">{rivers.map((r, i) => <path key={i} d={r.shape} />)}</g>
+            <g strokeWidth="1.5">{lakes.map((l, i) => <path key={i} d={l.d} />)}</g>
           </g>
           <g fill={t.ocean}>
-            {map.rivers.map((r, i) => <path key={`r${i}`} d={r.shape} />)}
-            {map.lakes.map((l, i) => <path key={`l${i}`} d={l.d} />)}
+            {rivers.map((r, i) => <path key={`r${i}`} d={r.shape} />)}
+            {lakes.map((l, i) => <path key={`l${i}`} d={l.d} />)}
           </g>
           <g fill="none" clipPath="url(#fresh-water)">
-            {[[56, 0.3], [34, 0.4], [16, 0.55]].map(([width, opacity]) => (
+            {on('shallows') && [[56, 0.3], [34, 0.4], [16, 0.55]].map(([width, opacity]) => (
               <g key={width} stroke={t.sea} strokeWidth={width} opacity={opacity}>
-                {map.rivers.map((r, i) => <path key={`r${i}`} d={r.shape} />)}
-                {map.lakes.map((l, i) => <path key={`l${i}`} d={l.d} />)}
+                {rivers.map((r, i) => <path key={`r${i}`} d={r.shape} />)}
+                {lakes.map((l, i) => <path key={`l${i}`} d={l.d} />)}
               </g>
             ))}
           </g>
         </g>
 
-        <g fill="none" stroke={t.route} strokeWidth="1.5" strokeDasharray="1.5 6" strokeLinecap="round" opacity=".7" pointerEvents="none">
-          {map.routes.map((r) => <path key={`${r.a}-${r.b}`} d={r.d} />)}
-        </g>
-
         {map.regions.map((r) => {
-          const picture = links[`${s.id}:${r.id}`]
+          const picture = on('pictures') ? links[`${s.id}:${r.id}`] : undefined
+          const shift = on('emblems') && emblemOf(s, r.id) ? 15 : 0
           return (
             <g key={r.id}>
-              {r.sites.map((site) => (
+              {r.sites.filter(shown).map((site) => (
                 <g key={site.id} className="site" onClick={() => go(site.id)}>
                   {site.kind === 'settlement' ? (
                     // A settlement, drawn larger and grander the greater it is.
@@ -158,11 +201,11 @@ export function SettingMap({ s }: { s: Setting }) {
                   ) : (
                     <path d="M-5 4V-1L0-6L5-1V4Z" transform={`translate(${site.x} ${site.y})`} fill={t.ink} stroke={t.halo} strokeWidth="1" />
                   )}
-                  <text x={site.x} y={site.y + (site.rank === 'capital' ? 22 : site.rank === 'city' ? 19 : 16)} textAnchor="middle"
+                  {on('siteNames') && <text x={site.x} y={site.y + (site.rank === 'capital' ? 22 : site.rank === 'city' ? 19 : 16)} textAnchor="middle"
                     fontSize={site.rank === 'capital' ? 12.5 : site.rank === 'city' ? 11 : site.rank === 'village' || site.rank === 'post' ? 8.5 : 9.5}
                     fontWeight={site.rank === 'capital' || site.rank === 'city' ? 700 : 400} fontStyle={site.rank === 'capital' ? 'normal' : 'italic'}
                     letterSpacing={site.rank === 'capital' ? '.08em' : undefined}
-                    fill={site.kind === 'peril' ? t.route : t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{site.rank === 'capital' ? site.name.toUpperCase() : site.name}</text>
+                    fill={site.kind === 'peril' ? t.route : t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{site.rank === 'capital' ? site.name.toUpperCase() : site.name}</text>}
                 </g>
               ))}
               {picture && (
@@ -173,8 +216,8 @@ export function SettingMap({ s }: { s: Setting }) {
               )}
               {/* The land's emblem to the left of its name, and above the name the emblems of the cultures kept there. */}
               {(() => {
-                const land = emblemOf(s, r.id)
-                const kept = (s.drawn ?? []).filter((d) => d.tool === 'culture' && d.home === r.id).slice(0, 3)
+                const land = on('emblems') ? emblemOf(s, r.id) : undefined
+                const kept = on('cultures') ? (s.drawn ?? []).filter((d) => d.tool === 'culture' && d.home === r.id).slice(0, 3) : []
                 // The land's own emblem stands to the left of its name; the name moves over to keep the pair centred.
                 const at = { x: r.x + (land ? 15 : 0) - nameHalf(r.name) - 30, y: r.y - 19, size: 24 }
                 return (
@@ -189,8 +232,8 @@ export function SettingMap({ s }: { s: Setting }) {
                 )
               })()}
               <g className="place-label" onClick={() => go(r.id)}>
-                <text x={r.x + (emblemOf(s, r.id) ? 15 : 0)} y={r.y} textAnchor="middle" fontSize="17" fontWeight="700" letterSpacing=".06em" fill={t.ink} stroke={t.halo} strokeWidth="4.5" paintOrder="stroke">{r.name.charAt(0).toUpperCase() + r.name.slice(1)}</text>
-                <text x={r.x + (emblemOf(s, r.id) ? 15 : 0)} y={r.y + 13} textAnchor="middle" fontSize="8.5" letterSpacing=".16em" fill={t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{r.terrain.toUpperCase()}</text>
+                {on('names') && <text x={r.x + shift} y={r.y} textAnchor="middle" fontSize="17" fontWeight="700" letterSpacing=".06em" fill={t.ink} stroke={t.halo} strokeWidth="4.5" paintOrder="stroke">{r.name.charAt(0).toUpperCase() + r.name.slice(1)}</text>}
+                {on('terrain') && <text x={r.x + shift} y={r.y + (on('names') ? 13 : 3)} textAnchor="middle" fontSize="8.5" letterSpacing=".16em" fill={t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{r.terrain.toUpperCase()}</text>}
               </g>
             </g>
           )
@@ -199,15 +242,15 @@ export function SettingMap({ s }: { s: Setting }) {
         {/* The names of lakes and rivers: a lake's beneath it, a river's set along its course. */}
         <g pointerEvents="none" fill={t.waterInk} fontStyle="italic" fontSize="8" stroke={t.halo} strokeWidth="2.6" paintOrder="stroke">
           <defs>{map.rivers.map((r, i) => <path key={i} id={`river-${i}`} d={r.along} />)}</defs>
-          {map.rivers.map((r, i) => (
+          {on('waterNames') && rivers.map((r, i) => (
             <text key={i} dy="-7"><textPath href={`#river-${i}`} startOffset="50%" textAnchor="middle">{r.name}</textPath></text>
           ))}
-          {map.lakes.map((l, i) => <text key={i} x={l.x} y={l.y} textAnchor="middle">{l.name}</text>)}
+          {on('waterNames') && lakes.map((l, i) => <text key={i} x={l.x} y={l.y} textAnchor="middle">{l.name}</text>)}
         </g>
 
         {/* The name of each neighbouring world, on its own land. */}
         <g pointerEvents="none">
-          {map.beyond.map((b) => (
+          {on('beyond') && map.beyond.map((b) => (
             <g key={b.id}>
               <text transform={`translate(${b.x} ${b.y}) rotate(${b.turn})`} textAnchor="middle" fontSize="15" fontStyle="italic" letterSpacing=".16em" fill={t.ink} opacity=".8" stroke={t.beyond} strokeWidth="4" paintOrder="stroke">
                 {titleCase(b.name.replace(/^the /, 'The ')).toUpperCase()}
@@ -218,13 +261,13 @@ export function SettingMap({ s }: { s: Setting }) {
 
         {/* The seas, named along the open edges. */}
         <g pointerEvents="none" fill={t.waterInk} fontStyle="italic" letterSpacing=".14em">
-          {map.seas.map((x) => (
+          {on('seas') && map.seas.map((x) => (
             <text key={x.name} textAnchor="middle" fontSize="14" transform={`translate(${x.x} ${x.y}) rotate(${x.turn})`}>{titleCase(x.name.replace(/^the /, 'The '))}</text>
           ))}
         </g>
 
         {/* Title, compass and scale. */}
-        <g pointerEvents="none">
+        {on('frame') && <g pointerEvents="none">
           <rect x="22" y="22" width={Math.max(190, title.length * 12 + 44)} height="46" fill={t.paper} stroke={t.ink} strokeWidth="1.5" />
           <rect x="26" y="26" width={Math.max(190, title.length * 12 + 44) - 8} height="38" fill="none" stroke={t.ink} strokeWidth=".7" />
           <text x={22 + Math.max(190, title.length * 12 + 44) / 2} y="52" textAnchor="middle" fontSize="19" fontWeight="700" letterSpacing=".08em" fill={t.ink}>{title}</text>
@@ -240,16 +283,34 @@ export function SettingMap({ s }: { s: Setting }) {
             <path d={`M0 0H${map.scale.px}M0-5V5M${map.scale.px / 2}-3V3M${map.scale.px}-5V5`} fill="none" strokeWidth="1.4" />
             <text x={map.scale.px + 10} y="4" fontSize="11" fontStyle="italic" stroke="none">{map.scale.label}</text>
           </g>
-        </g>
+        </g>}
 
         <rect width={map.w} height={map.h} fill="url(#vignette)" pointerEvents="none" />
         <rect x="8" y="8" width={map.w - 16} height={map.h - 16} fill="none" stroke={t.ink} strokeWidth="2.5" pointerEvents="none" />
         <rect x="14" y="14" width={map.w - 28} height={map.h - 28} fill="none" stroke={t.ink} strokeWidth=".8" pointerEvents="none" />
       </svg>
       <figcaption>
-        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. A neighbouring world is joined on by land and runs off its edge of the sheet, behind a dot-and-dash frontier; a side without one faces a named sea. Lakes and rivers are named too. Lakes and rivers are drawn as the sea is, and a river swells and narrows on its way to the lake or sea it joins. Each place carries its emblem to the left of its name, with the smaller emblems of the cultures kept there. A house marks a site and a cross a dangerous place. Settlements grow with their rank: a small circle for a village, a diamond for a trading post, a ringed dot for a town, battlements for a fortress town, a double ring for a city and a starred ring for the capital. Click any of them to read about it.</span>
+        <span className="hint">Click a place, a mark or an emblem to read about it. A neighbouring world lies behind a dot-and-dash frontier. Turn any part of the map on or off in the legend; Save map saves it as it is shown.</span>
         <button onClick={save}>Save map</button>
       </figcaption>
+      <div className="legend" role="group" aria-label="Map legend">
+        <div className="legend-head">
+          <strong>Legend</strong>
+          <button onClick={() => keep(new Set())} disabled={!hidden.size}>Show all</button>
+          <button onClick={() => keep(new Set(LAYERS.flatMap((g) => g.items.map(([key]) => key))))}>Hide all</button>
+        </div>
+        {LAYERS.map((g) => (
+          <div key={g.group} className="legend-group">
+            <span className="legend-title">{g.group}</span>
+            {g.items.map(([key, label, sample]) => (
+              <button key={key} className="legend-item" aria-pressed={on(key)} onClick={() => toggle(key)} title={on(key) ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}>
+                <svg viewBox="0 0 24 16" width="24" height="16" aria-hidden="true" fontFamily="Georgia, serif">{sample(t)}</svg>
+                {label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
     </figure>
   )
 }
