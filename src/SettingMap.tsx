@@ -92,9 +92,10 @@ export function SettingMap({ s }: { s: Setting }) {
             Every shore line goes down first and all the water over them, so that where a river meets a lake or
             the sea the water runs through with no line across it. */}
         <g pointerEvents="none" strokeLinejoin="round">
+          {/* The sea's coast shows only a hairline of ink past the land laid over it; the shores of fresh water are drawn as fine. */}
           <g fill="none" stroke={t.ink}>
-            <g strokeWidth="3.6" clipPath="url(#dry-land)">{map.rivers.map((r, i) => <path key={i} d={r.shape} />)}</g>
-            <g strokeWidth="4.5">{map.lakes.map((l, i) => <path key={i} d={l.d} />)}</g>
+            <g strokeWidth="1.5" clipPath="url(#dry-land)">{map.rivers.map((r, i) => <path key={i} d={r.shape} />)}</g>
+            <g strokeWidth="1.5">{map.lakes.map((l, i) => <path key={i} d={l.d} />)}</g>
           </g>
           <g fill={t.ocean}>
             {map.rivers.map((r, i) => <path key={`r${i}`} d={r.shape} />)}
