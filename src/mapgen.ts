@@ -306,17 +306,21 @@ export function buildMap(s: Setting): MapData {
       const [bx0, by0, bx1, by1] = [Math.min(...fxs), Math.min(...fys), Math.max(...fxs), Math.max(...fys)]
       for (let tries = 0; tries < 60 && !pools.length; tries++) {
         const c: P = [bx0 + rng() * (bx1 - bx0), by0 + rng() * (by1 - by0)]
-        const r = 13 + rng() * 15
-        const room = Array.from({ length: 8 }, (_, k): P => [c[0] + Math.cos((k / 8) * Math.PI * 2) * (r * 1.9 + 8), c[1] + Math.sin((k / 8) * Math.PI * 2) * (r * 1.9 + 8)])
+        // Mostly ponds and small lakes, now and then a broad one; the long tries start large and settle for less.
+        const r = (10 + rng() ** 1.5 * 50) * (tries < 36 ? 1 : 0.6)
+        const room = Array.from({ length: 8 }, (_, k): P => [c[0] + Math.cos((k / 8) * Math.PI * 2) * (r * 1.45 + 8), c[1] + Math.sin((k / 8) * Math.PI * 2) * (r * 1.45 + 8)])
         if (!inside(c, fine) || room.some((p) => !inside(p, fine))) continue
         if (Math.abs(c[0] - cx) < 84 + r && c[1] > cy - 60 - r && c[1] < cy + 30 + r) continue
-        const tilt = rng() * Math.PI, squash = 0.6 + rng() * 0.35, phase = rng() * 9
-        const poly = Array.from({ length: 22 }, (_, k): P => {
-          const a = (k / 22) * Math.PI * 2
-          const rr = r * (0.78 + 0.34 * edge(i * 3.1 + Math.cos(a) * 1.4 + phase, Math.sin(a) * 1.4 + phase))
+        const tilt = rng() * Math.PI, squash = 0.42 + rng() * 0.55, phase = rng() * 9, arms = [rng() * Math.PI * 2, rng() * Math.PI * 2]
+        const poly = Array.from({ length: 34 }, (_, k): P => {
+          const a = (k / 34) * Math.PI * 2
+          // An uneven shore with a bay or two: noise, and two slow swells at angles of their own.
+          const rr = r * (0.6 + 0.62 * edge(i * 3.1 + Math.cos(a) * 1.7 + phase, Math.sin(a) * 1.7 + phase)) * (1 + 0.2 * Math.sin(a * 2 + arms[0]) + 0.14 * Math.sin(a * 3 + arms[1]))
           const [u, v] = [Math.cos(a) * rr, Math.sin(a) * rr * squash]
           return [c[0] + u * Math.cos(tilt) - v * Math.sin(tilt), c[1] + u * Math.sin(tilt) + v * Math.cos(tilt)]
         })
+        // Its whole shore, bays and all, must lie within the place.
+        if (poly.some((q) => !inside(q, fine))) continue
         pools.push({ c, r, poly })
       }
     }
@@ -375,9 +379,11 @@ export function buildMap(s: Setting): MapData {
   // The land of each neighbouring world: a broad blob about its centre, fitted against the places it borders.
   const lands = outerAt.map((c, n) => {
     const i = pts.length + n
+    // Each neighbour is a different size and has an uneven outline of its own, so the seas between them differ.
+    const size = 1.25 + rng() * 0.95, lobes = [rng() * Math.PI * 2, rng() * Math.PI * 2]
     return outline(i, Array.from({ length: 72 }, (_, k): P => {
       const a = (k / 72) * Math.PI * 2
-      const r = typical * 1.6 * (0.8 + 0.4 * edge(i * 7.3 + Math.cos(a) * 1.9 + 5, Math.sin(a) * 1.9 + 5))
+      const r = typical * size * (0.62 + 0.7 * edge(i * 7.3 + Math.cos(a) * 2.4 + 5, Math.sin(a) * 2.4 + 5)) * (1 + 0.2 * Math.sin(a * 2 + lobes[0]) + 0.16 * Math.sin(a * 3 + lobes[1]))
       return [c[0] + Math.cos(a) * r, c[1] + Math.sin(a) * r]
     }))
   })
@@ -392,39 +398,47 @@ export function buildMap(s: Setting): MapData {
   }))
   const rivers: P[][] = []
   const riverHome: number[] = []
+  // A river may now cross from place to place on its way down, so what it must keep clear of is everything on the map.
+  const boxes = regions.map((r) => { const xs = r.points.map((p) => p[0]), ys = r.points.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] })
+  const onLand = (p: P) => regions.some((o, j) => p[0] >= boxes[j][0] && p[0] <= boxes[j][2] && p[1] >= boxes[j][1] && p[1] <= boxes[j][3] && inside(p, o.points))
+  const letteredAt = (p: P) => regions.some((o) => Math.abs(p[0] - o.x) < 76 && p[1] > o.y - 54 && p[1] < o.y + 24)
+  const marked = regions.flatMap((o) => o.sites)
+  const shores = coastOf.flatMap((list, j) => list.map((p) => ({ p, j })))
   regions.forEach((r, i) => {
     const pool = lakes.find((l) => l.region === i)
-    const coast = coastOf[i]
-    if (!coast.length && !pool) return
-    if (rng() > (pool ? 0.8 : 0.55)) return
-    const lettered = (p: P) => Math.abs(p[0] - r.x) < 76 && p[1] > r.y - 54 && p[1] < r.y + 24
-    for (let tries = 0; tries < 24; tries++) {
+    if (!shores.length && !pool) return
+    if (rng() > (pool ? 0.85 : 0.65)) return
+    for (let tries = 0; tries < 36; tries++) {
       // From the lake to the sea where there is both; otherwise from a spring somewhere inland to the sea or the lake.
-      const fromLake = !!pool && coast.length > 0 && tries < 12
+      const fromLake = !!pool && shores.length > 0 && tries < 12
       const start: P = fromLake ? pool!.c : (() => {
-        const a = rng() * Math.PI * 2, d = 30 + rng() * 60
+        const a = rng() * Math.PI * 2, d = 20 + rng() * 70
         return [r.x + Math.cos(a) * d, r.y + Math.sin(a) * d * 0.8] as P
       })()
-      if (!inside(start, r.points) || (!fromLake && lettered(start))) continue
-      const end: P | undefined = coast.length
-        ? [...coast].sort((p, q) => Math.hypot(p[0] - start[0], p[1] - start[1]) - Math.hypot(q[0] - start[0], q[1] - start[1]))[Math.floor(rng() * Math.min(4, coast.length))]
-        : pool!.c
-      if (!end) continue
-      const len = Math.hypot(end[0] - start[0], end[1] - start[1])
-      if (len < 46 || len > 330) continue
+      if (!inside(start, r.points) || (!fromLake && letteredAt(start))) continue
+      // How far it means to run: anything from a short stream to a river that crosses several places.
+      const want = 70 + rng() * 620
+      const far = (q: P) => Math.hypot(q[0] - start[0], q[1] - start[1])
+      const mouth = shores.length ? [...shores].sort((p, q) => Math.abs(far(p.p) - want) - Math.abs(far(q.p) - want))[Math.floor(rng() * Math.min(4, shores.length))] : undefined
+      const end: P = mouth ? mouth.p : pool!.c
+      const len = far(end)
+      if (len < 46 || len > 760) continue
       const [nx, ny] = [-(end[1] - start[1]) / len, (end[0] - start[0]) / len]
       const sway = (rng() - 0.5) * 2, phase = rng() * 20
       const steps = Math.max(8, Math.round(len / 11))
       const line = Array.from({ length: steps + 1 }, (_, k): P => {
-        const t = k / steps
-        // Two bends laid over each other, pinned at both ends.
-        const off = Math.sin(t * Math.PI) * (len * 0.13 * sway + (edge(phase + t * 3.2, i * 1.7) - 0.5) * 34) + Math.sin(t * Math.PI * 3 + phase) * 5 * Math.sin(t * Math.PI)
+        const t = k / steps, pin = Math.sin(t * Math.PI)
+        // Bends laid over each other, pinned at both ends; a long river winds more than a short one.
+        const off = pin * (Math.min(len, 320) * 0.13 * sway + (edge(phase + t * (3.2 + len / 160), i * 1.7) - 0.5) * 38) + Math.sin(t * Math.PI * (3 + Math.round(len / 150)) + phase) * 6 * pin
         return [start[0] + (end[0] - start[0]) * t + nx * off, start[1] + (end[1] - start[1]) * t + ny * off]
       })
-      const body = line.slice(fromLake ? Math.ceil((pool!.r * 0.8) / 11) : 0, coast.length ? line.length - 1 : line.length - Math.ceil((pool!.r * 0.8) / 11))
-      if (body.length < 5 || body.some((p) => !inside(p, r.points) || lettered(p))) continue
+      const body = line.slice(fromLake ? Math.ceil((pool!.r * 0.8) / 11) : 0, mouth ? line.length - 1 : line.length - Math.ceil((pool!.r * 0.8) / 11))
+      if (body.length < 5) continue
+      // It keeps to the land, clear of every name and mark, and runs through no lake but the one it leaves or feeds.
+      if (body.some((p) => letteredAt(p) || !onLand(p) || marked.some((m) => Math.hypot(m.x - p[0], m.y - p[1]) < 12)
+        || lakes.some((l) => l !== pool && Math.hypot(l.c[0] - p[0], l.c[1] - p[1]) < l.r + 8))) continue
       // The mouth runs on a little past the shore, so that the river opens into the sea.
-      if (coast.length) { const out = Math.hypot(end[0] - r.x, end[1] - r.y) || 1; body.push(end, [end[0] + ((end[0] - r.x) / out) * 7, end[1] + ((end[1] - r.y) / out) * 7]) }
+      if (mouth) { const o = regions[mouth.j], out = Math.hypot(end[0] - o.x, end[1] - o.y) || 1; body.push(end, [end[0] + ((end[0] - o.x) / out) * 7, end[1] + ((end[1] - o.y) / out) * 7]) }
       rivers.push(body)
       riverHome.push(i)
       break
@@ -460,14 +474,15 @@ export function buildMap(s: Setting): MapData {
   // Trim the sheet: an even border of sea on each open side, and on a side with a neighbouring world, far
   // enough out that its land runs off the edge.
   const all = regions.flatMap((r) => r.points)
-  const PAD = 96
-  const box = { x0: Math.min(...all.map((p) => p[0])) - PAD, y0: Math.min(...all.map((p) => p[1])) - PAD - 26, x1: Math.max(...all.map((p) => p[0])) + PAD, y1: Math.max(...all.map((p) => p[1])) + PAD }
+  // Each open side gets a sea of its own width: some a narrow strait's worth, some a broad ocean.
+  const sea = () => 64 + rng() * rng() * 330
+  const box = { x0: Math.min(...all.map((p) => p[0])) - sea(), y0: Math.min(...all.map((p) => p[1])) - sea() - 26, x1: Math.max(...all.map((p) => p[0])) + sea(), y1: Math.max(...all.map((p) => p[1])) + sea() }
   outer.forEach((b, n) => {
     const [cx, cy] = outerAt[n], cut = typical * 0.32
-    if (b.side === 'north') box.y0 = Math.min(box.y0 + PAD - 40, cy - cut)
-    if (b.side === 'south') box.y1 = Math.max(box.y1 - PAD + 40, cy + cut)
-    if (b.side === 'west') box.x0 = Math.min(box.x0 + PAD - 40, cx - cut)
-    if (b.side === 'east') box.x1 = Math.max(box.x1 - PAD + 40, cx + cut)
+    if (b.side === 'north') box.y0 = Math.min(Math.min(...all.map((p) => p[1])) - 40, cy - cut)
+    if (b.side === 'south') box.y1 = Math.max(Math.max(...all.map((p) => p[1])) + 40, cy + cut)
+    if (b.side === 'west') box.x0 = Math.min(Math.min(...all.map((p) => p[0])) - 40, cx - cut)
+    if (b.side === 'east') box.x1 = Math.max(Math.max(...all.map((p) => p[0])) + 40, cx + cut)
   })
   const tx = -box.x0, ty = -box.y0
   const moved = regions.map((r) => {

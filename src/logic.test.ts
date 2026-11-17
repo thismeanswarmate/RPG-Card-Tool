@@ -1842,3 +1842,46 @@ describe('the names of lands', async () => {
     expect(s.specs[site].form).toBeUndefined()
   })
 })
+
+describe('uneven seas and lakes, and far-running rivers', async () => {
+  const G = await import('./setting')
+  const M = await import('./mapgen')
+  const coords = (d: string) => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [+m[1], +m[2]] as [number, number])
+  it('varies the width of each sea, the size and shape of lakes, and lets rivers cross several places', () => {
+    const margins: number[] = [], lakeSizes: number[] = [], lakeShapes: number[] = [], lengths: number[] = []
+    for (let n = 0; n < 14; n++) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: n % 2 ? 'continent' : 'country', lands: ['temperate', 'coast'] }, `uneven-${n}`)
+      const map = M.buildMap(s)
+      expect(M.buildMap(s)).toEqual(map)
+      const land = map.regions.flatMap((r) => r.points)
+      const open = G.seasOf(s).map((x) => x.side)
+      const gap = { north: Math.min(...land.map((p) => p[1])), south: map.h - Math.max(...land.map((p) => p[1])), west: Math.min(...land.map((p) => p[0])), east: map.w - Math.max(...land.map((p) => p[0])) }
+      for (const side of open) { expect(gap[side]).toBeGreaterThan(50); margins.push(gap[side]) }
+      for (const l of map.lakes) {
+        const pts = coords(l.d), cx = pts.reduce((a, p) => a + p[0], 0) / pts.length, cy = pts.reduce((a, p) => a + p[1], 0) / pts.length
+        const radii = pts.map((p) => Math.hypot(p[0] - cx, p[1] - cy))
+        lakeSizes.push(Math.max(...radii)); lakeShapes.push(Math.max(...radii) / Math.min(...radii))
+      }
+      for (const r of map.rivers) {
+        const pts = coords(r.d)
+        lengths.push(pts.slice(1).reduce((a, p, k) => a + Math.hypot(p[0] - pts[k][0], p[1] - pts[k][1]), 0))
+        // However far it runs, it stays off every name and mark.
+        for (const p of pts.slice(0, -2)) {
+          for (const o of map.regions) expect(Math.abs(p[0] - o.x) < 70 && p[1] > o.y - 50 && p[1] < o.y + 20).toBe(false)
+          for (const m of map.regions.flatMap((o) => o.sites)) expect(Math.hypot(m.x - p[0], m.y - p[1])).toBeGreaterThan(10)
+        }
+      }
+    }
+    // Seas: some narrow, some broad.
+    expect(Math.min(...margins)).toBeLessThan(110)
+    expect(Math.max(...margins)).toBeGreaterThan(220)
+    // Lakes: ponds and broad waters, and none a neat circle.
+    expect(Math.min(...lakeSizes)).toBeLessThan(18)
+    expect(Math.max(...lakeSizes)).toBeGreaterThan(38)
+    expect(lakeShapes.filter((x) => x > 1.6).length).toBeGreaterThan(lakeShapes.length * 0.5)
+    // Rivers: short streams still, and some far longer than the old limit of about 330.
+    expect(Math.min(...lengths)).toBeLessThan(150)
+    expect(Math.max(...lengths)).toBeGreaterThan(450)
+    expect(lengths.filter((x) => x > 330).length).toBeGreaterThan(3)
+  }, 30000)
+})
