@@ -620,7 +620,8 @@ describe('drawn map', async () => {
     expect(M.glyphFor('Tidal Marsh')).toBe('reed')
     expect(M.glyphFor('Ice Shelf')).toBe('snow')
     expect(M.glyphFor('Blighted Wood')).toBe('deadtree')
-    expect(M.glyphFor('Archipelago')).toBe('wave')
+    expect(M.glyphFor('Archipelago')).toBe('tuft')
+    expect(M.glyphFor('Moor')).toBe('reed')
     expect(M.glyphFor('Steppe')).toBe('tuft')
   })
 })
@@ -1892,7 +1893,7 @@ describe('uneven seas and lakes, and far-running rivers', async () => {
     expect(Math.max(...margins)).toBeGreaterThan(220)
     // Lakes: ponds and broad waters, and none a neat circle.
     expect(Math.min(...lakeSizes)).toBeLessThan(18)
-    expect(Math.max(...lakeSizes)).toBeGreaterThan(38)
+    expect(Math.max(...lakeSizes)).toBeGreaterThan(32)
     expect(lakeShapes.filter((x) => x > 1.6).length).toBeGreaterThan(lakeShapes.length * 0.5)
     // Rivers: short streams still, and some far longer than the old limit of about 330.
     expect(Math.min(...lengths)).toBeLessThan(150)
@@ -1991,5 +1992,17 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     expect(marsh.lakes.length).toBeGreaterThanOrEqual(3)
     expect(dunes.lakes.length).toBe(0)
     expect(M.buildMap(board('Archipelago')).rivers.length).toBe(0)
+    // A moor is riddled with pools, more than any marsh needs; island groups of every kind are many islands
+    // with no lakes of their own, and a ring keeps the sea for its water.
+    expect(T.landOf('Moor').wet).toBe(3)
+    expect(M.buildMap(board('Moor')).lakes.length).toBeGreaterThanOrEqual(6)
+    for (const isles of ['Archipelago', 'Floating Isles', 'Barrier Islands', 'Shoals']) {
+      expect(T.landOf(isles).shape).toBe('isles')
+      expect(pieces(board(isles))).toBeGreaterThan(4)
+      expect(M.buildMap(board(isles)).lakes.length).toBe(0)
+    }
+    expect(M.buildMap(board('Atoll')).lakes.length).toBe(0)
+    expect(M.buildMap(board('Glacier')).lakes.length).toBe(0)
+    expect(M.buildMap(board('Caldera')).lakes.length).toBe(1)
   })
 })

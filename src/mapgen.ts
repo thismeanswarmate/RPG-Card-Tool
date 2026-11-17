@@ -28,13 +28,13 @@ const GLYPHS: [RegExp, Glyph][] = [
   [/bone|grave/, 'cross'],
   [/crystal/, 'crystal'],
   [/orbital|dome|terraformed/, 'dome'],
-  [/asteroid|derelict|ash|crater|salt|dry lake|stony/, 'crater'],
+  [/asteroid|derelict|ash|crater|salt|dry lake|stony|methane/, 'crater'],
   [/ice|glacier|tundra|snow|frozen|permafrost/, 'snow'],
+  // Marks are drawn on land, so the sea's own lands take the mark of what grows or lies on them.
+  [/kelp|drowned|lagoon|marsh|fen|floodplain|estuary|tidal|wetland|delta|oasis|moor|bog|swamp/, 'reed'],
+  [/shoal|dune|erg|desert|wadi/, 'dune'],
   [/forest|wood|taiga|mangrove|canopy|jungle/, 'tree'],
-  [/sea|atoll|archipelago|shoal|kelp|fjord|island|isle|lagoon|drowned|methane/, 'wave'],
-  [/marsh|fen|floodplain|estuary|tidal|wetland|delta|oasis/, 'reed'],
-  [/dune|erg|desert|wadi/, 'dune'],
-  [/mountain|peak|highland|caldera|plateau|mesa|cliff|steps|karst|canyon|rift|badland|valley|headland|cave/, 'peak'],
+  [/mountain|peak|highland|caldera|plateau|mesa|cliff|steps|karst|canyon|rift|badland|valley|headland|cave|fjord/, 'peak'],
 ]
 export const glyphFor = (terrain: string): Glyph => GLYPHS.find(([re]) => re.test(terrain.toLowerCase()))?.[1] ?? 'tuft'
 
@@ -286,10 +286,10 @@ export function buildMap(s: Setting): MapData {
     const x0 = (cx - PADC) * g + g / 2, y0 = (cy - PADC) * g + g / 2
     const x = x0 + warp(dx, x0, y0), y = y0 + warp(dy, x0, y0)
     // Whose ground this would be: the centre with the least "power", ours and the neighbours' alike.
-    let near = 0, least = Infinity, nearOurs = 0, leastOurs = Infinity, height = -Infinity
+    let near = 0, least = Infinity, nearOurs = 0, leastOurs = Infinity, height = -Infinity, next = Infinity, nextAt = 0
     for (let i = 0; i < centres.length; i++) {
       const d2 = (x - centres[i][0]) ** 2 + (y - centres[i][1]) ** 2, power = d2 - radius[i] ** 2
-      if (power < least) { least = power; near = i }
+      if (power < least) { next = least; nextAt = near; least = power; near = i } else if (power < next) { next = power; nextAt = i }
       if (i < N) {
         if (power < leastOurs) { leastOurs = power; nearOurs = i }
         height = Math.max(height, 1 - Math.sqrt(d2) / span[i])
@@ -304,14 +304,27 @@ export function buildMap(s: Setting): MapData {
     let ground = height + cut * Math.min(1.5, Math.max(0.08, 1 - height * 1.5))
     if (kind.shape === 'isles') {
       // A scatter of islands: the place's ground is broken up by a second, tighter noise, leaving a core island and others round it.
-      ground = dist < 0.2 ? 1 : Math.min(ground, (broken(x / 44, y / 44) - 0.56) * 2.2 + (1 - dist) * 0.35)
+      // How far this cell lies inside the place's own ground, from the border with whoever is next nearest.
+      const inFromBorder = near !== nearOurs ? 0 : next === Infinity ? Infinity : (next - least) / (2 * Math.hypot(centres[near][0] - centres[nextAt][0], centres[near][1] - centres[nextAt][1]) || 1)
+      // Open water lies all round the group, so that it stands off from the mainland and never joins it.
+      const moat = inFromBorder < 30
+      // Small islets for shoals and reefs, long thin ones for a barrier chain.
+      const grain = kind.grain ?? 31
+      const core = grain < 25 ? 0.07 : 0.13
+      ground = moat ? -1 : dist < core ? 1 : Math.min(ground, (broken(x / (kind.long ? grain * 2.6 : grain), y / (kind.long ? grain * 0.6 : grain)) - (grain < 25 ? 0.72 : 0.6)) * 2.4 + (1 - dist) * (grain < 25 ? 0.12 : 0.3))
     } else if (kind.shape === 'ring') {
       // A ring of land round a lagoon, open to the sea on one side.
       const a = Math.atan2(y - pts[nearOurs][1], x - pts[nearOurs][0])
       const open = Math.abs(Math.atan2(Math.sin(a - gapAt[nearOurs]), Math.cos(a - gapAt[nearOurs]))) < 0.42
-      ground = open ? -1 : 0.34 - Math.abs(dist - 0.52) * 2.4 + 0.3 * (rough(x / 40, y / 40) - 0.5)
+      const width = kind.ringWidth ?? 0.17
+      ground = open ? -1 : SEA + (width - Math.abs(dist - 0.5 - width * 0.3)) * 2.4 + 0.22 * (rough(x / 40, y / 40) - 0.5)
     }
-    if (dist < 0.16 && kind.shape !== 'ring') ground = 1
+    // Fjords: thin winding arms of the sea, cut along the low lines of a second noise, reaching in from the coast.
+    if (kind.inlets && height < 0.78) {
+      const line = Math.abs(broken(x / 70 + 11, y / 70 + 11) - 0.5)
+      if (line < 0.045) ground = Math.min(ground, SEA - 0.2 + line * 6)
+    }
+    if (dist < (kind.shape === 'isles' ? ((kind.grain ?? 31) < 25 ? 0.07 : 0.13) : 0.16) && kind.shape !== 'ring') ground = 1
     // A neighbouring world's land: in from its edge to an uneven depth, with the same rough coast.
     let band = -Infinity, bandOf = -1
     outer.forEach((b, n) => {
@@ -378,18 +391,21 @@ export function buildMap(s: Setting): MapData {
 
     // Still water, by how wet the country is: none in dry land, a pond or lake in ordinary land, and many in marsh and fen.
     const pools: { c: P; r: number; poly: P[] }[] = []
-    const want = kind.wet >= 3 ? 3 + Math.floor(rng() * 4) : kind.wet === 2 ? 1 + Math.floor(rng() * 2) : kind.wet === 1 ? (rng() < 0.4 ? 1 : 0) : 0
+    // Island groups and rings have the sea for their water; everywhere else it is by how wet the country is.
+    const want = kind.shape === 'isles' || kind.shape === 'ring' ? 0 : kind.pools ? kind.pools[0] + Math.floor(rng() * (kind.pools[1] - kind.pools[0] + 1)) : kind.wet >= 3 ? 8 + Math.floor(rng() * 5) : kind.wet === 2 ? 1 + Math.floor(rng() * 2) : kind.wet === 1 ? (rng() < 0.4 ? 1 : 0) : 0
     const fxs = fine.map((p) => p[0]), fys = fine.map((p) => p[1])
     const [bx0, by0, bx1, by1] = [Math.min(...fxs), Math.min(...fys), Math.max(...fxs), Math.max(...fys)]
+    const close = kind.wet >= 3 ? 0.5 : 1
     for (let tries = 0; tries < 50 + want * 30 && pools.length < want; tries++) {
       const c: P = [bx0 + rng() * (bx1 - bx0), by0 + rng() * (by1 - by0)]
       // Marsh pools are small and many; elsewhere mostly ponds, now and then a broad water.
-      const r = kind.wet >= 3 ? 7 + rng() * 14 : (10 + rng() ** 1.5 * 46) * (tries < 36 ? 1 : 0.6)
-      const room = Array.from({ length: 8 }, (_, k): P => [c[0] + Math.cos((k / 8) * Math.PI * 2) * (r * 1.45 + 8), c[1] + Math.sin((k / 8) * Math.PI * 2) * (r * 1.45 + 8)])
+      const r = (kind.poolSize ? kind.poolSize[0] + rng() * (kind.poolSize[1] - kind.poolSize[0]) : kind.wet >= 3 ? 5 + rng() ** 1.6 * 19 : 10 + rng() ** 1.5 * 46) * (tries < 36 ? 1 : 0.6)
+      const room = Array.from({ length: 8 }, (_, k): P => [c[0] + Math.cos((k / 8) * Math.PI * 2) * (r * 1.45 + 8 * close), c[1] + Math.sin((k / 8) * Math.PI * 2) * (r * 1.45 + 8 * close)])
       if (!inside(c, fine) || room.some((p) => !inside(p, fine))) continue
       if (Math.abs(c[0] - cx) < 84 + r && c[1] > cy - 60 - r && c[1] < cy + 30 + r) continue
-      if (pools.some((q) => Math.hypot(q.c[0] - c[0], q.c[1] - c[1]) < q.r + r + 14)) continue
-      const tilt = rng() * Math.PI, squash = 0.42 + rng() * 0.55, phase = rng() * 9, arms = [rng() * Math.PI * 2, rng() * Math.PI * 2]
+      if (pools.some((q) => Math.hypot(q.c[0] - c[0], q.c[1] - c[1]) < q.r + r + 14 * close)) continue
+      // A rift's lakes are long and narrow; a crater lake is nearly round.
+      const tilt = rng() * Math.PI, squash = kind.long ? 0.24 + rng() * 0.12 : kind.poolSize && kind.pools?.[1] === 1 ? 0.85 : 0.42 + rng() * 0.55, phase = rng() * 9, arms = [rng() * Math.PI * 2, rng() * Math.PI * 2]
       const poly = Array.from({ length: 34 }, (_, k): P => {
         const a = (k / 34) * Math.PI * 2
         // An uneven shore with a bay or two: noise, and two slow swells at angles of their own.
@@ -417,6 +433,7 @@ export function buildMap(s: Setting): MapData {
     hubs.forEach((sid, k) => {
       let a = turn + (k / Math.max(1, hubs.length)) * Math.PI * 2
       let spot: P = [cx, cy]
+      let found = false
       // Step round the centre until the mark sits on its own land, clear of the place's lettering and of the marks before it.
       const half = s.names[id].length * 5.4 + 14
       const lettered = (p: P) => Math.abs(p[0] - cx) < half + s.names[sid].length * 2.4 && p[1] > cy - 52 && p[1] < cy + 22
@@ -427,7 +444,16 @@ export function buildMap(s: Setting): MapData {
         spot = [cx + Math.cos(a) * r * 0.95, cy + Math.sin(a) * r + (Math.sin(a) >= 0 ? 16 : -10)]
         const crowded = sites.some((q) => Math.abs(q.x - spot[0]) < 46 && Math.abs(q.y - spot[1]) < 24)
           || pools.some((p) => Math.hypot(p.c[0] - spot[0], p.c[1] - spot[1]) < p.r + 22)
-        if (inside(spot, fine) && inside([spot[0], spot[1] + 14], fine) && !lettered(spot) && !crowded) break
+        if (inside(spot, fine) && inside([spot[0], spot[1] + 14], fine) && !lettered(spot) && !crowded) { found = true; break }
+      }
+      // On a small island or among many pools there may be no clear spot: then any dry ground close in will do,
+      // and failing that the heart of the place, which is always land.
+      if (!found) {
+        spot = [cx, cy]
+        search: for (const r of [34, 22, 48, 12, 64]) for (let t = 0; t < 12; t++) {
+          const b = a + (t / 12) * Math.PI * 2, at: P = [cx + Math.cos(b) * r, cy + Math.sin(b) * r]
+          if (inside(at, fine) && !pools.some((p) => Math.hypot(p.c[0] - at[0], p.c[1] - at[1]) < p.r + 6) && !sites.some((q) => Math.hypot(q.x - at[0], q.y - at[1]) < 14)) { spot = at; break search }
+        }
       }
       const built = s.built?.find((b) => b.id === sid && b.tool === 'settlement')
       sites.push({ id: sid, name: s.names[sid], x: r1(spot[0]), y: r1(spot[1]), kind: marks.get(sid)!, ...(built ? { rank: typeKey(built.rolls) ?? 'town' } : {}) })
@@ -472,7 +498,7 @@ export function buildMap(s: Setting): MapData {
     if (kind.shape === 'isles' || kind.shape === 'ring') return
     const pools = lakes.filter((l) => l.region === i)
     if (!shores.length && !pools.length) return
-    const chance = kind.wet === 0 ? 0.15 : kind.wet >= 3 ? 0.95 : kind.high ? 0.85 : pools.length ? 0.8 : 0.6
+    const chance = kind.river ?? (kind.wet === 0 ? 0.12 : kind.wet >= 3 ? 0.95 : kind.high ? 0.85 : pools.length ? 0.8 : 0.6)
     // Wet country runs with several streams.
     const count = rng() > chance ? 0 : kind.wet >= 3 ? 2 + Math.floor(rng() * 2) : 1
     for (let made = 0, tries = 0; made < count && tries < 60; tries++) {

@@ -16,6 +16,20 @@ export interface Land {
   high: boolean
   /** How common it is: 4 everywhere, 1 a rarity. */
   common: number
+  /** How many lakes or pools it holds, least and most; absent leaves it to how wet it is. */
+  pools?: [number, number]
+  /** How large those are across, least and most. */
+  poolSize?: [number, number]
+  /** Its lakes are long and narrow, as in a rift. */
+  long?: boolean
+  /** The chance that a river rises here, where the land calls for one more or less often than its wetness would. */
+  river?: number
+  /** For islands, how fine the scatter is: smaller for islets and reefs. */
+  grain?: number
+  /** Narrow arms of the sea reach deep into it. */
+  inlets?: boolean
+  /** For a ring, how broad the band of land is, as a share of its reach. */
+  ringWidth?: number
 }
 
 const BASE: Land = { temp: 0, bound: 0.5, wet: 1, shape: 'land', rugged: 0.35, high: false, common: 2.5 }
@@ -31,22 +45,37 @@ const RULES: [RegExp, Partial<Land>][] = [
   [/tundra|taiga|fjord/, { temp: -1.2, bound: 1 }],
   [/moor|heath|highland|sea cliff|headland|karst/, { temp: -0.5, bound: 0.6 }],
   [/steppe|floodplain|rift|caldera|plateau/, { temp: 0.5, bound: 0.5 }],
-  [/savanna|mangrove|lagoon|atoll|archipelago|canyon|badland|mesa/, { temp: 1.3, bound: 0.9 }],
+  [/savanna|mangrove|lagoon|atoll|canyon|badland|mesa/, { temp: 1.3, bound: 0.9 }],
+  [/archipelago/, { temp: 0.6, bound: 0.3 }],
   [/dune|erg|desert|salt|dry lake|wadi|oasis|stony|ash waste/, { temp: 2, bound: 1 }],
   [/orbital|dome|derelict|asteroid|terraformed|floating|crystal|enchanted|faerie|blighted|bone|sunless|titan|dragon/, { bound: 0.15 }],
   // Water.
-  [/marsh|fen|bog|swamp|mangrove|tidal|wetland|delta|drowned/, { wet: 3 }],
-  [/floodplain|estuary|lagoon|oasis|fjord/, { wet: 2 }],
-  [/dune|erg|desert|salt|dry lake|stony|badland|mesa|ash|asteroid|bone|glacier|ice|snow|permafrost/, { wet: 0 }],
+  [/marsh|fen|bog|swamp|mangrove|tidal|wetland|delta|drowned|moor/, { wet: 3 }],
+  [/floodplain|estuary|oasis|fjord|tundra/, { wet: 2 }],
+  [/dune|erg|desert|salt|dry lake|stony|badland|mesa|ash|asteroid|bone|glacier|ice|snow|wadi|derelict|orbital|dome|frozen/, { wet: 0 }],
+  // Thaw ponds on frozen ground, sinkholes in karst, a crater lake in a caldera, long lakes in a rift, one pool in an oasis.
+  [/tundra|permafrost/, { wet: 2, pools: [2, 4], poolSize: [6, 12] }],
+  [/moor/, { pools: [10, 15], poolSize: [5, 17] }],
+  [/karst/, { pools: [1, 3], poolSize: [5, 10], river: 0.25 }],
+  [/caldera/, { pools: [1, 1], poolSize: [20, 30], river: 0.3 }],
+  [/rift/, { pools: [1, 2], poolSize: [20, 34], long: true }],
+  [/oasis/, { pools: [1, 1], poolSize: [8, 13], river: 0 }],
+  // Country a river made, or that a river always runs through.
+  [/floodplain|estuary|delta|canyon/, { river: 1 }],
   // Outline.
-  [/archipelago|isles|islands|shoal|kelp|drowned|derelict fleet|asteroid field|frozen sea|methane sea/, { shape: 'isles', rugged: 0.9 }],
-  [/atoll/, { shape: 'ring', rugged: 0.5 }],
-  [/fjord|sea cliff|headland|estuary|lagoon|mangrove|tidal|ice shelf|delta/, { shape: 'coast' }],
+  [/archipelago|isles|islands|shoal|kelp|drowned|derelict fleet|asteroid field|methane sea/, { shape: 'isles', rugged: 0.9 }],
+  [/shoal|kelp|asteroid|derelict/, { grain: 19 }],
+  [/barrier/, { long: true, grain: 24 }],
+  [/atoll/, { shape: 'ring', rugged: 0.5, ringWidth: 0.16 }],
+  [/lagoon/, { shape: 'ring', rugged: 0.5, ringWidth: 0.3 }],
+  [/orbital ring/, { shape: 'ring', rugged: 0.2, ringWidth: 0.2 }],
+  [/fjord|sea cliff|headland|estuary|mangrove|tidal|ice shelf|frozen sea|delta/, { shape: 'coast' }],
   [/fjord|sea cliff|headland|karst|canyon|badland/, { rugged: 1 }],
+  [/fjord/, { inlets: true }],
   [/dune|erg|steppe|plain|salt|savanna/, { rugged: 0.15 }],
   [/steppe|plateau|caldera|rift|canyon|salt|dry lake|mesa|cave|cavern|sunless|oasis|highland/, { shape: 'inland' }],
   // High country.
-  [/highland|plateau|caldera|peak|steps|karst|canyon|mesa|glacier|rift|cliff/, { high: true }],
+  [/highland|plateau|caldera|peak|steps|karst|canyon|mesa|glacier|rift|cliff|fjord/, { high: true }],
 ]
 
 const known = new Map<string, Land>()
