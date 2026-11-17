@@ -1,3 +1,4 @@
+import { rootOf } from './logic'
 import { createContext, useContext, useEffect, useState } from 'react'
 import { AspectRows } from './CardTool'
 import { allowHint, isDirect } from './comfy'
@@ -30,7 +31,10 @@ const upper = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 /** Opens every folded element; set by the setting on screen, so that a jump can reach something tucked inside one. */
 let unfoldAll: (() => void) | null = null
 const scrollTo = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+/** In the map view, going to something means showing it in the panel beside the map; set by the setting on screen. */
+let showInPanel: ((id: string) => void) | null = null
 const go = (id: string) => {
+  if (showInPanel) return showInPanel(id)
   if (document.getElementById(`set-${id}`)) return scrollTo(id)
   unfoldAll?.()
   setTimeout(() => scrollTo(id), 60)
@@ -292,7 +296,7 @@ function Prose({ s, text, home, skip, owner }: { s: SettingData; text: string[];
           {findMentions(s, t, skip, owner).map((part, j) => typeof part === 'string' ? part : part.made ? (
             // Already made: its own name, leading to it.
             <a key={j} className={`mention made m-${mentionKind(part.mention)}`} role="link" tabIndex={0} title={`Go to ${part.text}`}
-              onClick={() => scrollTo(part.made!)} onKeyDown={(e) => { if (e.key === 'Enter') scrollTo(part.made!) }}>{part.text}</a>
+              onClick={() => go(part.made!)} onKeyDown={(e) => { if (e.key === 'Enter') go(part.made!) }}>{part.text}</a>
           ) : (
             <span key={j} className={`mention m-${mentionKind(part.mention)}`}>
               {part.text}
@@ -598,6 +602,11 @@ function Gazetteer({ s }: { s: SettingData }) {
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(!!s.manual)
   const [decks, setDecks] = useState(false)
+  // Two ways of working: on the map, with whatever is picked shown beside it, or down one long page.
+  const [view, setView] = useState<'map' | 'page'>(() => { try { return localStorage.getItem('storyloom-view') === 'page' ? 'page' : 'map' } catch { return 'map' } })
+  const show = (next: 'map' | 'page') => { setView(next); try { localStorage.setItem('storyloom-view', next) } catch { /* private window */ } }
+  // What the panel beside the map shows: one land with everything in it, or the world as a whole.
+  const [picked, setPicked] = useState('world')
   // What is folded is remembered for each setting in this browser.
   const foldKey = `storyloom-folded:${s.id}`
   const [folded, setFolded] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem(foldKey) ?? '[]') as string[]) } catch { return new Set() } })
@@ -612,6 +621,23 @@ function Gazetteer({ s }: { s: SettingData }) {
   // The first place with nothing in it yet is the natural next step.
   const bare = roots.find((r) => { const v = placeView(s, r); return [v.land, ...v.sites].every((sp) => !sp.powers.length && !sp.things.length && !sp.people.length && !sp.built.length) })
   const meta = worldProse(s)
+  const shown = roots.includes(picked) ? picked : 'world'
+  /** The land a thing belongs to, or the world for what belongs to no one place. */
+  const landFor = (id: string) => {
+    if (s.board[id]) return rootOf(s.board, id)
+    const home = [...s.entities, ...s.people, ...(s.built ?? []), ...(s.drawn ?? [])].find((x) => x.id === id)?.home
+    return home && s.board[home] ? rootOf(s.board, home) : 'world'
+  }
+  useEffect(() => {
+    if (view !== 'map') return
+    showInPanel = (id) => {
+      setPicked(landFor(id))
+      // Anything folded away opens, and the panel turns to the thing itself.
+      if (!document.getElementById(`set-${id}`)) keep(new Set())
+      setTimeout(() => (document.getElementById(`set-${id}`) ?? document.querySelector('.mapview-panel'))?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80)
+    }
+    return () => { showInPanel = null }
+  })
   const load = useImages((x) => x.load)
   useEffect(() => { void load(`${s.id}:`) }, [s.id, load])
   const copy = async () => {
@@ -625,44 +651,16 @@ function Gazetteer({ s }: { s: SettingData }) {
     a.click()
     URL.revokeObjectURL(a.href)
   }
-  return (
-    <EditCtx.Provider value={editing}>
-    <FoldCtx.Provider value={fold}>
-    <div className="gazetteer">
-      <header className="gaz-head">
-        <h2><Name id="world" s={s} /></h2>
-        <p className="hint">{summary(s)} · {s.manual ? 'built by hand' : `seed “${s.seed}”`}</p>
-        <div className="actions">
-          <button className={editing ? 'on' : ''} aria-pressed={editing} onClick={() => setEditing(!editing)}>{editing ? 'Done editing' : 'Edit'}</button>
-          <button onClick={() => setDecks(true)}>Decks</button>
-          {roots.length > 0 && <button onClick={() => keep(new Set(everything()))}>Minimise all</button>}
-          {folded.size > 0 && <button onClick={() => keep(new Set())}>Open all</button>}
-          <button onClick={copy}>{copied ? 'Copied' : 'Copy as text'}</button>
-          <button onClick={download}>Download</button>
+  const worldAdds = (
+        <div className="addbar">
+          <span>Add to the world</span>
+          <button onClick={() => add((d) => addDrawn(d, 'race'))}>+ Race</button>
+          {!worldDrawn(s, 'history').length && <button onClick={() => add((d) => addDrawn(d, 'history'))}>+ History</button>}
+          {beyondOf(s).length < SIDES.length && <button onClick={() => edit((d) => { addBeyond(d) })}>+ Bordering world</button>}
         </div>
-      </header>
-      {decks && <SettingDecks s={s} onClose={() => setDecks(false)} />}
-      {editing && (
-        <section className="guide">
-          <h3>{!roots.length ? 'Step 1: a place' : bare ? `Next: fill in ${s.names[bare]}` : 'Next: another place, or more detail'}</h3>
-          <p>
-            {!roots.length ? 'Every setting starts somewhere. Add a place and it arrives with a kind of land, a site, a name and a description, each drawn for you: pick between the options that came up, or redraw for new ones.'
-              : bare ? 'Use the “Add” buttons under the place to give it a faction, some people, a settlement or a danger. Whatever you add is described in terms of what is already there. A coloured word in a description names something you could add: press the + beside it.'
-                : 'Add the next place, or keep filling in the ones you have. “Rewrite” on anything lets it take in what you have added since, and every name can be redrawn or typed.'}
-          </p>
-          <div className="actions">
-            <button className={!roots.length || !bare ? 'primary' : ''} onClick={() => add(addPlace)}>+ Add {roots.length ? 'another' : 'the first'} place</button>
-            {bare && <button className="primary" onClick={() => go(bare)}>Go to {s.names[bare]}</button>}
-          </div>
-        </section>
-      )}
-      {roots.length > 0 && <ImagePanel s={s} />}
-      {roots.length > 0 && <Picture id="world" s={s} />}
-      {roots.length > 0 && <SettingMap s={s} />}
-      <nav className="gaz-nav">
-        {roots.map((r) => <button key={r} onClick={() => go(r)}>{upper(s.names[r])}</button>)}
-      </nav>
-
+  )
+  const worldPart = (
+    <>
       <section className="prose">
         <h3>Overview</h3>
         {meta.text.map((t, i) => <p key={i}>{t}</p>)}
@@ -696,18 +694,32 @@ function Gazetteer({ s }: { s: SettingData }) {
       {worldDrawn(s, 'history').map((d) => <DrawnBlock key={d.id} d={d} s={s} top />)}
       {worldDrawn(s, 'race').map((d) => <DrawnBlock key={d.id} d={d} s={s} top />)}
       {worldDrawn(s, 'culture').map((d) => <DrawnBlock key={d.id} d={d} s={s} top />)}
-      {editing && (
-        <div className="addbar">
-          <span>Add to the world</span>
-          <button onClick={() => add((d) => addDrawn(d, 'race'))}>+ Race</button>
-          {!worldDrawn(s, 'history').length && <button onClick={() => add((d) => addDrawn(d, 'history'))}>+ History</button>}
-          {beyondOf(s).length < SIDES.length && <button onClick={() => edit((d) => { addBeyond(d) })}>+ Bordering world</button>}
-        </div>
-      )}
-
-      {rootsOf(s).map((r) => {
+      {editing && worldAdds}
+    </>
+  )
+  const storiesPart = (
+      <details className="images">
+        <summary>All stories <small>{s.hooks.length} under way</small></summary>
+        <ul className="todo stories">
+          {s.hooks.map((h) => (
+            <li key={h.id}>
+              {hookText(s, h)} <button className="link" onClick={() => go(h.lines[0].who)}>({s.names[h.at]})</button>
+              {editing && (
+                <span className="rename shown">
+                  <button title="Draw this story again" aria-label="Draw this story again" onClick={() => edit((d) => rerollStory(d, h.id))}>↻</button>
+                  <button title="Remove this story" aria-label="Remove this story" onClick={() => edit((d) => removeStory(d, h.id))}>×</button>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+        {editing && s.people.length === 0 && <p className="hint">Stories start from people: add a person, then use “+ Story” under them.</p>}
+      </details>
+  )
+  /** One land with everything in it. In the panel beside the map it is shown open whether or not it is folded on the page. */
+  const placeEntry = (r: string, open = false) => {
         const v = placeView(s, r)
-        if (folded.has(r)) return <Mini key={r} id={r} s={s} what={v.aka} className="entry place" />
+        if (folded.has(r) && !open) return <Mini key={r} id={r} s={s} what={v.aka} className="entry place" />
         return (
           <article key={r} id={`set-${r}`} className="entry place">
             <h4><FoldButton id={r} /><Crest id={r} s={s} size={32} /> <Name id={r} s={s} /> <small>{v.aka}</small></h4>
@@ -753,25 +765,76 @@ function Gazetteer({ s }: { s: SettingData }) {
             {v.todo.length > 0 && <ul className="todo">{v.todo.map((t, i) => <li key={i}>{t}</li>)}</ul>}
           </article>
         )
-      })}
-
-      <details className="images">
-        <summary>All stories <small>{s.hooks.length} under way</small></summary>
-        <ul className="todo stories">
-          {s.hooks.map((h) => (
-            <li key={h.id}>
-              {hookText(s, h)} <button className="link" onClick={() => go(h.lines[0].who)}>({s.names[h.at]})</button>
-              {editing && (
-                <span className="rename shown">
-                  <button title="Draw this story again" aria-label="Draw this story again" onClick={() => edit((d) => rerollStory(d, h.id))}>↻</button>
-                  <button title="Remove this story" aria-label="Remove this story" onClick={() => edit((d) => removeStory(d, h.id))}>×</button>
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-        {editing && s.people.length === 0 && <p className="hint">Stories start from people: add a person, then use “+ Story” under them.</p>}
-      </details>
+  }
+  return (
+    <EditCtx.Provider value={editing}>
+    <FoldCtx.Provider value={fold}>
+    <div className="gazetteer">
+      <header className="gaz-head">
+        <h2><Name id="world" s={s} /></h2>
+        <p className="hint">{summary(s)} · {s.manual ? 'built by hand' : `seed “${s.seed}”`}</p>
+        <div className="actions">
+          <button className={editing ? 'on' : ''} aria-pressed={editing} onClick={() => setEditing(!editing)}>{editing ? 'Done editing' : 'Edit'}</button>
+          <button className={view === 'map' ? 'on' : ''} aria-pressed={view === 'map'} onClick={() => show(view === 'map' ? 'page' : 'map')} title="Work on the map with what you pick shown beside it, or read down one long page">{view === 'map' ? 'Map view' : 'Page view'}</button>
+          <button onClick={() => setDecks(true)}>Decks</button>
+          {roots.length > 0 && <button onClick={() => keep(new Set(everything()))}>Minimise all</button>}
+          {folded.size > 0 && <button onClick={() => keep(new Set())}>Open all</button>}
+          <button onClick={copy}>{copied ? 'Copied' : 'Copy as text'}</button>
+          <button onClick={download}>Download</button>
+        </div>
+      </header>
+      {decks && <SettingDecks s={s} onClose={() => setDecks(false)} />}
+      {editing && (
+        <section className="guide">
+          <h3>{!roots.length ? 'Step 1: a place' : bare ? `Next: fill in ${s.names[bare]}` : 'Next: another place, or more detail'}</h3>
+          <p>
+            {!roots.length ? 'Every setting starts somewhere. Add a place and it arrives with a kind of land, a site, a name and a description, each drawn for you: pick between the options that came up, or redraw for new ones.'
+              : bare ? 'Use the “Add” buttons under the place to give it a faction, some people, a settlement or a danger. Whatever you add is described in terms of what is already there. A coloured word in a description names something you could add: press the + beside it.'
+                : 'Add the next place, or keep filling in the ones you have. “Rewrite” on anything lets it take in what you have added since, and every name can be redrawn or typed.'}
+          </p>
+          <div className="actions">
+            <button className={!roots.length || !bare ? 'primary' : ''} onClick={() => add(addPlace)}>+ Add {roots.length ? 'another' : 'the first'} place</button>
+            {bare && <button className="primary" onClick={() => go(bare)}>Go to {s.names[bare]}</button>}
+          </div>
+        </section>
+      )}
+      {view === 'page' || !roots.length ? (
+        <>
+          {roots.length > 0 && <ImagePanel s={s} />}
+          {roots.length > 0 && <Picture id="world" s={s} />}
+          {roots.length > 0 && <SettingMap s={s} />}
+          <nav className="gaz-nav">
+            {roots.map((r) => <button key={r} onClick={() => go(r)}>{upper(s.names[r])}</button>)}
+          </nav>
+          {worldPart}
+          {roots.map((r) => placeEntry(r))}
+          {storiesPart}
+        </>
+      ) : (
+        <div className="mapview">
+          <div className="mapview-map">
+            <SettingMap s={s} compact onPick={go} selected={shown} tools={
+              <div className="map-tools">
+                <button className={shown === 'world' ? 'on' : ''} onClick={() => go('world')}>World</button>
+                {roots.map((r) => <button key={r} className={shown === r ? 'on' : ''} onClick={() => go(r)}>{upper(s.names[r])}</button>)}
+                {editing && <button className="primary" onClick={() => add(addPlace)}>+ Land</button>}
+              </div>
+            } />
+            {editing && (shown === 'world' ? worldAdds : <AddBar s={s} home={shown} land />)}
+          </div>
+          <aside className="mapview-panel" aria-label="What is picked on the map">
+            {shown === 'world' ? (
+              <>
+                <p className="hint">Click a land, a site or a settlement on the map to see it here{editing ? ', and use the buttons under the map to add to whatever is picked' : ''}.</p>
+                <ImagePanel s={s} />
+                <Picture id="world" s={s} />
+                {worldPart}
+                {storiesPart}
+              </>
+            ) : placeEntry(shown, true)}
+          </aside>
+        </div>
+      )}
     </div>
     </FoldCtx.Provider>
     </EditCtx.Provider>

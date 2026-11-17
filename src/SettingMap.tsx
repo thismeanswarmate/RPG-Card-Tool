@@ -17,7 +17,7 @@ const THEMES = {
 /** Half the width of a place's name as it is lettered on the map. */
 const nameHalf = (name: string) => name.length * 5.3
 
-const go = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+const scrollGo = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
 /** Every layer of the map that the legend can turn on and off, in the order it is listed, each with a small sample of how it is drawn. */
 type Theme = (typeof THEMES)['parchment']
@@ -58,7 +58,12 @@ const LAYERS: { group: string; items: [key: string, label: string, sample: (t: T
 ]
 const HIDDEN_KEY = 'storyloom-map-hidden'
 
-export function SettingMap({ s }: { s: Setting }) {
+/**
+ * `onPick` is told what was clicked, in place of scrolling the page to it; `selected` is the land shown as
+ * picked; `tools` sit above the map; `compact` folds the legend away.
+ */
+export function SettingMap({ s, onPick, selected, tools, compact }: { s: Setting; onPick?: (id: string) => void; selected?: string; tools?: ReactNode; compact?: boolean }) {
+  const go = onPick ?? scrollGo
   // Which layers are turned off. It is kept for this browser, and is the same for every setting.
   const [hidden, setHidden] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? '[]') as string[]) } catch { return new Set() } })
   const keep = (next: Set<string>) => { setHidden(next); try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next])) } catch { /* private window */ } }
@@ -87,8 +92,29 @@ export function SettingMap({ s }: { s: Setting }) {
     URL.revokeObjectURL(a.href)
   }
 
+  const legend = (
+      <div className="legend" role="group" aria-label="Map legend">
+        <div className="legend-head">
+          <strong>Legend</strong>
+          <button onClick={() => keep(new Set())} disabled={!hidden.size}>Show all</button>
+          <button onClick={() => keep(new Set(LAYERS.flatMap((g) => g.items.map(([key]) => key))))}>Hide all</button>
+        </div>
+        {LAYERS.map((g) => (
+          <div key={g.group} className="legend-group">
+            <span className="legend-title">{g.group}</span>
+            {g.items.map(([key, label, sample]) => (
+              <button key={key} className="legend-item" aria-pressed={on(key)} onClick={() => toggle(key)} title={on(key) ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}>
+                <svg viewBox="0 0 24 16" width="24" height="16" aria-hidden="true" fontFamily="Georgia, serif">{sample(t)}</svg>
+                {label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+  )
   return (
     <figure className="atlas">
+      {tools}
       <svg ref={svg} viewBox={`0 0 ${map.w} ${map.h}`} role="img" aria-label={`Map of ${title}`} fontFamily="Georgia, 'Iowan Old Style', serif">
         <defs>
           <radialGradient id="vignette" cx="50%" cy="50%" r="72%">
@@ -104,7 +130,7 @@ export function SettingMap({ s }: { s: Setting }) {
         </defs>
 
         {/* The ocean: one even colour to the edge of the sheet. */}
-        <rect width={map.w} height={map.h} fill={t.ocean} />
+        <rect width={map.w} height={map.h} fill={t.ocean} onClick={onPick && (() => onPick('world'))} />
 
         {/* Rings of shallow water around the land, then the coastline itself. */}
         <g fill="none" strokeLinejoin="round">
@@ -129,7 +155,7 @@ export function SettingMap({ s }: { s: Setting }) {
         {map.regions.map((r) => <path key={r.id} d={r.d} fill={t.paper} stroke={t.paper} strokeWidth="3" strokeLinejoin="round" />)}
         {map.regions.map((r) => (
           // A place with a picture takes its colour from the picture; the rest keep their terrain's.
-          <path key={r.id} className="region" d={r.d} fill={!on('wash') ? t.paper : tints[`${s.id}:${r.id}`] ? washFor(tints[`${s.id}:${r.id}`], map.theme) : r.colour} fillOpacity=".8" stroke={on('borders') ? t.faint : 'none'} strokeWidth=".9" strokeDasharray="5 4" onClick={() => go(r.id)}>
+          <path key={r.id} className="region" d={r.d} fill={!on('wash') ? t.paper : tints[`${s.id}:${r.id}`] ? washFor(tints[`${s.id}:${r.id}`], map.theme) : r.colour} fillOpacity=".8" stroke={r.id === selected ? t.ink : on('borders') ? t.faint : 'none'} strokeWidth={r.id === selected ? 2.4 : 0.9} strokeDasharray={r.id === selected ? undefined : '5 4'} onClick={() => go(r.id)}>
             <title>{r.name} — {r.terrain}</title>
           </path>
         ))}
@@ -293,24 +319,7 @@ export function SettingMap({ s }: { s: Setting }) {
         <span className="hint">Click a place, a mark or an emblem to read about it. A neighbouring world lies behind a dot-and-dash frontier. Turn any part of the map on or off in the legend; Save map saves it as it is shown.</span>
         <button onClick={save}>Save map</button>
       </figcaption>
-      <div className="legend" role="group" aria-label="Map legend">
-        <div className="legend-head">
-          <strong>Legend</strong>
-          <button onClick={() => keep(new Set())} disabled={!hidden.size}>Show all</button>
-          <button onClick={() => keep(new Set(LAYERS.flatMap((g) => g.items.map(([key]) => key))))}>Hide all</button>
-        </div>
-        {LAYERS.map((g) => (
-          <div key={g.group} className="legend-group">
-            <span className="legend-title">{g.group}</span>
-            {g.items.map(([key, label, sample]) => (
-              <button key={key} className="legend-item" aria-pressed={on(key)} onClick={() => toggle(key)} title={on(key) ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}>
-                <svg viewBox="0 0 24 16" width="24" height="16" aria-hidden="true" fontFamily="Georgia, serif">{sample(t)}</svg>
-                {label}
-              </button>
-            ))}
-          </div>
-        ))}
-      </div>
+      {compact ? <details className="legend-fold"><summary>Legend: turn parts of the map on and off</summary>{legend}</details> : legend}
     </figure>
   )
 }
