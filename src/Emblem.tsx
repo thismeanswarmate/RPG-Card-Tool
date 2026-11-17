@@ -50,10 +50,10 @@ const SPOTS: [number, number, number][][] = [
   [[50, 33, 28], [50, 67, 28]],
 ]
 
-interface Props { spec: EmblemSpec; size?: number; title?: string; svgRef?: React.Ref<SVGSVGElement> }
+interface Props { spec: EmblemSpec; size?: number; title?: string; svgRef?: React.Ref<SVGSVGElement>; /** Where its top left corner goes, when it is drawn inside a larger picture such as the map. */ x?: number; y?: number }
 
 /** An emblem drawn from its spec. With a title it is announced by name; without, it is decoration. */
-export function Emblem({ spec, size = 28, title, svgRef }: Props) {
+export function Emblem({ spec, size = 28, title, svgRef, x, y }: Props) {
   const s = tidy(spec)
   const id = useId().replace(/:/g, '')
   const [, shape] = SHAPES[s.shape]
@@ -63,7 +63,7 @@ export function Emblem({ spec, size = 28, title, svgRef }: Props) {
   // A dark or light edge round the icon, whichever it is not, so it holds against any field.
   const halo = s.c >= 12 ? DARK : '#f3efe4'
   return (
-    <svg ref={svgRef} className="emblem" width={size} height={size} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"
+    <svg ref={svgRef} className="emblem" x={x} y={y} width={size} height={size} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"
       {...(title ? { role: 'img', 'aria-label': title } : { 'aria-hidden': true })}>
       {title && <title>{title}</title>}
       <clipPath id={`e${id}`}><path d={shape} /></clipPath>

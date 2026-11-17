@@ -1,8 +1,10 @@
 import { useMemo, useRef } from 'react'
+import { Emblem } from './Emblem'
 import { useImages } from './imageStore'
 import { buildMap, washFor, type Glyph } from './mapgen'
 import { titleCase } from './names'
 import type { Setting } from './setting'
+import { emblemOf } from './settingBuild'
 
 // The setting drawn as an ink map on parchment (or a blueprint, for science fiction).
 
@@ -128,6 +130,22 @@ export function SettingMap({ s }: { s: Setting }) {
                   <circle cx={r.x} cy={r.y - 44} r="30" fill="none" stroke={t.ink} strokeWidth="2" />
                 </g>
               )}
+              {/* The land's emblem above its name, or at the corner of its picture, with the emblems of the cultures kept there beside it. */}
+              {(() => {
+                const land = emblemOf(s, r.id)
+                const kept = (s.drawn ?? []).filter((d) => d.tool === 'culture' && d.home === r.id).slice(0, 3)
+                const at = picture ? { x: r.x + 17, y: r.y - 36, size: 24 } : { x: r.x - 13 - kept.length * 8, y: r.y - 47, size: 26 }
+                return (
+                  <g className="map-emblems">
+                    {land && <g onClick={() => go(r.id)}><Emblem spec={land} size={at.size} x={at.x} y={at.y} title={`Emblem of ${r.name}`} /></g>}
+                    {kept.map((d, i) => {
+                      const spec = emblemOf(s, d.id)
+                      const cx = picture ? r.x - 35 - i * 17 : at.x + at.size + 3 + i * 18
+                      return spec && <g key={d.id} onClick={() => go(d.id)}><Emblem spec={spec} size={17} x={cx} y={picture ? r.y - 31 : r.y - 41} title={`Emblem of ${s.names[d.id]}, kept in ${r.name}`} /></g>
+                    })}
+                  </g>
+                )
+              })()}
               <g className="place-label" onClick={() => go(r.id)}>
                 <text x={r.x} y={r.y} textAnchor="middle" fontSize="17" fontWeight="700" letterSpacing=".06em" fill={t.ink} stroke={t.halo} strokeWidth="4.5" paintOrder="stroke">{r.name}</text>
                 <text x={r.x} y={r.y + 13} textAnchor="middle" fontSize="8.5" letterSpacing=".16em" fill={t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{r.terrain.toUpperCase()}</text>
@@ -160,7 +178,7 @@ export function SettingMap({ s }: { s: Setting }) {
         <rect x="14" y="14" width={map.w - 28} height={map.h - 28} fill="none" stroke={t.ink} strokeWidth=".8" pointerEvents="none" />
       </svg>
       <figcaption>
-        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. A house marks a site, a ringed dot a settlement and a cross a dangerous place. Click any of them to read about it.</span>
+        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. Each place carries its emblem, with the smaller emblems of the cultures kept there. A house marks a site, a ringed dot a settlement and a cross a dangerous place. Click any of them to read about it.</span>
         <button onClick={save}>Save map</button>
       </figcaption>
     </figure>

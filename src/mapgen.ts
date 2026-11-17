@@ -250,7 +250,7 @@ export function buildMap(s: Setting): MapData {
       let spot: P = [cx, cy]
       // Step round the centre until the mark sits on its own land, clear of the place's lettering and of the marks before it.
       const half = s.names[id].length * 5.4 + 14
-      const lettered = (p: P) => Math.abs(p[0] - cx) < half + s.names[sid].length * 2.4 && p[1] > cy - 30 && p[1] < cy + 22
+      const lettered = (p: P) => Math.abs(p[0] - cx) < half + s.names[sid].length * 2.4 && p[1] > cy - 52 && p[1] < cy + 22
       // Each ring is walked right round before moving to the next: the usual distance first, then nearer and farther.
       const rings = [60, 42, 80, 100, 26, 122, 146]
       for (let tries = 0; tries < rings.length * 14; tries++, a += 0.45) {
