@@ -7,14 +7,14 @@ import { ART, imageIds, imageSpec } from './imagePrompts'
 import { useImages } from './imageStore'
 import { PictureBox } from './PictureBox'
 import { KIND_LABEL, type Kind } from './lore'
-import { titleCase } from './names'
+import { LAND_FORMS, titleCase } from './names'
 import { RollRows } from './Roller'
 import {
   ageNames, SIDES, builtKind, builtText, charText, DATED, decksOf, DRAWN_DEF, drawnKind, drawnText, worldDrawn, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
   type Answers, type Side, type Built, type Char, type Drawn, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import {
-  addAge, addBeyond, addBuilt, addDrawn, moveBeyond, removeBeyond, addMention, addPerson, bearsEmblem, belongsTo, emblemOf, rerollEmblem, setEmblem, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
+  addAge, nameForm, setNameForm, addBeyond, addBuilt, addDrawn, moveBeyond, removeBeyond, addMention, addPerson, bearsEmblem, belongsTo, emblemOf, rerollEmblem, setEmblem, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
   goneWith, redrawPlace, remove, removeStory, rerollStory, roleTheme, themeOf, toggleDeck, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
 } from './settingBuild'
 import { siteKind } from './mapgen'
@@ -656,7 +656,7 @@ function Gazetteer({ s }: { s: SettingData }) {
       {roots.length > 0 && <Picture id="world" s={s} />}
       {roots.length > 0 && <SettingMap s={s} />}
       <nav className="gaz-nav">
-        {roots.map((r) => <button key={r} onClick={() => go(r)}>{s.names[r]}</button>)}
+        {roots.map((r) => <button key={r} onClick={() => go(r)}>{upper(s.names[r])}</button>)}
       </nav>
 
       <section className="prose">
@@ -715,6 +715,10 @@ function Gazetteer({ s }: { s: SettingData }) {
                 <div className="edit-row">
                   <button onClick={() => edit((d) => redrawPlace(d, r))} title="Draw what it is called, its past, what it is like today and what is afoot again, keeping the land and its sites">↻ Redraw all four</button>
                   <EmblemButtons id={r} s={s} />
+                  <select value={nameForm(s, r)} aria-label="Form of the name" title="Choosing a form draws a new name in it; the ↻ beside the name then keeps to that form" onChange={(e) => edit((d) => setNameForm(d, r, +e.target.value))}>
+                    <option value={-1}>Name: any form</option>
+                    {LAND_FORMS.map((f, i) => <option key={i} value={i}>Name: {f}</option>)}
+                  </select>
                   <button onClick={() => drop(r)}>Remove place</button>
                 </div>
               </>

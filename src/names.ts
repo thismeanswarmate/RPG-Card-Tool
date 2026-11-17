@@ -100,7 +100,7 @@ export function tonguesFor(genres: string[], n: number, rng: Rng): number[] {
 }
 
 export type NameKind =
-  | 'world' | 'place' | 'site' | 'person' | 'faction' | 'deity' | 'object' | 'event' | 'creature' | 'material'
+  | 'world' | 'place' | 'land' | 'site' | 'person' | 'faction' | 'deity' | 'object' | 'event' | 'creature' | 'material'
 
 /** Everything needed to name one thing, or to name it again later. */
 export interface NameSpec {
@@ -111,6 +111,37 @@ export interface NameSpec {
   /** The name of the place it belongs to, if any. */
   home?: string
   genres?: string[]
+  /** For a land, which form its name takes, as an index into LAND_FORMS; absent leaves it to chance. */
+  form?: number
+}
+
+/** The forms a land's name can take, with an example of each. */
+export const LAND_FORMS = [
+  'One word (Marrowick)', 'A feature of somewhere (the Vale of Marrow)', 'A name and a feature (Marrow Reach)',
+  'A describing phrase (the Drowned Fields)', 'Someone’s place (Maren’s Rest)', 'The land of something (the Land of Rooks)',
+]
+/** What a stretch of country may be called, by the kind of country it is; the last row suits anywhere. */
+const FEATURES: [RegExp, string[]][] = [
+  [/forest|wood|jungle|grove|thicket|mangrove/, sp('Wood Weald Thicket Wilds Boughs')],
+  [/peak|mountain|highland|crag|cliff|karst|caldera|plateau|steps|canyon/, sp('Heights Crags Peaks Spine Teeth')],
+  [/marsh|swamp|fen|bog|moor|heath|floodplain|delta|estuary/, sp('Fen Mire Marsh Levels Meres')],
+  [/coast|isle|island|atoll|archipelago|lagoon|fjord|shore|bay|reef|strait/, sp('Shore Isles Sound Strand Shallows')],
+  [/dune|desert|salt|badland|waste|steppe|savanna/, sp('Waste Sands Barrens Flats Dust')],
+  [/glacier|tundra|ice|snow|frost|taiga/, sp('Ice Frost Snows Floes Cold')],
+  [/./, sp('Reach March Vale Hollow Fields Downs Marches Deeps')],
+]
+const featureFor = (rng: Rng, terrain: string) => {
+  const own = FEATURES.find(([re]) => re.test(terrain))![1]
+  // Mostly a word for this kind of country, now and then one that would do anywhere.
+  return pick(rng, rng() < 0.75 ? own : FEATURES[FEATURES.length - 1][1])
+}
+const THINGS = sp('Rooks Embers Thorns Glass Salt Wolves Bells Lanterns Ash Crows Reeds Stones Kings Rain Sorrows Honey')
+const RESTS = sp('Rest Watch Crossing Fall Hope Folly Gift Stand Reach Landing')
+/** The part of a land's name that things in it can borrow: "Marrow" from "the Vale of Marrow", "Maren" from "Maren’s Rest". */
+export const shortOf = (home: string) => {
+  const bare = home.replace(/^the /i, '')
+  const of = / of (?:the )?(.+)$/i.exec(bare)
+  return (of ? of[1] : bare.split(' ')[0]).replace(/[’']s$/, '')
 }
 
 const MODS = sp('Ashen Gilded Hollow Silent Patient Crooked Drowned Sleepless Scarlet Pale Iron Humble Sunken Unbowed Veiled Last Hidden Faithful Burning Tireless')
@@ -129,14 +160,26 @@ function attempt(spec: NameSpec, rng: Rng): string {
       return `the ${t.word(rng)} ${pick(rng, WORLD_END[spec.genres?.[0] ?? 'fantasy'] ?? WORLD_END.fantasy)}`
     case 'place':
       return t.place(rng)
+    case 'land': {
+      // Star-faring tongues name places like stations, so their lands keep to one word unless a form is asked for.
+      const form = spec.form ?? (t.id === 'star' ? 0 : roll < 0.42 ? 0 : roll < 0.6 ? 1 : roll < 0.76 ? 2 : roll < 0.88 ? 3 : roll < 0.95 ? 4 : 5)
+      switch (form) {
+        case 1: return `the ${featureFor(rng, base)} of ${t.word(rng)}`
+        case 2: return `${t.word(rng)} ${featureFor(rng, base)}`
+        case 3: return `the ${pick(rng, MODS)} ${featureFor(rng, base)}`
+        case 4: return `${t.given(rng)}’s ${pick(rng, RESTS)}`
+        case 5: return `the Land of ${pick(rng, THINGS)}`
+        default: return t.place(rng)
+      }
+    }
     case 'site':
-      return spec.home && roll < 0.3 ? `${spec.home.split(' ')[0]} ${Base}` : `${t.word(rng)} ${Base}`
+      return spec.home && roll < 0.3 ? `${shortOf(spec.home)} ${Base}` : `${t.word(rng)} ${Base}`
     case 'person':
-      if (spec.home && roll < 0.2) return `${t.given(rng)} of ${spec.home}`
+      if (spec.home && roll < 0.2) return `${t.given(rng)} of ${shortOf(spec.home)}`
       if (roll < 0.3) return `${t.given(rng)} the ${pick(rng, MODS)}`
       return `${t.given(rng)} ${t.family(rng)}`
     case 'faction':
-      if (spec.home && roll < 0.35) return `the ${Base} of ${spec.home}`
+      if (spec.home && roll < 0.35) return `the ${Base} of ${shortOf(spec.home)}`
       return roll < 0.7 ? `the ${pick(rng, MODS)} ${Base}` : `the ${t.word(rng)} ${Base}`
     case 'deity':
       return t.given(rng) + (roll < 0.4 ? pick(rng, sp('ae is or')) : '')
@@ -144,11 +187,11 @@ function attempt(spec: NameSpec, rng: Rng): string {
       if (roll < 0.35) return `the ${Base} of ${t.word(rng)}`
       return roll < 0.7 ? `the ${pick(rng, MODS)} ${Base}` : `${t.given(rng)}’s ${Base}`
     case 'event':
-      return spec.home && roll < 0.65 ? `the ${Base} of ${spec.home}` : `the ${pick(rng, MODS)} ${Base}`
+      return spec.home && roll < 0.65 ? `the ${Base} of ${shortOf(spec.home)}` : `the ${pick(rng, MODS)} ${Base}`
     case 'creature':
-      return spec.home && roll < 0.6 ? `the ${spec.home.split(' ')[0]} ${base}` : `the ${pick(rng, MODS).toLowerCase()} ${base}`
+      return spec.home && roll < 0.6 ? `the ${shortOf(spec.home)} ${base}` : `the ${pick(rng, MODS).toLowerCase()} ${base}`
     case 'material':
-      return spec.home && roll < 0.7 ? `${spec.home.split(' ')[0]} ${base}` : `${pick(rng, MODS).toLowerCase()} ${base}`
+      return spec.home && roll < 0.7 ? `${shortOf(spec.home)} ${base}` : `${pick(rng, MODS).toLowerCase()} ${base}`
   }
 }
 

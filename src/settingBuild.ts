@@ -9,7 +9,7 @@ import { STORY_CARDS } from './story'
 import { cardOf, draw as drawCard, fill as fillCards } from './cardTool'
 import { emblemFrom, ICONS, tidy, type EmblemSpec } from './emblem'
 import { glyphFor, type Glyph } from './mapgen'
-import { ageNames, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, hasCapital, type Side, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
+import { ageNames, rename, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, hasCapital, type Side, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
 import { rollAll as rollSettlement, rollType, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
 import type { CardType } from './types'
@@ -89,7 +89,7 @@ export function addPlace(s: Setting): string | undefined {
     tongue = Math.random() < 0.75 ? s.specs[spots[0].from].tongue : tonguesFor(w.genres, 3, Math.random)[rand(3)] ?? tongue
   }
   s.board[id] = { id, active: rand(CARDS[id].cues.length), x, y, order: Object.values(s.board).reduce((n, p) => Math.max(n, p.order), 0) + 1 }
-  weave(s).name(id, { kind: 'place', tongue })
+  weave(s).name(id, { kind: 'land', tongue, base: cueText(CARDS, s.board[id]).toLowerCase() })
   addSite(s, id)
   dress(s, id)
   return id
@@ -369,6 +369,18 @@ export function belongsTo(s: Setting, id: string): string[] {
   // A settlement keeps the culture of the land it stands in.
   const local = thing?.tool === 'settlement' && land ? s.drawn?.find((d) => d.tool === 'culture' && d.home === land)?.id : undefined
   return [...new Set([land, thing?.race, thing?.culture ?? local])].filter((x): x is string => !!x && x !== id && bearsEmblem(s, x))
+}
+
+/** The form a land's name takes: an index into LAND_FORMS, or -1 for any. */
+export const nameForm = (s: Setting, id: string) => s.specs[id]?.form ?? -1
+/** Give a land a name of a chosen form, or of any form, and keep to that form when the name is drawn again. */
+export function setNameForm(s: Setting, id: string, form: number) {
+  const spec = s.specs[id]
+  if (!spec || !s.board[id] || s.board[id].parent) return
+  spec.kind = 'land'
+  spec.base = cueText(CARDS, s.board[id]).toLowerCase()
+  if (form < 0) delete spec.form; else spec.form = form
+  s.names[id] = rename(s, id)
 }
 
 /** Add a neighbouring world beyond the map, on a side that has none. Returns its id, or nothing when every side is taken. */

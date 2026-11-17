@@ -1727,3 +1727,66 @@ describe('bordering worlds', async () => {
     expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN/)
   })
 })
+
+describe('the names of lands', async () => {
+  const N = await import('./names')
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  const M = await import('./mapgen')
+  const old = Math.max(0, N.TONGUES.findIndex((x) => x.id === 'old'))
+  it('takes each form when asked, suited to the country', () => {
+    const shapes = [/^\S+$/, /^the \w+ of \S+$/, /^\S+ \w+$/, /^the \S+ \w+$/, /^\S+’s \w+$/, /^the Land of \w+$/]
+    expect(N.LAND_FORMS).toHaveLength(shapes.length)
+    shapes.forEach((shape, form) => {
+      for (let n = 0; n < 40; n++) expect(N.makeName({ kind: 'land', tongue: old, base: 'marsh', form }, Math.random, new Set()), `form ${form}`).toMatch(shape)
+    })
+    const words = (base: string) => new Set(Array.from({ length: 300 }, () => N.makeName({ kind: 'land', tongue: old, base, form: 3 }, Math.random, new Set()).split(' ').pop()))
+    expect([...words('old forest')].some((w) => ['Wood', 'Weald', 'Thicket', 'Wilds', 'Boughs'].includes(w!))).toBe(true)
+    expect([...words('glacier')].some((w) => ['Ice', 'Frost', 'Snows', 'Floes', 'Cold'].includes(w!))).toBe(true)
+    expect([...words('glacier')].some((w) => ['Wood', 'Weald', 'Sands', 'Fen'].includes(w!))).toBe(false)
+  })
+  it('mixes the forms by chance, keeping star-faring lands to one word', () => {
+    const made = Array.from({ length: 800 }, () => N.makeName({ kind: 'land', tongue: old, base: 'plateau' }, Math.random, new Set()))
+    const plain = made.filter((m) => !m.includes(' ')).length
+    expect(plain).toBeGreaterThan(240); expect(plain).toBeLessThan(440)
+    expect(made.some((m) => / of /.test(m))).toBe(true)
+    expect(made.some((m) => /’s /.test(m))).toBe(true)
+    expect(made.some((m) => /^the Land of /.test(m))).toBe(true)
+    const star = N.TONGUES.findIndex((x) => x.id === 'star')
+    for (let n = 0; n < 100; n++) expect(N.makeName({ kind: 'land', tongue: star, base: 'crater' }, Math.random, new Set())).not.toMatch(/ of |’s |^the /)
+  })
+  it('lets what lies in a land borrow the short part of its name', () => {
+    expect([N.shortOf('the Vale of Marrow'), N.shortOf('Marrow Reach'), N.shortOf('the Drowned Fields'), N.shortOf('Maren’s Rest'), N.shortOf('the Land of Rooks'), N.shortOf('Marrowick')])
+      .toEqual(['Marrow', 'Marrow', 'Drowned', 'Maren', 'Rooks', 'Marrowick'])
+    for (let n = 0; n < 200; n++) {
+      const site = N.makeName({ kind: 'site', tongue: old, base: 'lighthouse', home: 'the Vale of Marrow' }, Math.random, new Set())
+      expect(site).not.toMatch(/^the Lighthouse$|Vale of/)
+      expect(N.makeName({ kind: 'faction', tongue: old, base: 'guild', home: 'the Vale of Marrow' }, Math.random, new Set())).not.toContain('of the Vale of')
+    }
+  })
+  it('names the lands of a setting in mixed forms, reads well, and lets a form be chosen', () => {
+    let phrases = 0, lands = 0
+    for (let n = 0; n < 12; n++) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: 'continent' }, `lands-${n}`)
+      for (const r of G.rootsOf(s)) { lands++; if (s.names[r].includes(' ')) phrases++; expect(s.specs[r].kind).toBe('land') }
+      expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN|  /)
+      const map = M.buildMap(s)
+      expect(map.regions.map((r) => r.name).sort()).toEqual(G.rootsOf(s).map((r) => s.names[r]).sort())
+    }
+    expect(phrases / lands).toBeGreaterThan(0.3)
+    expect(phrases / lands).toBeLessThan(0.8)
+    const s = B.newManual(['fantasy'], ['temperate'])
+    const place = B.addPlace(s)!
+    expect(B.nameForm(s, place)).toBe(-1)
+    B.setNameForm(s, place, 1)
+    expect(s.names[place]).toMatch(/^the \w+ of \S+$/)
+    for (let i = 0; i < 10; i++) { s.names[place] = G.rename(s, place); expect(s.names[place]).toMatch(/^the \w+ of \S+$/) }
+    B.setNameForm(s, place, 4)
+    expect(s.names[place]).toMatch(/’s /)
+    B.setNameForm(s, place, -1)
+    expect(B.nameForm(s, place)).toBe(-1)
+    const site = G.placeView(s, place).sites[0].id
+    B.setNameForm(s, site, 1)
+    expect(s.specs[site].form).toBeUndefined()
+  })
+})

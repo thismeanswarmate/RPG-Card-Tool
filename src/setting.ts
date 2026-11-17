@@ -425,7 +425,7 @@ export function generateSetting(answers: Answers, seed: string): Setting {
     byAngle.forEach((r, i) => { tongueOf[r] = tongues[Math.floor((i * tongues.length) / byAngle.length)] })
     w.name('world', { kind: 'world', tongue: tongues[0], genres })
     for (const r of roots) {
-      w.name(r, { kind: 'place', tongue: tongueOf[r] })
+      w.name(r, { kind: 'land', tongue: tongueOf[r], base: cueText(CARDS, board[r]).toLowerCase() })
       for (const site of w.sitesOf(r)) w.name(site, { kind: 'site', tongue: tongueOf[r], base: cueText(CARDS, board[site]).toLowerCase() }, r)
     }
 
