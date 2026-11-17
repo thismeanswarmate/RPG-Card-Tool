@@ -428,6 +428,7 @@ export function remove(s: Setting, id: string) {
   s.people = s.people.filter((c) => !gone.has(c.id))
   s.built = (s.built ?? []).filter((b) => !gone.has(b.id))
   s.drawn = (s.drawn ?? []).filter((d) => !gone.has(d.id))
+  if (s.mentioned) s.mentioned = s.mentioned.filter((x) => !gone.has(x.id) && !gone.has(x.owner))
   for (const d of s.drawn) if (d.race && gone.has(d.race)) delete d.race
   const history = s.drawn.some((d) => d.tool === 'history')
   for (const e of [...s.entities, ...s.people] as (Entity & { race?: string })[]) {
@@ -459,7 +460,30 @@ interface Lexicon { words: RegExp; names: RegExp | null; by: Map<string, Mention
 const lexicons = new WeakMap<Setting, Lexicon>()
 const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 /** Words with too many everyday meanings to be worth marking. */
-const TOO_COMMON = new Set(['order', 'watch', 'well', 'gate', 'map', 'rival', 'general', 'stranger', 'twin', 'cook', 'capital', 'landmark', 'child', 'friend', 'guest', 'keeper', 'pilot'])
+const TOO_COMMON = new Set(['order', 'watch', 'well', 'gate', 'map', 'rival', 'general', 'stranger', 'twin', 'cook', 'capital', 'landmark', 'child', 'friend', 'guest', 'keeper', 'pilot', 'guard', 'founder', 'elder', 'lady', 'hero'])
+/**
+ * People a description may speak of who are on no card: anyone named by what they are can be made a person
+ * of that calling, so that "a deposed ruler" becomes a ruler and not whatever the deck would have dealt.
+ */
+const CALLINGS = `ruler king queen prince princess emperor empress monarch lord duke duchess baron baroness countess chieftain
+governor mayor magistrate tyrant regent warlord usurper pretender claimant heir priest priestess prophet monk nun abbot abbess bishop pilgrim
+hermit knight captain admiral commander sergeant soldier sentry scout spy assassin thief bandit outlaw pirate wrecker smuggler poacher rebel
+traitor exile envoy ambassador herald messenger courier merchant trader pedlar banker moneylender lawyer clerk scribe scholar
+physician surgeon apothecary healer midwife alchemist astrologer seer oracle sorcerer sorceress enchanter necromancer witch wizard mage shaman
+druid bard minstrel poet storyteller actor painter sculptor architect engineer builder mason carpenter smith blacksmith miner farmer shepherd
+fisherman sailor ferryman hunter trapper woodcutter miller baker brewer innkeeper landlord weaver dyer tailor cobbler potter glassblower
+jeweller saddler chandler cooper tanner butcher servant steward chamberlain widow orphan vagrant explorer champion
+survivor prisoner hostage captive mapmaker shipwright librarian astronomer philosopher inquisitor executioner gaoler watchman matriarch
+patriarch bride bridegroom drover herdsman gardener forester ranger sexton deserter mourner diver`.split(/\s+/)
+/** Words before a calling that belong to it: "a deposed ruler" is made as a deposed ruler. */
+const QUALITIES = 'deposed|dethroned|exiled|banished|retired|runaway|disgraced|blind|dying|undying|young|old|wandering|travelling|lost|forgotten|famous|mad|foreign|rival|false|former|drowned|missing|hunted|beloved|hated|reluctant|child|boy|girl'
+/** Phrases in which a word is part of something else: salt fish is not an offer of salt, nor a clone bank of a clone. */
+const PHRASES = ['salt fish', 'salt creeks', 'pearl beds', 'clone bank', 'plague pit', 'ghost lights', 'witch trial', 'merchant families', 'law courts',
+  'honey cakes', 'sea glass', 'flood season', 'in flood', 'the only coin', 'horse clans', 'fire can be seen', 'a barn with a fire', 'sides of town', 'out of town', 'into town', 'in town', 'salt mine', 'mage college', 'messenger office', 'coin by coin', 'brides and grooms', 'no rulers']
+/** Words that lead up to a thing: "a council", "the old mill". A thing spoken of without one is usually not a thing at all. */
+const LEADS = new Set(['a', 'an', 'the', 'this', 'its', 'his', 'her', 'their', 'our', 'one', 'another', 'some', 'any', 'no', 'first', 'last', 'great', 'famous', 'new', 'old'])
+/** Words after which the next is a doing and not a thing: bells that will not ring, coming to judge. */
+const DOING = new Set(['to', 'will', 'not', 'would', 'can', 'could', 'must', 'may', 'might', 'shall', 'should', 'never', 'that', 'which', 'who'])
 
 function lexicon(s: Setting): Lexicon {
   // Made once for a setting as it stands, and again when its cards or names have changed.
@@ -476,36 +500,73 @@ function lexicon(s: Setting): Lexicon {
   for (const what of [...roleCards(s).flatMap((c) => c.cues), ...PRIMARY.figure]) put(what, { type: 'person', what })
   // The last word of a longer role stands for it: a "wizard" in a description can become the hedge wizard.
   for (const what of roleCards(s).flatMap((c) => c.cues)) if (what.includes(' ')) put(what.split(' ').at(-1)!, { type: 'person', what })
-  Object.values(SETTLEMENT_TYPES).forEach((t, i) => put(t.label.replace(' town', ''), { type: 'built', tool: 'settlement', rolls: { type: i } }))
+  Object.values(SETTLEMENT_TYPES).forEach((t, i) => { put(t.label, { type: 'built', tool: 'settlement', rolls: { type: i } }); put(t.label.replace(' town', ''), { type: 'built', tool: 'settlement', rolls: { type: i } }) })
   Object.values(PERIL_KINDS).forEach((k, i) => put(k.label, { type: 'built', tool: 'peril', rolls: { kind: i } }))
   for (const kind of ['event', 'object', 'creature', 'material'] as Kind[]) for (const what of PRIMARY[kind]) put(what, { type: 'power', kind, what })
   for (const word of ['god', 'goddess', 'deity', 'saint']) put(word, { type: 'power', kind: 'deity' })
+  // Any other person, by their calling.
+  for (const what of CALLINGS) put(what, { type: 'person', what })
   const alt = (list: string[]) => list.sort((a, b) => b.length - a.length).map(escape).join('|')
-  const names = [...Object.values(s.names), ...ages].filter((n) => n.length > 2)
+  // Names, the ages, every kind of land ("the ash waste" is not an offer of ash) and set phrases are left whole.
+  const lands = Object.values(CARDS).filter((c) => c.type === 'terrain').flatMap((c) => c.cues.map((cue) => cue.text.toLowerCase()))
+  const names = [...Object.values(s.names), ...ages, ...lands, ...PHRASES].filter((n) => n.length > 2)
   const made: Lexicon = {
     by, stamp,
-    words: new RegExp(`(?<![\\p{L}’'-])(${alt([...by.keys()])})(?:e?s)?(?![\\p{L}’'-])`, 'giu'),
-    names: names.length ? new RegExp(alt(names), 'gi') : null,
+    words: new RegExp(`(?<![\\p{L}’'-])(${alt([...by.keys()])})(e?s)?(?![\\p{L}’'-])`, 'giu'),
+    names: names.length ? new RegExp(`${alt(names)}|“[^”]*”`, 'gi') : null,
   }
   lexicons.set(s, made)
   return made
 }
 
+export interface MentionPart { text: string; mention: Mention; word: string; made?: string }
+
 /**
- * A description cut into plain text and mentions. Names already given to things are left alone, each word
- * is marked once, and `skip` is what the text is itself about.
+ * A description cut into plain text and mentions. Names already given to things, kinds of land, set phrases
+ * and anything in quotation marks are left alone; each word is marked once; `skip` is what the text is itself
+ * about. A word is passed over where it is not a thing at all — a bell that will not ring — or not one thing
+ * — towns in general — or only a likeness, as with skin the colour of copper. `owner` is the thing whose
+ * description this is: a mention that has already been made into something there shows that thing's name.
  */
-export function findMentions(s: Setting, text: string, skip?: string): (string | { text: string; mention: Mention })[] {
+export function findMentions(s: Setting, text: string, skip?: string, owner?: string): (string | MentionPart)[] {
   const lex = lexicon(s)
   const named = lex.names ? [...text.matchAll(lex.names)].map((m) => [m.index, m.index + m[0].length]) : []
-  const out: (string | { text: string; mention: Mention })[] = []
+  const out: (string | MentionPart)[] = []
   const seen = new Set<string>()
   let at = 0
   for (const m of text.matchAll(lex.words)) {
-    const word = m[1].toLowerCase()
-    if (seen.has(word) || word === skip?.toLowerCase() || named.some(([a, b]) => m.index < b && m.index + m[0].length > a)) continue
+    const word = m[1].toLowerCase(), mention = lex.by.get(word)!
+    if (seen.has(word) || word === skip?.toLowerCase() || m.index < at || named.some(([a, b]) => m.index < b && m.index + m[0].length > a)) continue
+    const kind = mentionKind(mention), person = mention.type === 'person'
+    // The sentence so far, and the few words just before.
+    const before = text.slice(0, m.index), sentence = before.slice(Math.max(before.lastIndexOf('. '), before.lastIndexOf('; '), before.lastIndexOf(': ')) + 1)
+    const lead = sentence.toLowerCase().split(/[^\p{L}’'-]+/u).filter(Boolean).slice(-3)
+    const made = owner ? s.mentioned?.find((x) => x.owner === owner && x.word === word && s.names[x.id]) : undefined
+    if (!made) {
+      if (DOING.has(lead.at(-1) ?? '')) continue
+      // More than one of a thing is no one thing, save for people and powers: one of the soldiers, one of the rival choirs.
+      if (m[2] && !person && kind !== 'faction') continue
+      if (!person && kind !== 'material' && !lead.some((w) => LEADS.has(w))) continue
+      if (/shaped like an? $/i.test(before)) continue
+      // The opening words of a description say what the thing itself is: "Thayenen is a prosperous town".
+      if (!before.includes('. ') && /\b(?:is|was) (?:an?|the) (?:[\p{L}-]+,? ){0,3}$/u.test(before)) continue
+      const whole = text.slice(before.length - sentence.length, text.indexOf('.', m.index) < 0 ? undefined : text.indexOf('.', m.index))
+      if (kind === 'material' && /\b(skin|hair|eyes?|complexion)\b/i.test(whole)) continue
+    }
     seen.add(word)
-    out.push(text.slice(at, m.index), { text: m[0], mention: lex.by.get(word)! })
+    // A calling takes the word before it where that says what kind: a deposed ruler, an undying monarch.
+    const quality = person && CALLINGS.includes(word) ? new RegExp(`(?:^|[^\\p{L}])((?:${QUALITIES}) )$`, 'iu').exec(before)?.[1] ?? '' : ''
+    let from = m.index - quality.length, shown = text.slice(from, m.index + m[0].length)
+    let part: MentionPart = { text: shown, mention: quality && mention.type === 'person' ? { type: 'person', what: `${quality}${word}`.toLowerCase() } : mention, word }
+    if (made) {
+      // What was made stands in the sentence under its own name, in place of "a council" or "the old mill".
+      const article = /(?:^|[^\p{L}])((?:a|an|the) (?:[\p{L}-]+ )?)$/iu.exec(text.slice(0, from))?.[1] ?? ''
+      from -= article.length
+      const name = s.names[made.id], start = from === 0 || /[.!?:]\s*$/.test(text.slice(0, from))
+      part = { ...part, text: start ? name.charAt(0).toUpperCase() + name.slice(1) : name, made: made.id }
+    }
+    if (from < at) continue
+    out.push(text.slice(at, from), part)
     at = m.index + m[0].length
   }
   out.push(text.slice(at))
@@ -513,7 +574,13 @@ export function findMentions(s: Setting, text: string, skip?: string): (string |
 }
 
 /** Add the thing a mention names, at the spot whose description mentioned it. Returns its id. */
-export function addMention(s: Setting, m: Mention, home: string): string | undefined {
+export function addMention(s: Setting, m: Mention, home: string, from?: { owner: string; word: string }): string | undefined {
+  const id = makeMention(s, m, home)
+  // Remembered, so that the description where it was mentioned can name it from now on.
+  if (id && from) (s.mentioned ??= []).push({ ...from, id })
+  return id
+}
+function makeMention(s: Setting, m: Mention, home: string): string | undefined {
   const w = weave(s)
   if (m.type === 'site') {
     if (s.board[m.card]) return

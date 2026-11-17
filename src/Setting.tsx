@@ -282,18 +282,22 @@ const MORE: Kind[] = ['deity', 'event', 'object', 'creature', 'material']
  * Paragraphs in which every word that names a kind of thing the setting could hold is coloured, with a +
  * beside it while editing that adds that thing at this spot.
  */
-function Prose({ s, text, home, skip }: { s: SettingData; text: string[]; home?: string; skip?: string }) {
+function Prose({ s, text, home, skip, owner }: { s: SettingData; text: string[]; home?: string; skip?: string; owner?: string }) {
   const editing = useContext(EditCtx)
   const add = useAdd()
   return (
     <div className="prose">
       {text.map((t, i) => (
         <p key={i}>
-          {findMentions(s, t, skip).map((part, j) => typeof part === 'string' ? part : (
+          {findMentions(s, t, skip, owner).map((part, j) => typeof part === 'string' ? part : part.made ? (
+            // Already made: its own name, leading to it.
+            <a key={j} className={`mention made m-${mentionKind(part.mention)}`} role="link" tabIndex={0} title={`Go to ${part.text}`}
+              onClick={() => scrollTo(part.made!)} onKeyDown={(e) => { if (e.key === 'Enter') scrollTo(part.made!) }}>{part.text}</a>
+          ) : (
             <span key={j} className={`mention m-${mentionKind(part.mention)}`}>
               {part.text}
               {editing && home && s.board[home] && (
-                <button title={`Add this ${part.text.toLowerCase()} here`} aria-label={`Add ${part.text}`} onClick={() => add((d) => addMention(d, part.mention, home))}>+</button>
+                <button title={`Add this ${part.text.toLowerCase()} here`} aria-label={`Add ${part.text}`} onClick={() => add((d) => addMention(d, part.mention, home, owner ? { owner, word: part.word } : undefined))}>+</button>
               )}
             </span>
           ))}
@@ -338,7 +342,7 @@ function DrawnBlock({ d, s, top }: { d: Drawn; s: SettingData; top?: boolean }) 
       <h5><FoldButton id={d.id} /><Crest id={d.id} s={s} /> <Name id={d.id} s={s} /> <small>{drawnKind(d)}</small></h5>
       <Badges id={d.id} s={s} />
       <Picture id={d.id} s={s} />
-      <Prose s={s} text={drawnText(s, d)} home={d.home} />
+      <Prose s={s} text={drawnText(s, d)} home={d.home} owner={d.id} />
       <Refs label={d.tool === 'history' ? 'Dating from it' : 'Tied to'} ids={tiesTo(s, d.id)} s={s} />
       {editing && (
         <>
@@ -391,7 +395,7 @@ function BuiltBlock({ b, s }: { b: Built; s: SettingData }) {
       <h5><FoldButton id={b.id} /><Name id={b.id} s={s} /> <small>{what}</small></h5>
       <Badges id={b.id} s={s} />
       <Picture id={b.id} s={s} />
-      <Prose s={s} text={builtText(s, b)} home={b.home} />
+      <Prose s={s} text={builtText(s, b)} home={b.home} owner={b.id} />
       {editing && (
         <>
           <details className="tables">
@@ -549,7 +553,7 @@ function EntityBlock({ e, s, children }: { e: Entity; s: SettingData; children?:
       <h5><FoldButton id={e.id} /><Name id={e.id} s={s} /> <small>{what}</small></h5>
       <Badges id={e.id} s={s} />
       <Picture id={e.id} s={s} />
-      <Prose s={s} text={entityText(s, e)} home={e.home} skip={e.what} />
+      <Prose s={s} text={entityText(s, e)} home={e.home} skip={e.what} owner={e.id} />
       <Refs label="Tied to" ids={tiesTo(s, e.id)} s={s} />
       <EditRow id={e.id} s={s} what={e.what} />
       {children}
@@ -564,7 +568,7 @@ function PersonBlock({ c, s }: { c: Char; s: SettingData }) {
       <h5><FoldButton id={c.id} /><Name id={c.id} s={s} /> <small>{c.what}</small></h5>
       <Badges id={c.id} s={s} />
       <Picture id={c.id} s={s} />
-      <Prose s={s} text={charText(s, c)} home={c.home} skip={c.what} />
+      <Prose s={s} text={charText(s, c)} home={c.home} skip={c.what} owner={c.id} />
       <Refs label="Tied to" ids={tiesTo(s, c.id).filter((id) => id !== c.faction)} s={s} />
       <EditRow id={c.id} s={s} what={c.what} person={c} />
     </section>
@@ -708,7 +712,7 @@ function Gazetteer({ s }: { s: SettingData }) {
           <article key={r} id={`set-${r}`} className="entry place">
             <h4><FoldButton id={r} /><Crest id={r} s={s} size={32} /> <Name id={r} s={s} /> <small>{v.aka}</small></h4>
             <Picture id={r} s={s} />
-            <Prose s={s} text={[v.land.text]} home={r} />
+            <Prose s={s} text={[v.land.text]} home={r} owner={r} />
             {editing && (
               <>
                 {ASPECTS.flatMap(([type, label]) => {
@@ -731,7 +735,7 @@ function Gazetteer({ s }: { s: SettingData }) {
               <section key={site.id} id={`set-${site.id}`} className="entry nested site">
                 <h5><FoldButton id={site.id} /><Name id={site.id} s={s} /> <small>site · {siteKind(s, site.id).toLowerCase()}</small></h5>
                 <Picture id={site.id} s={s} />
-                <Prose s={s} text={[site.text]} home={site.id} />
+                <Prose s={s} text={[site.text]} home={site.id} owner={site.id} />
                 {editing && (
                   <>
                     <Pick s={s} root={r} type="site" label="Kind of site" current={site.id} />

@@ -405,6 +405,7 @@ html, body, #root { height: 100dvh; }
 
 /* Words in a description that name something the setting could hold */
 .mention { color: var(--c, var(--accent)); white-space: nowrap; }
+.mention.made { cursor: pointer; font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; white-space: normal; }
 .mention button { font: 600 12px/1 system-ui, sans-serif; margin-left: 3px; padding: 1px 5px 2px; border-radius: 10px; vertical-align: 1px; color: var(--c, var(--accent)); border-color: color-mix(in srgb, var(--c, var(--accent)) 60%, transparent); background: color-mix(in srgb, var(--c, var(--accent)) 14%, transparent); }
 .m-faction { --c: #e07a5f; } .m-figure { --c: #e2b65a; } .m-site { --c: #8fa3c0; } .m-settlement { --c: #c99a5a; } .m-peril { --c: #d9694f; }
 .m-event { --c: #b48ad0; } .m-object { --c: #6fb3d9; } .m-creature { --c: #7fb87a; } .m-material { --c: #9aa3b2; } .m-deity { --c: #e6c97a; }

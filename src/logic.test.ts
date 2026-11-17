@@ -1032,10 +1032,56 @@ describe('mentions in descriptions', async () => {
     s.names[circus] = 'the Coldgate Circus'
     const parts = B.findMentions(s, 'A council governs Carrcombe, and the council fears the Coldgate Circus. Two villages were lost to floods; ringed by cliffs, in order to watch.')
     const marked = parts.filter((p) => typeof p !== 'string') as { text: string; mention: import('./settingBuild').Mention }[]
-    expect(marked.map((m) => m.text)).toEqual(['council', 'villages', 'floods'])
-    expect(marked.map((m) => B.mentionKind(m.mention))).toEqual(['faction', 'settlement', 'event'])
+    // Villages and floods in general are no one village or flood, so only the council is offered.
+    expect(marked.map((m) => m.text)).toEqual(['council'])
+    expect(marked.map((m) => B.mentionKind(m.mention))).toEqual(['faction'])
     expect(parts.map((p) => (typeof p === 'string' ? p : p.text)).join('')).toContain('fears the Coldgate Circus. Two villages')
     expect(B.findMentions(s, 'The council meets.', 'council')).toEqual(['The council meets.'])
+  })
+  it('offers only what makes sense: no doings, likenesses, set phrases or things in general, and every person', () => {
+    const s = B.newManual(['fantasy'], ['temperate'])
+    const root = B.addPlace(s)!
+    const words = (text: string) => (B.findMentions(s, text).filter((p) => typeof p !== 'string') as import('./settingBuild').MentionPart[]).map((p) => `${B.mentionKind(p.mention)}:${p.text}`)
+    // The bell is a thing; that it will not ring is not a ring.
+    expect(words('The bells of the ash waste will not ring, having been cracked, stolen, or silenced by decree.')).toEqual([])
+    expect(words('A bell hangs there and bells ring out every hour. Its bell rings by itself.')).toEqual(['object:bell'])
+    expect(words('She wears a ring of iron.')).toEqual(['object:ring', 'material:iron'])
+    expect(words('They come to judge, to tax, or to hide.')).toEqual([])
+    // A kind of land is not an offer of what it is named for, nor is a set phrase or a likeness.
+    expect(words('Across the ash waste nothing grows.')).toEqual([])
+    expect(words('They are known for salt fish. Their skin is warm copper and their eyes are amber. A scar shaped like a key.')).toEqual([])
+    expect(words('They say “of Bleached Bones” for the remains of those who did not arrive.')).toEqual([])
+    expect(words('Thayenen is a prosperous town, barely a generation old.')).toEqual([])
+    expect(words('On opposite sides of town two markets compete, and every village looks down on its neighbour.')).toEqual([])
+    // Anyone spoken of can be made, as what they are said to be.
+    expect(words('A deposed ruler once hid in the ash waste for years.')).toEqual(['figure:deposed ruler'])
+    expect(words('They are governed by an undying monarch, and a messenger rode out to the governor.')).toEqual(['figure:undying monarch', 'figure:messenger', 'figure:governor'])
+    const [ruler] = B.findMentions(s, 'A deposed ruler once hid here.').filter((p) => typeof p !== 'string') as import('./settingBuild').MentionPart[]
+    const id = B.addMention(s, ruler.mention, root)!
+    expect(s.people.find((c) => c.id === id)!.what).toBe('deposed ruler')
+    expect(G.charText(s, s.people.find((c) => c.id === id)!)[0]).toContain('is a deposed ruler')
+  })
+  it('names what was made in place of the word that mentioned it, and offers it no more', () => {
+    const s = B.newManual(['fantasy'], ['temperate'])
+    const root = B.addPlace(s)!
+    const text = 'A deposed ruler once hid here for years. Gossip travels fast, and a nervous council listens. The council is feared.'
+    const before = B.findMentions(s, text, undefined, root).filter((p) => typeof p !== 'string') as import('./settingBuild').MentionPart[]
+    expect(before.map((p) => p.text)).toEqual(['deposed ruler', 'council'])
+    const ruler = B.addMention(s, before[0].mention, root, { owner: root, word: before[0].word })!
+    const council = B.addMention(s, before[1].mention, root, { owner: root, word: before[1].word })!
+    const after = B.findMentions(s, text, undefined, root)
+    const made = after.filter((p) => typeof p !== 'string') as import('./settingBuild').MentionPart[]
+    expect(made.map((p) => p.made)).toEqual([ruler, council])
+    // The name takes the place of "A deposed ruler" and "a nervous council", capital at the start of a sentence.
+    const whole = after.map((p) => (typeof p === 'string' ? p : p.text)).join('')
+    const name = s.names[ruler]
+    expect(whole.startsWith(`${name.charAt(0).toUpperCase()}${name.slice(1)} once hid here`)).toBe(true)
+    expect(whole).toContain(`and ${s.names[council]} listens`)
+    expect(whole).not.toMatch(/deposed ruler|nervous council/)
+    // Elsewhere the same words are still an offer, and once the thing is removed the word comes back here.
+    expect((B.findMentions(s, text, undefined, 'elsewhere').filter((p) => typeof p !== 'string') as import('./settingBuild').MentionPart[]).every((p) => !p.made)).toBe(true)
+    B.remove(s, ruler)
+    expect((B.findMentions(s, text, undefined, root).filter((p) => typeof p !== 'string') as import('./settingBuild').MentionPart[]).map((p) => p.made)).toEqual([undefined, council])
   })
   it('adds exactly what was mentioned, where it was mentioned', () => {
     for (let n = 0; n < 15; n++) {
@@ -1571,7 +1617,7 @@ describe('how common each kind of settlement is in a world', async () => {
 
     const s = B.newManual(['fantasy'], ['temperate'])
     const place = B.addPlace(s)!
-    for (let n = 0; n < 120; n++) B.addBuilt(s, 'settlement', place)
+    for (let n = 0; n < 500; n++) B.addBuilt(s, 'settlement', place)
     expect(capitals(s)).toBe(1)
     for (const b of s.built!) for (let i = 0; i < 3; i++) { B.builtReroll(s, b.id); B.builtEdit(s, b.id, 'type', 'roll') }
     expect(capitals(s)).toBeLessThanOrEqual(1)

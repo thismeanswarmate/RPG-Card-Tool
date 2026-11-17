@@ -80,6 +80,8 @@ export interface Setting {
   drawn?: Drawn[]
   /** The worlds that lie beyond the edges of the map: for now a name and the side each lies on. */
   beyond?: Beyond[]
+  /** Things made from a word in a description: whose description, which word, and what it became. */
+  mentioned?: { owner: string; word: string; id: string }[]
   /** Emblems changed by hand, by the id of the land, race or culture that bears them; the rest follow from the setting itself. */
   emblems?: Record<string, EmblemSpec>
 }
