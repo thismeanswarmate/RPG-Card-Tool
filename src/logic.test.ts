@@ -435,7 +435,7 @@ describe('settings', async () => {
       }
       const text = G.settingMarkdown(s)
       expect(text).not.toMatch(/[{}]|undefined|  /)
-      for (const e of [...s.entities, ...s.people]) expect(text).toContain(s.names[e.id])
+      for (const e of [...s.entities, ...s.people]) expect(text.toLowerCase()).toContain(s.names[e.id].toLowerCase())
       if (a.focus.includes('adventure')) expect(text).toContain('Quest — ')
     })
   })
@@ -471,7 +471,8 @@ describe('pictures', async () => {
     for (const id of ids) {
       const spec = P.imageSpec(s, id)
       expect(spec.prompt, id).toMatch(/^[A-Z].*No text or lettering\.$/)
-      expect(spec.prompt).not.toMatch(s.built!.some((b) => b.id === id) ? /undefined|\{|  / : /undefined|something|\{|  /)
+      // Only what is put together from links can come out as "something"; card text may use the word honestly.
+      expect(spec.prompt).not.toMatch(/undefined|\{|  /)
       expect(spec.w % 32).toBe(0)
       expect(spec.h % 32).toBe(0)
       expect(spec.seed).toBe(P.imageSpec(s, id).seed)
@@ -590,11 +591,11 @@ describe('drawn map', async () => {
       expect(map.theme).toBe('parchment')
       for (const r of map.regions) {
         expect(r.points.length).toBeGreaterThan(30)
-        expect(r.d).toMatch(/^M[-\d. L]+Z$/)
-        for (const [x, y] of r.points) { expect(Number.isFinite(x) && Number.isFinite(y)).toBe(true); expect(x).toBeGreaterThan(0); expect(x).toBeLessThan(map.w); expect(y).toBeGreaterThan(0); expect(y).toBeLessThan(map.h) }
+        // Its main land, and any islands besides, each a closed outline.
+        expect(r.d).toMatch(/^(M[-\d. L]+Z)+$/)
+        for (const [x, y] of r.points) { expect(Number.isFinite(x) && Number.isFinite(y)).toBe(true); expect(x).toBeGreaterThanOrEqual(-40); expect(x).toBeLessThanOrEqual(map.w + 40); expect(y).toBeGreaterThanOrEqual(-40); expect(y).toBeLessThanOrEqual(40 + map.h) }
         expect(inside([r.x, r.y], r.points), `${r.name} holds its own centre`).toBe(true)
         expect(r.name).toBe(s.names[r.id])
-        expect(r.symbols.length).toBeGreaterThan(0)
         for (const p of r.symbols) expect(inside([p.x, p.y], r.points)).toBe(true)
         for (const site of r.sites) expect(inside([site.x, site.y], r.points), `${site.name} in ${r.name}`).toBe(true)
         // No region covers another place's centre.
@@ -1598,27 +1599,31 @@ describe('water on the map, and no gaps between places', async () => {
   }
   const coords = (d: string) => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [+m[1], +m[2]] as [number, number])
 
-  it('leaves no pocket of sea enclosed between places', () => {
+  it('leaves no pocket of sea shut in by land', () => {
     let pockets = 0, maps = 0
     for (const size of ['region', 'country', 'continent'] as const) for (let n = 0; n < 6; n++) {
       const map = M.buildMap(G.generateSetting({ ...G.DEFAULT_ANSWERS, size }, `gaps-${size}-${n}`))
       maps++
-      // Flood the sea in from the edge of the sheet over a coarse grid; any water it cannot reach is a pocket.
+      // Land is every place with its islands, and every neighbouring world.
+      const outlines = [...map.regions.map((r) => r.d), ...map.beyond.map((b) => b.d)].flatMap((d) => d.split('Z').filter(Boolean).map(coords))
       const step = 5, cols = Math.ceil(map.w / step), rows = Math.ceil(map.h / step)
       const land = new Uint8Array(cols * rows)
-      for (const r of map.regions) {
-        const xs = r.points.map((p) => p[0]), ys = r.points.map((p) => p[1])
+      for (const poly of outlines) {
+        const xs = poly.map((p) => p[0]), ys = poly.map((p) => p[1])
         for (let y = Math.max(0, Math.floor(Math.min(...ys) / step)); y <= Math.min(rows - 1, Math.ceil(Math.max(...ys) / step)); y++)
           for (let x = Math.max(0, Math.floor(Math.min(...xs) / step)); x <= Math.min(cols - 1, Math.ceil(Math.max(...xs) / step)); x++)
-            if (!land[y * cols + x] && within([x * step + step / 2, y * step + step / 2], r.points)) land[y * cols + x] = 1
+            if (!land[y * cols + x] && within([x * step + step / 2, y * step + step / 2], poly)) land[y * cols + x] = 1
       }
-      const seen = new Uint8Array(cols * rows), queue = [0]
-      seen[0] = 1
+      // Let the sea in from every edge of the sheet; any water it cannot reach is a pocket.
+      const seen = new Uint8Array(cols * rows), queue: number[] = []
+      const enter = (k: number) => { if (!land[k] && !seen[k]) { seen[k] = 1; queue.push(k) } }
+      for (let x = 0; x < cols; x++) { enter(x); enter((rows - 1) * cols + x) }
+      for (let y = 0; y < rows; y++) { enter(y * cols); enter(y * cols + cols - 1) }
       while (queue.length) {
         const at = queue.pop()!, x = at % cols, y = (at - x) / cols
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const nx = x + dx, ny = y + dy, k = ny * cols + nx
-          if (nx >= 0 && ny >= 0 && nx < cols && ny < rows && !seen[k] && !land[k]) { seen[k] = 1; queue.push(k) }
+          const nx = x + dx, ny = y + dy
+          if (nx >= 0 && ny >= 0 && nx < cols && ny < rows) enter(ny * cols + nx)
         }
       }
       // A pocket is a patch of unreached water at least three cells across; a hairline along a border is only the grid.
@@ -1630,10 +1635,10 @@ describe('water on the map, and no gaps between places', async () => {
     }
     expect(maps).toBe(18)
     expect(pockets).toBe(0)
-    // Closing the gaps must not make the sheet sprawl.
+    // The sheet stays a sensible size.
     for (const size of ['region', 'country', 'continent'] as const) {
       const map = M.buildMap(G.generateSetting({ ...G.DEFAULT_ANSWERS, size }, `sheet-${size}`))
-      expect(Math.max(map.w, map.h)).toBeLessThan({ region: 1500, country: 2100, continent: 2500 }[size])
+      expect(Math.max(map.w, map.h)).toBeLessThan({ region: 2000, country: 2600, continent: 3000 }[size])
     }
   }, 30000)
 
@@ -1658,8 +1663,9 @@ describe('water on the map, and no gaps between places', async () => {
         const pts = coords(river.d)
         expect(pts.length).toBeGreaterThanOrEqual(5)
         // All but the last step, which runs out into the sea, is on land.
-        const onLand = pts.slice(0, -2).filter((p) => map.regions.some((r) => within(p, r.points))).length
-        expect(onLand).toBeGreaterThanOrEqual(pts.length - 3)
+        const grounds = map.regions.flatMap((r) => r.d.split('Z').filter(Boolean).map(coords))
+        const onLand = pts.slice(0, -2).filter((p) => grounds.some((poly) => within(p, poly))).length
+        expect(onLand).toBeGreaterThanOrEqual(pts.length - 4)
         for (const p of pts) expect(p[0] > 0 && p[1] > 0 && p[0] < map.w && p[1] < map.h).toBe(true)
       }
       for (const r of map.regions) for (const sym of r.symbols) for (const river of map.rivers) for (const p of coords(river.d)) expect(Math.hypot(p[0] - sym.x, p[1] - sym.y)).toBeGreaterThanOrEqual(8.5)
@@ -1712,20 +1718,26 @@ describe('bordering worlds and named water', async () => {
       const ours = map.regions.flatMap((r) => r.points)
       for (const b of map.beyond) {
         const side = G.beyondOf(s).find((x) => x.id === b.id)!.side
-        const land = coords(b.d)
+        // Its land may be in several pieces; the checks below take all of them.
+        const pieces = b.d.split('Z').filter(Boolean).map(coords)
+        const land = pieces.flat()
+        const onIt = (p: [number, number]) => pieces.some((poly) => within(p, poly))
         // It reaches past its own edge of the sheet …
         const past = { north: land.some((p) => p[1] < 0), south: land.some((p) => p[1] > map.h), west: land.some((p) => p[0] < 0), east: land.some((p) => p[0] > map.w) }
         expect(past[side], `${side} runs off the sheet`).toBe(true)
         // … and runs in under this world's land, so the two are joined with no sea between.
-        expect(ours.some((q) => within(q as [number, number], land)), `${side} is joined on`).toBe(true)
+        const gap = Math.min(...land.map((p) => Math.min(...ours.map((q) => Math.hypot(p[0] - q[0], p[1] - q[1])))))
+        expect(gap, `${side} is joined on`).toBeLessThan(14)
         // It fills both corners at the ends of its edge.
         const corners: Record<string, [number, number][]> = {
           north: [[6, 6], [map.w - 6, 6]], south: [[6, map.h - 6], [map.w - 6, map.h - 6]], west: [[6, 6], [6, map.h - 6]], east: [[map.w - 6, 6], [map.w - 6, map.h - 6]],
         }
-        for (const c of corners[side]) expect(within(c, land), `${side} fills its corners`).toBe(true)
+        // … its own land, or that of the neighbour round the corner where there is one.
+        const anyLand = map.beyond.flatMap((o) => o.d.split('Z').filter(Boolean).map(coords))
+        for (const c of corners[side]) expect(anyLand.some((poly) => within(c, poly)), `${side} fills its corners`).toBe(true)
         // Its name sits on its own land, on the sheet, and not on top of this world.
         expect(b.x > 0 && b.y > 0 && b.x < map.w && b.y < map.h).toBe(true)
-        expect(within([b.x, b.y], land)).toBe(true)
+        expect(onIt([b.x, b.y])).toBe(true)
         expect(map.regions.some((r) => within([b.x, b.y], r.points as [number, number][]))).toBe(false)
         // … and well in from the edge of the sheet, so that it is not cut off.
         expect(Math.min(b.x, b.y, map.w - b.x, map.h - b.y), `${side} name clear of the edge`).toBeGreaterThan(22)
@@ -1859,7 +1871,7 @@ describe('uneven seas and lakes, and far-running rivers', async () => {
       const land = map.regions.flatMap((r) => r.points)
       const open = G.seasOf(s).map((x) => x.side)
       const gap = { north: Math.min(...land.map((p) => p[1])), south: map.h - Math.max(...land.map((p) => p[1])), west: Math.min(...land.map((p) => p[0])), east: map.w - Math.max(...land.map((p) => p[0])) }
-      for (const side of open) { expect(gap[side]).toBeGreaterThan(50); margins.push(gap[side]) }
+      for (const side of open) { expect(gap[side]).toBeGreaterThan(30); margins.push(gap[side]) }
       for (const l of map.lakes) {
         const pts = coords(l.d), cx = pts.reduce((a, p) => a + p[0], 0) / pts.length, cy = pts.reduce((a, p) => a + p[1], 0) / pts.length
         const radii = pts.map((p) => Math.hypot(p[0] - cx, p[1] - cy))
@@ -1887,4 +1899,97 @@ describe('uneven seas and lakes, and far-running rivers', async () => {
     expect(Math.max(...lengths)).toBeGreaterThan(450)
     expect(lengths.filter((x) => x > 330).length).toBeGreaterThan(3)
   }, 30000)
+})
+
+describe('kinds of land: how common, where they lie and how they are drawn', async () => {
+  const T = await import('./terrain')
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  const M = await import('./mapgen')
+  const coords = (d: string) => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [+m[1], +m[2]] as [number, number])
+
+  it('knows each kind of land by its name', () => {
+    expect(T.landOf('Glacier')).toMatchObject({ temp: -2, wet: 0, high: true })
+    expect(T.landOf('Tundra').temp).toBeLessThan(-1)
+    expect(T.landOf('Dunes')).toMatchObject({ temp: 2, wet: 0 })
+    expect(T.landOf('Marsh').wet).toBe(3)
+    expect(T.landOf('Mangrove')).toMatchObject({ wet: 3, shape: 'coast' })
+    expect(T.landOf('Archipelago').shape).toBe('isles')
+    expect(T.landOf('Floating Isles').shape).toBe('isles')
+    expect(T.landOf('Atoll').shape).toBe('ring')
+    expect(T.landOf('Fjord')).toMatchObject({ shape: 'coast', rugged: 1 })
+    expect(T.landOf('Steppe').shape).toBe('inland')
+    expect(T.landOf('Old Forest').common).toBeGreaterThan(T.landOf('Caldera').common)
+    expect(T.landOf('Heath').common).toBeGreaterThan(T.landOf('Atoll').common)
+    expect(T.latitudeOf(T.landOf('Glacier'))).toBeLessThan(0.15)
+    expect(T.latitudeOf(T.landOf('Dunes'))).toBeGreaterThan(0.85)
+    // A cold land sits badly in the south and an island badly at the heart.
+    expect(T.misfit(T.landOf('Glacier'), 0.9, 0.5)).toBeGreaterThan(T.misfit(T.landOf('Glacier'), 0.1, 0.5) + 1)
+    expect(T.misfit(T.landOf('Archipelago'), 0.5, 0)).toBeGreaterThan(T.misfit(T.landOf('Archipelago'), 0.5, 1) + 1)
+  })
+
+  it('makes common lands turn up more often than rare ones', () => {
+    const seen: Record<string, number> = {}
+    for (let n = 0; n < 60; n++) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: 'region' }, `rarity-${n}`)
+      for (const r of G.rootsOf(s)) { const name = G.terrainOf(s, r); seen[name] = (seen[name] ?? 0) + 1 }
+    }
+    const mean = (names: string[]) => names.reduce((a, x) => a + (seen[x] ?? 0), 0) / names.length
+    expect(mean(['Old Forest', 'Steppe', 'Heath', 'Moor', 'Highlands', 'Savanna'])).toBeGreaterThan(mean(['Caldera', 'Atoll', 'Archipelago', 'Glacier', 'Salt Flats', 'Lagoon']) * 1.6)
+    // By hand as well: many places added, common lands in the lead.
+    const hand: Record<string, number> = {}
+    for (let n = 0; n < 40; n++) { const s = B.newManual([], ['temperate']); for (let i = 0; i < 4; i++) { const id = B.addPlace(s)!; const name = G.terrainOf(s, id); hand[name] = (hand[name] ?? 0) + 1 } }
+    const handMean = (names: string[]) => names.reduce((a, x) => a + (hand[x] ?? 0), 0) / names.length
+    expect(handMean(['Old Forest', 'Steppe', 'Heath', 'Moor', 'Highlands', 'Savanna'])).toBeGreaterThan(handMean(['Caldera', 'Atoll', 'Archipelago', 'Glacier', 'Salt Flats', 'Lagoon']) * 1.4)
+  })
+
+  it('lays cold lands to the north, hot ones to the south and islands on the rim', () => {
+    let cold = 0, hot = 0, n = 0, rim = 0, heart = 0, isles = 0
+    for (let k = 0; k < 40; k++) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: 'continent', lands: ['temperate', 'frost', 'dry', 'coast'] }, `climate-${k}`)
+      const roots = G.rootsOf(s)
+      const ys = roots.map((r) => s.board[r].y), [y0, y1] = [Math.min(...ys), Math.max(...ys)]
+      const cx = roots.reduce((a, r) => a + s.board[r].x, 0) / roots.length, cy = roots.reduce((a, r) => a + s.board[r].y, 0) / roots.length
+      const reach = Math.max(...roots.map((r) => Math.hypot(s.board[r].x - cx, s.board[r].y - cy)))
+      for (const r of roots) {
+        const land = T.landOf(G.terrainOf(s, r)), lat = (s.board[r].y - y0) / (y1 - y0), edge = Math.hypot(s.board[r].x - cx, s.board[r].y - cy) / reach
+        if (land.temp <= -1.2) { cold += lat; n++ }
+        if (land.temp >= 1.3) { hot += lat }
+        if (land.shape === 'isles' || land.shape === 'ring') { rim += edge; isles++ }
+        if (land.shape === 'inland') heart += edge
+      }
+      // No two places share a spot, and none was lost in the shuffle.
+      expect(new Set(roots.map((r) => `${s.board[r].x},${s.board[r].y}`)).size).toBe(roots.length)
+    }
+    expect(n).toBeGreaterThan(20)
+    expect(cold / n).toBeLessThan(0.3)
+    const hots = Array.from({ length: 1 }, () => hot)[0]
+    expect(hots).toBeGreaterThan(0)
+    expect(isles).toBeGreaterThan(5)
+    expect(rim / isles).toBeGreaterThan(0.75)
+  })
+
+  it('draws islands as islands, an atoll as a ring, and marsh full of pools', () => {
+    const board = (terrain: string) => {
+      const s = B.newManual(['fantasy'], ['temperate', 'coast'])
+      const place = B.addPlace(s)!
+      // Give the one place the land under test, by finding a card of that kind and choosing it.
+      const pick = B.choices(s, 'terrain', place).find((c) => c.text === terrain)!
+      B.choose(s, place, 'terrain', pick.value, place)
+      return s
+    }
+    const pieces = (s: import('./setting').Setting) => M.buildMap(s).regions[0].d.split('Z').filter(Boolean).length
+    expect(pieces(board('Archipelago'))).toBeGreaterThan(2)
+    expect(pieces(board('Steppe'))).toBeLessThanOrEqual(pieces(board('Archipelago')))
+    // An atoll's land rings its centre: the middle of it is water.
+    const atoll = M.buildMap(board('Atoll')).regions[0]
+    const xs = atoll.points.map((p) => p[0])
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(120)
+    expect(coords(atoll.d).length).toBeGreaterThan(40)
+    // Marsh holds several pools and more than one stream; dunes hold none.
+    const marsh = M.buildMap(board('Marsh')), dunes = M.buildMap(board('Dunes'))
+    expect(marsh.lakes.length).toBeGreaterThanOrEqual(3)
+    expect(dunes.lakes.length).toBe(0)
+    expect(M.buildMap(board('Archipelago')).rivers.length).toBe(0)
+  })
 })

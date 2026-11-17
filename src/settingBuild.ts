@@ -12,6 +12,7 @@ import { glyphFor, type Glyph } from './mapgen'
 import { ageNames, rename, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, hasCapital, type Side, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
 import { rollAll as rollSettlement, rollType, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
+import { landOf, misfit, weighted } from './terrain'
 import type { CardType } from './types'
 
 const CARDS = cardsOf({ custom: [] })
@@ -53,6 +54,8 @@ function draw(s: Setting, type: CardType): string | undefined {
   const themed = all.filter((c) => c.deck !== 'starter')
   // Until the decks are chosen by hand, a setting without temperate lands keeps to its themed terrain.
   const pool = type === 'terrain' && !s.decks && themed.length && lands.length && !lands.includes('temperate') ? themed : all
+  // Common kinds of land come up more often than rare ones.
+  if (type === 'terrain') return weighted(pool, (c) => landOf(c.cues[0].text).common, Math.random)?.id
   return pool[rand(pool.length)]?.id
 }
 
@@ -81,7 +84,13 @@ export function addPlace(s: Setting): string | undefined {
     const cx = roots.reduce((n, p) => n + p.x, 0) / roots.length, cy = roots.reduce((n, p) => n + p.y, 0) / roots.length
     const spots = roots.flatMap((p) => [[560, 0], [-560, 0], [280, 490], [-280, 490], [280, -490], [-280, -490]].map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy, from: p.id })))
       .filter((q) => roots.every((p) => Math.hypot(p.x - q.x, p.y - q.y) > 400))
-      .map((q) => ({ ...q, d: Math.hypot(q.x - cx, q.y - cy) + rand(500) }))
+      // The spot nearest the middle wins, weighed against how well the land suits it: cold lands go north,
+      // hot ones south, islands and coasts to the rim.
+      .map((q) => {
+        const ys = [...roots.map((p) => p.y), q.y], reach = Math.max(1, ...roots.map((p) => Math.hypot(p.x - cx, p.y - cy)), Math.hypot(q.x - cx, q.y - cy))
+        const lat = Math.max(...ys) > Math.min(...ys) ? (q.y - Math.min(...ys)) / (Math.max(...ys) - Math.min(...ys)) : 0.5
+        return { ...q, d: Math.hypot(q.x - cx, q.y - cy) + rand(350) + 900 * misfit(landOf(CARDS[id].cues[0].text), lat, Math.hypot(q.x - cx, q.y - cy) / reach) }
+      })
       .sort((a, b) => a.d - b.d)
     x = spots[0].x + rand(80) - 40
     y = spots[0].y + rand(80) - 40

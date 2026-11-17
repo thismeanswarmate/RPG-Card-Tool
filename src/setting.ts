@@ -19,6 +19,7 @@ import type { Rolls } from './roller'
 import { brief as settlementBrief, rollAll as rollSettlement, rollType, typeKey, typeLabel } from './settlement'
 import { blank, cardsOf, generateWorld, type WorldSize } from './store'
 import { STORY_CARDS } from './story'
+import { landOf, misfit } from './terrain'
 import type { Held } from './types'
 
 export type Size = 'region' | 'country' | 'continent'
@@ -190,6 +191,37 @@ function withSeed<T>(seed: string, fn: (rng: Rng) => T): T {
   const rng = rngFrom(seed)
   Math.random = rng
   try { return fn(rng) } finally { Math.random = original }
+}
+
+/**
+ * Put each land where it belongs. The places keep the same set of spots, but trade them so that cold lands
+ * lie to the north and hot ones to the south, islands and coastal lands on the rim and inland ones at the heart.
+ */
+export function settle(board: Board) {
+  const roots = Object.values(board).filter((p) => !p.parent)
+  if (roots.length < 2) return
+  const spots = roots.map((p) => ({ x: p.x, y: p.y }))
+  const [y0, y1] = [Math.min(...spots.map((p) => p.y)), Math.max(...spots.map((p) => p.y))]
+  const [cx, cy] = [spots.reduce((n, p) => n + p.x, 0) / spots.length, spots.reduce((n, p) => n + p.y, 0) / spots.length]
+  const reach = Math.max(1, ...spots.map((p) => Math.hypot(p.x - cx, p.y - cy)))
+  const lat = (p: { y: number }) => (y1 > y0 ? (p.y - y0) / (y1 - y0) : 0.5)
+  const rim = (p: { x: number; y: number }) => Math.hypot(p.x - cx, p.y - cy) / reach
+  const lands = roots.map((p) => landOf(CARDS[p.id].cues[p.active]?.text ?? ''))
+  const cost = (i: number, spot: { x: number; y: number }) => misfit(lands[i], lat(spot), rim(spot))
+  // The fussiest lands choose first; then pairs trade places for as long as a trade helps.
+  const order = roots.map((_, i) => i).sort((a, b) => lands[b].bound + (lands[b].shape === 'land' ? 0 : 1) - (lands[a].bound + (lands[a].shape === 'land' ? 0 : 1)))
+  const free = spots.map((_, k) => k), at: number[] = []
+  for (const i of order) {
+    const k = free.reduce((best, f) => (cost(i, spots[f]) < cost(i, spots[best]) ? f : best), free[0])
+    at[i] = k
+    free.splice(free.indexOf(k), 1)
+  }
+  for (let pass = 0, moved = true; moved && pass < 8; pass++) {
+    moved = false
+    for (let i = 0; i < roots.length; i++) for (let j = i + 1; j < roots.length; j++)
+      if (cost(i, spots[at[j]]) + cost(j, spots[at[i]]) + 1e-9 < cost(i, spots[at[i]]) + cost(j, spots[at[j]])) { [at[i], at[j]] = [at[j], at[i]]; moved = true }
+  }
+  roots.forEach((p, i) => { p.x = spots[at[i]].x; p.y = spots[at[i]].y })
 }
 
 const nextId = (prefix: string, items: { id: string }[]) =>
@@ -412,6 +444,10 @@ export function generateSetting(answers: Answers, seed: string): Setting {
     if (has('everyday')) world.expansions.customs = ['question']
     if (has('faith')) world.expansions.lore = ['work', 'twist']
     generateWorld(world, scale.world, (s) => {
+      // Common kinds of land come up more often than rare ones: each card draws a lot, weighted by how
+      // common its land is, and the pile is taken from the top lot down.
+      const lot = new Map(s.piles.terrain.map((id) => [id, rng() ** (1 / landOf(CARDS[id].cues[0].text).common)]))
+      s.piles.terrain.sort((a, b) => lot.get(a)! - lot.get(b)!)
       // Without "temperate", the starter deck's terrains are held back unless the map would come up short.
       if (answers.lands.includes('temperate') || !answers.lands.length) return
       const themed = s.piles.terrain.filter((id) => CARDS[id].deck !== 'starter')
@@ -419,6 +455,7 @@ export function generateSetting(answers: Answers, seed: string): Setting {
       s.piles.terrain = [...spare.slice(0, Math.max(0, scale.min - themed.length)), ...themed]
     })
     const board = world.placed
+    settle(board)
     const s: Setting = { id: '', seed, answers, created: Date.now(), board, meta: world.meta, names: {}, specs: {}, entities: [], people: [], hooks: [], built: [] }
     const budget = { left: scale.minor + rich * 3 + (has('faith') ? 1 : 0) + (has('secrets') ? 2 : 0) }
     const w = weave(s, rng, budget)

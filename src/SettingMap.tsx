@@ -64,6 +64,8 @@ export function SettingMap({ s }: { s: Setting }) {
           {Object.entries(GLYPH).map(([k, d]) => (
             <path key={k} id={`gl-${k}`} d={d} fill="none" stroke={t.ink} strokeWidth="1.15" strokeLinecap="round" strokeLinejoin="round" />
           ))}
+          {/* The land of the neighbouring worlds, for keeping the frontier line to where it belongs. */}
+          <clipPath id="beyond-land">{map.beyond.map((b) => <path key={b.id} d={b.d} />)}</clipPath>
           {map.regions.map((r) => <clipPath key={r.id} id={`clip-${r.id}`}><circle cx={r.x} cy={r.y - 44} r="30" /></clipPath>)}
         </defs>
 
@@ -80,10 +82,13 @@ export function SettingMap({ s }: { s: Setting }) {
 
         {/* Neighbouring worlds: plain land joined to this one and running off the sheet. */}
         {map.beyond.map((b) => <path key={b.id} d={b.d} fill={t.beyond} stroke={t.beyond} strokeWidth="3" strokeLinejoin="round" pointerEvents="none" />)}
+        <g pointerEvents="none" opacity=".3">
+          {map.beyond.flatMap((b) => b.symbols.map((p, i) => <use key={`${b.id}-${i}`} href="#gl-tuft" transform={`translate(${p.x} ${p.y})`} />))}
+        </g>
         {/* The frontier: this world's outline in dots and dashes. Its inner half is covered by the land drawn next, and over
             the sea it falls on the coastline, so it shows only where a neighbouring world lies against it. */}
         {map.beyond.length > 0 && (
-          <g fill="none" stroke={t.ink} strokeWidth="4" strokeDasharray="9 4 2 4" strokeLinejoin="round" pointerEvents="none">
+          <g fill="none" stroke={t.ink} strokeWidth="4" strokeDasharray="9 4 2 4" strokeLinejoin="round" pointerEvents="none" clipPath="url(#beyond-land)">
             {map.regions.map((r) => <path key={r.id} d={r.d} />)}
           </g>
         )}
