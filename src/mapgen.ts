@@ -278,9 +278,22 @@ export function buildMap(s: Setting): MapData {
   // The grid runs a few cells past the sheet on every side, so that land which leaves the sheet does so cleanly.
   const g = 8, PADC = 4, cols = Math.ceil(W / g) + PADC * 2, rows = Math.ceil(H / g) + PADC * 2
   const own = new Int16Array(cols * rows).fill(-1)
+  // Water that is meant to be there — a lagoon behind its spit — and is not to be closed up as a stray hole.
+  const meant = new Uint8Array(cols * rows)
   const span = pts.map((_, i) => typical * (1.02 + 0.16 * (weight[i] - 1)))
   const depthOf = outer.map(() => typical * (0.5 + rng() * 0.7))
-  const gapAt = kinds.map(() => rng() * Math.PI * 2)
+  // Which way the open sea lies from each place: out from the middle of the world, turned to a side that no
+  // neighbouring world holds. A ring opens that way, and a lagoon lies on that coast.
+  const worldMid: P = [pts.reduce((a, p) => a + p[0], 0) / N, pts.reduce((a, p) => a + p[1], 0) / N]
+  const openSides = Object.entries(OUT).filter(([side]) => !outer.some((b) => b.side === side)).map(([, d]) => d)
+  const gapAt = kinds.map((_, i) => {
+    const any = rng() * Math.PI * 2
+    const v: P = [pts[i][0] - worldMid[0], pts[i][1] - worldMid[1]], len = Math.hypot(v[0], v[1])
+    if (N < 2 || len < 1) return any
+    if (!openSides.length || openSides.length === 4) return Math.atan2(v[1], v[0])
+    const best = openSides.reduce((a, d) => (d[0] * v[0] + d[1] * v[1] > a[0] * v[0] + a[1] * v[1] ? d : a))
+    return Math.atan2(best[1] + 0.35 * v[1] / len, best[0] + 0.35 * v[0] / len)
+  })
   const SEA = 0.12
   for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
     const x0 = (cx - PADC) * g + g / 2, y0 = (cy - PADC) * g + g / 2
@@ -318,6 +331,18 @@ export function buildMap(s: Setting): MapData {
       const open = Math.abs(Math.atan2(Math.sin(a - gapAt[nearOurs]), Math.cos(a - gapAt[nearOurs]))) < 0.42
       const width = kind.ringWidth ?? 0.17
       ground = open ? -1 : SEA + (width - Math.abs(dist - 0.5 - width * 0.3)) * 2.4 + 0.22 * (rough(x / 40, y / 40) - 0.5)
+    }
+    if (kind.lagoon) {
+      // A lagoon: a broad sheltered water on the seaward side, shut in by a spit of land with one narrow mouth,
+      // and open sea beyond the spit.
+      const s0 = span[nearOurs], ca = Math.cos(gapAt[nearOurs]), sa = Math.sin(gapAt[nearOurs])
+      const px = x - pts[nearOurs][0], py = y - pts[nearOurs][1]
+      const u = (px * ca + py * sa) / s0 - 0.47, v = (-px * sa + py * ca) / s0
+      const wob = 0.16 * (rough(x / 60 + 5, y / 60 + 5) - 0.5)
+      const e = Math.hypot(u / 0.19, v / 0.4) + wob
+      if (e < 1) { ground = -1; meant[cy * cols + cx] = 1 }
+      else if (u > -0.05 && e < 1.42) { if (Math.abs(v - 0.12) < 26 / s0) { ground = -1; meant[cy * cols + cx] = 1 } else ground = Math.max(ground, SEA + 0.2) }
+      else if (u > 0 && Math.abs(v) < 0.62) ground = -1
     }
     // Fjords: thin winding arms of the sea, cut along the low lines of a second noise, reaching in from the coast.
     if (kind.inlets && height < 0.78) {
@@ -365,8 +390,24 @@ export function buildMap(s: Setting): MapData {
     if (own[k] < 0 && !reached[k] && ((x > 0 && reached[k - 1]) || (x < cols - 1 && reached[k + 1]) || (y > 0 && reached[k - cols]) || (y < rows - 1 && reached[k + cols]))) fringe[k] = 1
   }
   for (let k = 0; k < fringe.length; k++) if (fringe[k]) reached[k] = 1
+  // A lagoon is kept only where it does open on the sea: its water is followed in from the reached sea, and
+  // any of it that the sea never gets to is closed up like any other hole.
+  const joined = new Uint8Array(cols * rows), todo: number[] = []
+  for (let k = 0; k < meant.length; k++) if (meant[k] && own[k] < 0 && reached[k]) { joined[k] = 1; todo.push(k) }
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    const k = y * cols + x
+    if (meant[k] && own[k] < 0 && !joined[k] && ((x > 0 && reached[k - 1]) || (x < cols - 1 && reached[k + 1]) || (y > 0 && reached[k - cols]) || (y < rows - 1 && reached[k + cols]))) { joined[k] = 1; todo.push(k) }
+  }
+  while (todo.length) {
+    const k = todo.pop()!, x = k % cols, y = (k - x) / cols
+    for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+      const n = ny * cols + nx
+      if (nx >= 0 && ny >= 0 && nx < cols && ny < rows && meant[n] && own[n] < 0 && !joined[n]) { joined[n] = 1; todo.push(n) }
+    }
+  }
+  for (let k = 0; k < meant.length; k++) meant[k] = joined[k]
   for (let k = 0; k < own.length; k++) {
-    if (own[k] >= 0 || reached[k]) continue
+    if (own[k] >= 0 || reached[k] || meant[k]) continue
     const x = ((k % cols) - PADC) * g + g / 2, y = (Math.floor(k / cols) - PADC) * g + g / 2
     let near = 0, least = Infinity
     centres.forEach((c, i) => { const power = (x - c[0]) ** 2 + (y - c[1]) ** 2 - radius[i] ** 2; if (power < least) { least = power; near = i } })
@@ -392,7 +433,7 @@ export function buildMap(s: Setting): MapData {
     // Still water, by how wet the country is: none in dry land, a pond or lake in ordinary land, and many in marsh and fen.
     const pools: { c: P; r: number; poly: P[] }[] = []
     // Island groups and rings have the sea for their water; everywhere else it is by how wet the country is.
-    const want = kind.shape === 'isles' || kind.shape === 'ring' ? 0 : kind.pools ? kind.pools[0] + Math.floor(rng() * (kind.pools[1] - kind.pools[0] + 1)) : kind.wet >= 3 ? 8 + Math.floor(rng() * 5) : kind.wet === 2 ? 1 + Math.floor(rng() * 2) : kind.wet === 1 ? (rng() < 0.4 ? 1 : 0) : 0
+    const want = kind.shape === 'isles' || kind.shape === 'ring' || kind.lagoon ? 0 : kind.pools ? kind.pools[0] + Math.floor(rng() * (kind.pools[1] - kind.pools[0] + 1)) : kind.wet >= 3 ? 8 + Math.floor(rng() * 5) : kind.wet === 2 ? 1 + Math.floor(rng() * 2) : kind.wet === 1 ? (rng() < 0.4 ? 1 : 0) : 0
     const fxs = fine.map((p) => p[0]), fys = fine.map((p) => p[1])
     const [bx0, by0, bx1, by1] = [Math.min(...fxs), Math.min(...fys), Math.max(...fxs), Math.max(...fys)]
     const close = kind.wet >= 3 ? 0.5 : 1

@@ -9,10 +9,10 @@ import { STORY_CARDS } from './story'
 import { cardOf, draw as drawCard, fill as fillCards } from './cardTool'
 import { emblemFrom, ICONS, tidy, type EmblemSpec } from './emblem'
 import { glyphFor, type Glyph } from './mapgen'
-import { ageNames, rename, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, hasCapital, type Side, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
+import { ageNames, SIDES, beyondOf, rename, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, hasCapital, type Side, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
 import { rollAll as rollSettlement, rollType, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
-import { landOf, misfit, weighted } from './terrain'
+import { landOf, misfit, sideNearness, weighted } from './terrain'
 import type { CardType } from './types'
 
 const CARDS = cardsOf({ custom: [] })
@@ -89,7 +89,12 @@ export function addPlace(s: Setting): string | undefined {
       .map((q) => {
         const ys = [...roots.map((p) => p.y), q.y], reach = Math.max(1, ...roots.map((p) => Math.hypot(p.x - cx, p.y - cy)), Math.hypot(q.x - cx, q.y - cy))
         const lat = Math.max(...ys) > Math.min(...ys) ? (q.y - Math.min(...ys)) / (Math.max(...ys) - Math.min(...ys)) : 0.5
-        return { ...q, d: Math.hypot(q.x - cx, q.y - cy) + rand(350) + 900 * misfit(landOf(CARDS[id].cues[0].text), lat, Math.hypot(q.x - cx, q.y - cy) / reach) }
+        // How near the open sea: the rim, but not a side that a neighbouring world holds.
+        const edge = Math.hypot(q.x - cx, q.y - cy) / reach, xs = [...roots.map((p) => p.x), q.x]
+        const near = sideNearness(q, { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) })
+        const open = SIDES.map((side, k) => (beyondOf(s).some((b) => b.side === side) ? 0 : near[k]))
+        const sea = beyondOf(s).length ? Math.min(edge, Math.max(0, 2 * Math.max(...open) - 1)) : edge
+        return { ...q, d: Math.hypot(q.x - cx, q.y - cy) + rand(350) + 900 * misfit(landOf(CARDS[id].cues[0].text), lat, edge, sea) }
       })
       .sort((a, b) => a.d - b.d)
     x = spots[0].x + rand(80) - 40

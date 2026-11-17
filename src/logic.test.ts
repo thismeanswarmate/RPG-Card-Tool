@@ -2004,5 +2004,15 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     expect(M.buildMap(board('Atoll')).lakes.length).toBe(0)
     expect(M.buildMap(board('Glacier')).lakes.length).toBe(0)
     expect(M.buildMap(board('Caldera')).lakes.length).toBe(1)
+    // A lagoon is coast with a sheltered water behind a spit, not a ring, and wants the open sea more than any
+    // other coast; a sea of methane is one great lake; a wadi has its riverbed.
+    expect(T.landOf('Lagoon')).toMatchObject({ shape: 'coast', lagoon: true })
+    expect(M.buildMap(board('Lagoon')).lakes.length).toBe(0)
+    expect(T.misfit(T.landOf('Lagoon'), 0.8, 1, 0)).toBeGreaterThan(T.misfit(T.landOf('Lagoon'), 0.8, 1, 1) + 1.5)
+    expect(T.misfit(T.landOf('Steppe'), 0.6, 0.5, 0)).toBe(T.misfit(T.landOf('Steppe'), 0.6, 0.5, 1))
+    expect(T.landOf('Methane Sea').shape).toBe('land')
+    expect(T.landOf('Methane Sea').pools).toEqual([1, 1])
+    expect(T.landOf('Wadi').river).toBeGreaterThan(0.5)
+    expect(T.sideNearness({ x: 0, y: 0 }, { x0: 0, y0: 0, x1: 10, y1: 10 })).toEqual([1, 0, 0, 1])
   })
 })

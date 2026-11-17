@@ -19,7 +19,7 @@ import type { Rolls } from './roller'
 import { brief as settlementBrief, rollAll as rollSettlement, rollType, typeKey, typeLabel } from './settlement'
 import { blank, cardsOf, generateWorld, type WorldSize } from './store'
 import { STORY_CARDS } from './story'
-import { landOf, misfit } from './terrain'
+import { landOf, misfit, needsSea, sideNearness } from './terrain'
 import type { Held } from './types'
 
 export type Size = 'region' | 'country' | 'continent'
@@ -383,11 +383,22 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
     return b
   }
   /** A neighbouring world on a side that has none yet, named in the manner of this one. Nothing more is known of it. */
-  const neighbour = (): Beyond | undefined => {
+  const neighbour = (strict = false): Beyond | undefined => {
     const list = (s.beyond ??= [])
     const free = SIDES.filter((side) => !list.some((b) => b.side === side))
     if (!free.length) return undefined
-    const b: Beyond = { id: nextId('n', list), side: pick([...free]) }
+    // Islands, lagoons and coasts need the open sea: the side each of them lies nearest is kept for the ocean.
+    const roots = Object.values(board).filter((p) => !p.parent)
+    const box = { x0: Math.min(...roots.map((p) => p.x)), y0: Math.min(...roots.map((p) => p.y)), x1: Math.max(...roots.map((p) => p.x)), y1: Math.max(...roots.map((p) => p.y)) }
+    const kept = new Set<string>()
+    for (const p of roots) if (roots.length > 1 && needsSea(landOf(CARDS[p.id].cues[p.active]?.text ?? ''))) {
+      const near = sideNearness(p, box)
+      const open = SIDES.map((side, k) => ({ side, n: near[k] })).filter((x) => !list.some((b) => b.side === x.side)).sort((a, b) => b.n - a.n)
+      if (open.length) kept.add(open[0].side)
+    }
+    const clear = free.filter((side) => !kept.has(side))
+    if (!clear.length && strict) return undefined
+    const b: Beyond = { id: nextId('n', list), side: pick([...(clear.length ? clear : free)]) }
     list.push(b)
     name(b.id, { kind: 'world', tongue: Math.floor(rng() * TONGUES.length), genres })
     return b
@@ -524,7 +535,8 @@ export function generateSetting(answers: Answers, seed: string): Setting {
 
     // 7. The worlds beyond the map's edges: names only.
     // One to three sides are joined to a neighbour; the rest face the sea.
-    for (let i = 0; i < 1 + Math.floor(rng() * 3); i++) w.neighbour()
+    // The first may take any side; the rest keep clear of sides that islands, lagoons and coasts need for the sea.
+    for (let i = 0; i < 1 + Math.floor(rng() * 3); i++) w.neighbour(i > 0)
     return s
   })
 }
