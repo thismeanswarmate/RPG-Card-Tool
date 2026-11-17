@@ -9,7 +9,7 @@ import { STORY_CARDS } from './story'
 import { cardOf, draw as drawCard, fill as fillCards } from './cardTool'
 import { emblemFrom, ICONS, tidy, type EmblemSpec } from './emblem'
 import { glyphFor, type Glyph } from './mapgen'
-import { ageNames, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, hasCapital, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
+import { ageNames, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, hasCapital, type Side, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
 import { rollAll as rollSettlement, rollType, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
 import type { CardType } from './types'
@@ -369,6 +369,22 @@ export function belongsTo(s: Setting, id: string): string[] {
   // A settlement keeps the culture of the land it stands in.
   const local = thing?.tool === 'settlement' && land ? s.drawn?.find((d) => d.tool === 'culture' && d.home === land)?.id : undefined
   return [...new Set([land, thing?.race, thing?.culture ?? local])].filter((x): x is string => !!x && x !== id && bearsEmblem(s, x))
+}
+
+/** Add a neighbouring world beyond the map, on a side that has none. Returns its id, or nothing when every side is taken. */
+export const addBeyond = (s: Setting) => weave(s).neighbour()?.id
+export function removeBeyond(s: Setting, id: string) {
+  s.beyond = (s.beyond ?? []).filter((b) => b.id !== id)
+  delete s.names[id]
+  delete s.specs[id]
+}
+/** Move a neighbouring world to another side, changing places with whatever is there. */
+export function moveBeyond(s: Setting, id: string, side: Side) {
+  const b = s.beyond?.find((x) => x.id === id)
+  if (!b) return
+  const there = s.beyond!.find((x) => x.side === side && x.id !== id)
+  if (there) there.side = b.side
+  b.side = side
 }
 
 /** Everything that goes when one thing is removed: a place takes its sites and all that is based there. */

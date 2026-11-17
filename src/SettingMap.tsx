@@ -35,7 +35,7 @@ export function SettingMap({ s }: { s: Setting }) {
   const links = useImages((x) => x.links)
   const tints = useImages((x) => x.tints)
   // Renaming changes the lettering but never the land, so the drawing is redone only when names change.
-  const map = useMemo(() => buildMap(s), [s.id, s.seed, s.names, s.board, s.built, s.entities, s.people])
+  const map = useMemo(() => buildMap(s), [s.id, s.seed, s.names, s.board, s.built, s.entities, s.people, s.beyond])
   const t = THEMES[map.theme]
   const svg = useRef<SVGSVGElement>(null)
   const title = titleCase(s.names.world.charAt(0).toUpperCase() + s.names.world.slice(1))
@@ -193,6 +193,15 @@ export function SettingMap({ s }: { s: Setting }) {
           )
         })}
 
+        {/* The worlds beyond, named along the edges they lie past, each with a small arrow pointing off the sheet. */}
+        <g pointerEvents="none" fill={t.ink} opacity=".85" fontStyle="italic" letterSpacing=".14em">
+          {map.beyond.map((b) => (
+            <text key={b.id} textAnchor="middle" fontSize="13.5" transform={`translate(${b.x} ${b.y}) rotate(${b.turn})`}>
+              ↑ {titleCase(b.name.replace(/^the /, 'The ')).toUpperCase()} ↑
+            </text>
+          ))}
+        </g>
+
         {/* Title, compass and scale. */}
         <g pointerEvents="none">
           <rect x="22" y="22" width={Math.max(190, title.length * 12 + 44)} height="46" fill={t.paper} stroke={t.ink} strokeWidth="1.5" />
@@ -217,7 +226,7 @@ export function SettingMap({ s }: { s: Setting }) {
         <rect x="14" y="14" width={map.w - 28} height={map.h - 28} fill="none" stroke={t.ink} strokeWidth=".8" pointerEvents="none" />
       </svg>
       <figcaption>
-        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. The sea is drawn plain; lakes and rivers lie on the land. Each place carries its emblem, with the smaller emblems of the cultures kept there. A house marks a site and a cross a dangerous place. Settlements grow with their rank: a small circle for a village, a diamond for a trading post, a ringed dot for a town, battlements for a fortress town, a double ring for a city and a starred ring for the capital. Click any of them to read about it.</span>
+        <span className="hint">Dotted lines join places that a faction, a person or a story connects. A place with a picture is coloured from it. Neighbouring worlds are named along the edges they lie beyond. The sea is drawn plain; lakes and rivers lie on the land. Each place carries its emblem, with the smaller emblems of the cultures kept there. A house marks a site and a cross a dangerous place. Settlements grow with their rank: a small circle for a village, a diamond for a trading post, a ringed dot for a town, battlements for a fortress town, a double ring for a city and a starred ring for the capital. Click any of them to read about it.</span>
         <button onClick={save}>Save map</button>
       </figcaption>
     </figure>

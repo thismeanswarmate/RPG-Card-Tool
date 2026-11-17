@@ -13,7 +13,7 @@ import type { EmblemSpec } from './emblem'
 import { GLOSS, ROLE_GLOSS } from './glosses'
 import { cueText, rootOf, shuffle, subtree, type Board } from './logic'
 import { DETAIL, detailParts, detailsFor, newDetail, PRIMARY, slots, type DetailInst, type Kind } from './lore'
-import { makeName, rngFrom, titleCase, tonguesFor, type NameSpec, type Rng } from './names'
+import { makeName, rngFrom, titleCase, TONGUES, tonguesFor, type NameSpec, type Rng } from './names'
 import { kindLabel, brief as perilBrief, rollAll as rollPeril } from './peril'
 import type { Rolls } from './roller'
 import { brief as settlementBrief, rollAll as rollSettlement, rollType, typeKey, typeLabel } from './settlement'
@@ -77,9 +77,16 @@ export interface Setting {
   decks?: DeckChoice
   /** The races of the world, the cultures of its places and its history, each drawn on the cards of its own tool. */
   drawn?: Drawn[]
+  /** The worlds that lie beyond the edges of the map: for now a name and the side each lies on. */
+  beyond?: Beyond[]
   /** Emblems changed by hand, by the id of the land, race or culture that bears them; the rest follow from the setting itself. */
   emblems?: Record<string, EmblemSpec>
 }
+
+export interface Beyond { id: string; side: Side }
+/** The eight sides a neighbouring world can lie on, clockwise from the north. */
+export const SIDES = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'] as const
+export type Side = (typeof SIDES)[number]
 
 /** A race, a culture or the history of a setting. A culture belongs to a place and may be mostly of one race. */
 export interface Drawn { id: string; tool: 'race' | 'culture' | 'history'; home?: string; race?: string; sections: Section[] }
@@ -329,6 +336,18 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
     else name(b.id, { kind: 'site', tongue: tongueAt(home), base: kindLabel(rolls) }, rootOf(board, home))
     return b
   }
+  /** A neighbouring world on a side that has none yet, named in the manner of this one. Nothing more is known of it. */
+  const neighbour = (): Beyond | undefined => {
+    const list = (s.beyond ??= [])
+    const free = SIDES.filter((side) => !list.some((b) => b.side === side))
+    if (!free.length) return undefined
+    // The four main sides fill first, so that a world with two neighbours has them north and west, not at two corners.
+    const main = free.filter((side) => !side.includes('-'))
+    const b: Beyond = { id: nextId('n', list), side: pick(main.length ? main : free) }
+    list.push(b)
+    name(b.id, { kind: 'world', tongue: Math.floor(rng() * TONGUES.length), genres })
+    return b
+  }
   /** A race, a culture for a place, or the history, drawn in full and named. */
   const drawOne = (tool: Drawn['tool'], home?: string, ages = 3): Drawn => {
     const list = (s.drawn ??= [])
@@ -363,7 +382,7 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
     if (DATED.includes(e.kind) && e.age === undefined && ages) e.age = Math.floor(rng() * ages)
   }
   const tieAll = () => { for (const e of [...entities, ...people]) tie(e) }
-  return { pick, genres, depth, roles, drawOne, tie, tieAll, deities, roots, sitesOf, sites, places, name, tongueAt, person, make, detail, story, hook, build }
+  return { pick, genres, depth, roles, drawOne, tie, tieAll, neighbour, deities, roots, sitesOf, sites, places, name, tongueAt, person, make, detail, story, hook, build }
 }
 
 export function generateSetting(answers: Answers, seed: string): Setting {
@@ -453,6 +472,9 @@ export function generateSetting(answers: Answers, seed: string): Setting {
     w.drawOne('history', undefined, scope[2])
     // Everyone gets a race and a culture, and what has a past is given its age.
     w.tieAll()
+
+    // 7. The worlds beyond the map's edges: names only.
+    for (let i = 0; i < { region: 2, country: 3, continent: 3 }[answers.size] + (rng() < 0.4 ? 1 : 0); i++) w.neighbour()
     return s
   })
 }
@@ -551,7 +573,10 @@ export function worldProse(s: Setting): { text: string[]; prompts: string[] } {
     factions.length ? `${upper(count(factions.length))} ${factions.length === 1 ? 'power holds sway in it' : 'powers contend for it'}: ${listOf(factions.map((f) => s.names[f.id]))}.` : '',
     s.people.length || s.hooks.length ? `${upper(count(s.people.length))} ${s.people.length === 1 ? 'person stands' : 'people stand'} out in what follows, and ${count(s.hooks.length)} ${s.hooks.length === 1 ? 'story is' : 'stories are'} already under way.` : '',
   ].filter(Boolean).join(' ')
+  // What lies past the edges, side by side: "the Kuhali Coast to the north and the Mera Vale to the east".
+  const sides = [...(s.beyond ?? [])].sort((a, b) => SIDES.indexOf(a.side) - SIDES.indexOf(b.side)).filter((b) => s.names[b.id]).map((b) => `${s.names[b.id]} to the ${b.side}`)
   const meta = chronicle({}, CARDS, [], s.meta)[0]
+  if (sides.length) return { text: [`${opening} Beyond it ${sides.length === 1 ? 'lies' : 'lie'} ${listOf(sides)}.`, ...(meta?.text ?? [])], prompts: meta?.prompts ?? [] }
   return { text: [opening, ...(meta?.text ?? [])], prompts: meta?.prompts ?? [] }
 }
 

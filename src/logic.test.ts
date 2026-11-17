@@ -1667,3 +1667,50 @@ describe('water on the map, and no gaps between places', async () => {
     expect(rivers).toBeGreaterThan(20)
   }, 30000)
 })
+
+describe('bordering worlds', async () => {
+  const G = await import('./setting')
+  const B = await import('./settingBuild')
+  const M = await import('./mapgen')
+  it('names the worlds beyond a generated setting, each on a side of its own', () => {
+    for (const [size, least] of [['region', 2], ['country', 3], ['continent', 3]] as const) for (let n = 0; n < 8; n++) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size }, `beyond-${size}-${n}`)
+      expect(s.beyond!.length).toBeGreaterThanOrEqual(least)
+      expect(s.beyond!.length).toBeLessThanOrEqual(least + 1)
+      expect(new Set(s.beyond!.map((b) => b.side)).size).toBe(s.beyond!.length)
+      // With four or fewer, they keep to the four main sides.
+      for (const b of s.beyond!) { expect(['north', 'east', 'south', 'west']).toContain(b.side); expect(s.names[b.id]).toMatch(/^the \w+/) }
+      expect(new Set([s.names.world, ...s.beyond!.map((b) => s.names[b.id])]).size).toBe(s.beyond!.length + 1)
+      const opening = G.worldProse(s).text[0]
+      for (const b of s.beyond!) expect(opening).toContain(`${s.names[b.id]} to the ${b.side}`)
+      expect(opening).toMatch(/ Beyond it lie .+ and .+\.$/)
+      const map = M.buildMap(s)
+      expect(map.beyond.map((b) => b.name).sort()).toEqual(s.beyond!.map((b) => s.names[b.id]).sort())
+      for (const b of map.beyond) expect(b.x > 0 && b.y > 0 && b.x < map.w && b.y < map.h).toBe(true)
+      expect(G.generateSetting({ ...G.DEFAULT_ANSWERS, size }, `beyond-${size}-${n}`).beyond).toEqual(s.beyond)
+    }
+  })
+  it('adds, renames, moves and removes them by hand', () => {
+    const s = B.newManual(['fantasy'], ['temperate'])
+    expect(G.worldProse(s).text[0]).not.toContain('Beyond it')
+    const ids = Array.from({ length: 9 }, () => B.addBeyond(s))
+    expect(ids.slice(0, 8).every(Boolean)).toBe(true)
+    expect(ids[8]).toBeUndefined()
+    expect(s.beyond!.map((b) => b.side).sort()).toEqual([...G.SIDES].sort())
+    expect(s.beyond!.slice(0, 4).map((b) => b.side).sort()).toEqual(['east', 'north', 'south', 'west'])
+    const [a, b] = s.beyond!
+    const [sideA, sideB] = [a.side, b.side]
+    B.moveBeyond(s, a.id, sideB)
+    expect([a.side, b.side]).toEqual([sideB, sideA])
+    s.names[a.id] = G.rename(s, a.id)
+    expect(s.names[a.id]).toMatch(/^the \w+/)
+    B.removeBeyond(s, a.id)
+    expect(s.beyond).toHaveLength(7)
+    expect(s.names[a.id]).toBeUndefined()
+    for (let i = 0; i < 6; i++) B.removeBeyond(s, s.beyond![0].id)
+    expect(G.worldProse(s).text[0]).toMatch(/ Beyond it lies the .+ to the \S+\.$/)
+    B.addPlace(s)
+    expect(M.buildMap(s).beyond).toHaveLength(1)
+    expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN/)
+  })
+})

@@ -10,11 +10,11 @@ import { KIND_LABEL, type Kind } from './lore'
 import { titleCase } from './names'
 import { RollRows } from './Roller'
 import {
-  ageNames, builtKind, builtText, charText, DATED, decksOf, DRAWN_DEF, drawnKind, drawnText, worldDrawn, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
-  type Answers, type Built, type Char, type Drawn, type Entity, type Setting as SettingData, type Spot,
+  ageNames, SIDES, builtKind, builtText, charText, DATED, decksOf, DRAWN_DEF, drawnKind, drawnText, worldDrawn, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
+  type Answers, type Side, type Built, type Char, type Drawn, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import {
-  addAge, addBuilt, addDrawn, addMention, addPerson, bearsEmblem, belongsTo, emblemOf, rerollEmblem, setEmblem, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
+  addAge, addBeyond, addBuilt, addDrawn, moveBeyond, removeBeyond, addMention, addPerson, bearsEmblem, belongsTo, emblemOf, rerollEmblem, setEmblem, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
   goneWith, redrawPlace, remove, removeStory, rerollStory, roleTheme, themeOf, toggleDeck, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
 } from './settingBuild'
 import { siteKind } from './mapgen'
@@ -665,6 +665,26 @@ function Gazetteer({ s }: { s: SettingData }) {
         {meta.prompts.length > 0 && <ul>{meta.prompts.map((t, i) => <li key={i}>{t}</li>)}</ul>}
       </section>
 
+      {/* The worlds beyond the map: a name each, and the side it lies on. */}
+      {(s.beyond?.length ?? 0) > 0 && (
+        <section className="beyond">
+          <h3>Bordering worlds</h3>
+          <ul>
+            {[...s.beyond!].sort((a, b) => SIDES.indexOf(a.side) - SIDES.indexOf(b.side)).map((b) => (
+              <li key={b.id} className="named">
+                <span className="side">{editing ? (
+                  <select value={b.side} aria-label="Side" onChange={(e) => edit((d) => moveBeyond(d, b.id, e.target.value as Side))}>
+                    {SIDES.map((x) => <option key={x} value={x}>To the {x}</option>)}
+                  </select>
+                ) : `To the ${b.side}`}</span>
+                <b><Name id={b.id} s={s} /></b>
+                {editing && <button className="link" onClick={() => edit((d) => removeBeyond(d, b.id))} aria-label={`Remove ${s.names[b.id]}`}>Remove</button>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* What belongs to the world as a whole: its history, then its races. */}
       {worldDrawn(s, 'history').map((d) => <DrawnBlock key={d.id} d={d} s={s} top />)}
       {worldDrawn(s, 'race').map((d) => <DrawnBlock key={d.id} d={d} s={s} top />)}
@@ -674,6 +694,7 @@ function Gazetteer({ s }: { s: SettingData }) {
           <span>Add to the world</span>
           <button onClick={() => add((d) => addDrawn(d, 'race'))}>+ Race</button>
           {!worldDrawn(s, 'history').length && <button onClick={() => add((d) => addDrawn(d, 'history'))}>+ History</button>}
+          {(s.beyond?.length ?? 0) < SIDES.length && <button onClick={() => edit((d) => { addBeyond(d) })}>+ Bordering world</button>}
         </div>
       )}
 

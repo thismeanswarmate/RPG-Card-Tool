@@ -62,6 +62,8 @@ export interface MapData {
   /** Running water: each a line from its source to the sea or to a lake. */
   rivers: { d: string }[]
   scale: { px: number; label: string }
+  /** The names of neighbouring worlds, each set at the edge of the sheet on its side: where, and turned how far. */
+  beyond: { id: string; name: string; x: number; y: number; turn: number }[]
   theme: 'parchment' | 'blueprint'
 }
 
@@ -441,8 +443,18 @@ export function buildMap(s: Setting): MapData {
   const width = Math.max(...all.map((p) => p[0])) + tx + PAD
   const height = Math.max(...all.map((p) => p[1])) + ty + PAD
 
+  // Neighbouring worlds are lettered along the edge they lie beyond: across the top and bottom, and up the two sides.
+  const [W, H] = [Math.round(width), Math.round(height)]
+  const edgeSpot: Record<string, [number, number, number]> = {
+    north: [W / 2, 40, 0], south: [W / 2, H - 28, 0], east: [W - 36, H / 2, 90], west: [36, H / 2, -90],
+    'north-east': [W - 36, H * 0.27, 90], 'south-east': [W - 36, H * 0.76, 90], 'north-west': [36, H * 0.3, -90], 'south-west': [36, H * 0.73, -90],
+  }
+  const beyond = (s.beyond ?? []).filter((b) => s.names[b.id] && edgeSpot[b.side]).map((b) => {
+    const [x, y, turn] = edgeSpot[b.side]
+    return { id: b.id, name: s.names[b.id], x: r1(x), y: r1(y), turn }
+  })
   const [px, label] = MILES[s.answers.size] ?? MILES.country
-  return { w: Math.round(width), h: Math.round(height), regions: moved, routes: shifted, lakes: lakePaths, rivers: riverPaths, scale: { px, label }, theme }
+  return { beyond, w: Math.round(width), h: Math.round(height), regions: moved, routes: shifted, lakes: lakePaths, rivers: riverPaths, scale: { px, label }, theme }
 }
 
 export const siteKind = (s: Setting, id: string) => cueText(CARDS, s.board[id])

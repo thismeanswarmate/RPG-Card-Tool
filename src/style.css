@@ -461,3 +461,10 @@ svg.emblem { flex: none; vertical-align: middle; }
 .entry h4 svg.emblem, .entry h5 svg.emblem { margin-right: 2px; vertical-align: -6px; }
 
 .map-emblems g { cursor: pointer; }
+
+/* Bordering worlds */
+.beyond h3 { font-size: 15px; color: var(--accent); margin-bottom: 6px; }
+.beyond ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.beyond li { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.beyond .side { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; min-width: 130px; }
+.beyond .side select { text-transform: none; letter-spacing: 0; font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }

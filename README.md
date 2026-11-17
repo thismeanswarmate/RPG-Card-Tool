@@ -74,3 +74,5 @@ npm run build    # static site in dist/
 **Rarer settlements.** In a setting, the kind of a settlement is rolled by rarity: villages are commonest, then towns, trading posts and fortress towns, with cities few and at most one capital in a world. The map draws each kind with its own symbol, growing with its rank from a small circle for a village to a starred ring and capital letters for the capital.
 
 **Water on the map.** The sea is one plain colour to the edge of the sheet, with paler shallows round the land. Places that lie side by side now always meet, so no pocket of sea is left between them. Lakes sit inside places, more often in wet country than dry, and rivers run from a spring or a lake to that place's own coast, keeping clear of names, marks and symbols.
+
+**Bordering worlds.** A setting names the worlds that lie beyond its edges: two to four in a generated one, each on a side of its own. They are lettered along the edges of the map, listed under the overview, and mentioned in its opening. For now each is only a name and a side; while editing they can be added, renamed, moved to another side and removed.
