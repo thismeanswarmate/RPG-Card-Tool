@@ -2195,14 +2195,14 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     s.names.f0 = 'Test Island'; s.specs.f0 = { kind: 'site', tongue: 0, base: 'lone island' }
     expect(M.buildMap(s).regions[0].features[0].landlocked).toBeFalsy()
     for (let n = 0; n < 18; n++) B.addPlace(s)
-    const hemmed = G.rootsOf(s).find((r) => !G.coastal(s, r))
-    expect(hemmed).toBeTruthy()
-    s.features!.push({ id: 'f99', land: hemmed!, what: 'Lone Island' })
-    s.names.f99 = 'Hemmed Island'; s.specs.f99 = { kind: 'site', tongue: 0, base: 'lone island' }
-    const cut = M.buildMap(s).regions.flatMap((r) => r.features).find((f) => f.id === 'f99')!
-    expect(cut.landlocked).toBe(true)
-    B.landlock(s, ['f99'])
-    expect(s.features!.find((f) => f.id === 'f99')!.what).not.toBe('Lone Island')
+    // Give every land an island: those in the middle of the world have no sea for one, and the map says so.
+    s.features = G.rootsOf(s).map((r, k) => ({ id: `i${k}`, land: r, what: 'Lone Island' }))
+    s.features.forEach((f) => { s.names[f.id] = `Island ${f.id}`; s.specs[f.id] = { kind: 'site', tongue: 0, base: 'lone island' } })
+    const cutOff = M.buildMap(s).regions.flatMap((r) => r.features).filter((f) => f.landlocked).map((f) => f.id)
+    expect(cutOff.length).toBeGreaterThan(0)
+    expect(cutOff.length).toBeLessThan(s.features.length)
+    B.landlock(s, cutOff)
+    for (const id of cutOff) expect(s.features.find((f) => f.id === id)!.what).not.toBe('Lone Island')
   })
   it('leaves no scrap of a place stranded inside a bordering world', () => {
     // A piece of one of our places, cut off from it and lying in a neighbour's land, is the neighbour's.
