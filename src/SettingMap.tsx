@@ -210,10 +210,10 @@ export function SettingMap({ s, onPick, onOpen, onLandlocked, selected, tools, c
           </path>
         ))}
 
-        {/* The features of each land, drawn as small lands within it: each has its own ground, washed in a colour
-            of its own kind over the land's, with a fine border between it and the next. Clicking one in the land
-            being looked at opens it; anywhere else it is part of its land. */}
-        {on('features') && map.regions.map((r) => r.features.some((f) => f.d) && (
+        {/* The features of the land being looked at, drawn as small lands within it: each has its own ground,
+            washed in a colour of its own kind over the land's, with a fine border between it and the next. On
+            the world map every land keeps its own one colour. */}
+        {on('features') && map.regions.map((r) => r.id === near?.id && r.features.some((f) => f.d) && (
           <g key={r.id} clipPath={`url(#ground-${r.id})`}>
             {r.features.map((f) => f.d && (
               <path key={f.id} className="region" d={f.d} fill={on('wash') ? washFor(toneOf(f.what), map.theme) : 'none'} fillOpacity=".42"
