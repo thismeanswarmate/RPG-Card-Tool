@@ -8,6 +8,7 @@ import { Lore } from './Lore'
 import { Panel } from './Panel'
 import { People } from './People'
 import { Perils } from './Perils'
+import { Pictures } from './Pictures'
 import { ToolCtx, type Tool } from './ToolNav'
 import { Setting } from './Setting'
 import { Settlements } from './Settlements'
@@ -45,7 +46,7 @@ const savedMode = (): Mode => {
 const savedTool = (): Tool => {
   try {
     const t = localStorage.getItem('storyloom-tool')
-    return t === 'worlds' || t === 'people' || t === 'lore' || t === 'stories' || t === 'perils' || t === 'settlements' || t === 'races' || t === 'cultures' || t === 'history' || t === 'emblems' ? t : 'setting'
+    return t === 'worlds' || t === 'people' || t === 'lore' || t === 'stories' || t === 'perils' || t === 'settlements' || t === 'races' || t === 'cultures' || t === 'history' || t === 'emblems' || t === 'pictures' ? t : 'setting'
   } catch { return 'setting' }
 }
 
@@ -57,7 +58,7 @@ function App() {
   }
   return (
     <ToolCtx.Provider value={{ tool, setTool }}>
-      {tool === 'setting' ? <Setting /> : tool === 'people' ? <People /> : tool === 'lore' ? <Lore /> : tool === 'stories' ? <Stories /> : tool === 'perils' ? <Perils /> : tool === 'settlements' ? <Settlements /> : tool === 'races' ? <Races /> : tool === 'cultures' ? <Cultures /> : tool === 'history' ? <History /> : tool === 'emblems' ? <Emblems /> : <Worlds />}
+      {tool === 'setting' ? <Setting /> : tool === 'people' ? <People /> : tool === 'lore' ? <Lore /> : tool === 'stories' ? <Stories /> : tool === 'perils' ? <Perils /> : tool === 'settlements' ? <Settlements /> : tool === 'races' ? <Races /> : tool === 'cultures' ? <Cultures /> : tool === 'history' ? <History /> : tool === 'emblems' ? <Emblems /> : tool === 'pictures' ? <Pictures /> : <Worlds />}
     </ToolCtx.Provider>
   )
 }

@@ -52,7 +52,9 @@ async function readTint(blob: Blob): Promise<string | undefined> {
 }
 
 export interface Wanted extends ImageJob { key: string; label: string }
-type Status = 'idle' | 'working' | 'busy' | 'error'
+type Status = 'idle' | 'working' | 'busy' | 'error' | 'paused'
+/** A picture that has been through the queue: made, skipped or failed, and when. */
+export interface Done { key: string; label: string; at: number; result: 'made' | 'skipped' | 'failed'; note?: string }
 
 interface Images {
   url: string
@@ -60,8 +62,12 @@ interface Images {
   status: Status
   message: string
   queue: Wanted[]
-  current: (Wanted & { id?: string }) | null
+  current: (Wanted & { id?: string; since?: number }) | null
   made: number
+  /** Held: the picture in hand is finished and no more are started until it is released. */
+  held: boolean
+  /** What has been through the queue since the page was opened, newest first. */
+  done: Done[]
   /** Object links for the pictures loaded so far, by key. */
   links: Record<string, string>
   /** The overall colour of each loaded picture, by key. */
@@ -72,6 +78,16 @@ interface Images {
   load(prefix: string): Promise<void>
   add(jobs: Omit<Wanted, 'steps'>[]): void
   cancel(): Promise<void>
+  /** Finish the picture in hand and start no more; and take up the list again. */
+  hold(): void
+  release(): void
+  /** Give up the picture in hand and go on to the next. */
+  skip(): Promise<void>
+  /** Take one waiting picture off the list, or all of them. */
+  drop(key: string): void
+  clear(): void
+  /** Move a waiting picture to the front, or one place earlier or later. */
+  move(key: string, to: 'first' | 'earlier' | 'later'): void
   remove(key: string): Promise<void>
   removeAll(prefix: string): Promise<void>
 }
@@ -83,6 +99,7 @@ const keep = (s: Images) => { try { localStorage.setItem('storyloom-comfy', JSON
 
 let running = false
 let stop = false
+let skipping = false
 
 export const useImages = create<Images>()((set, get) => {
   const link = (key: string, blob: Blob) => {
@@ -93,6 +110,7 @@ export const useImages = create<Images>()((set, get) => {
   }
 
   /** Work through the list one picture at a time, stepping aside whenever ComfyUI has other work. */
+  const log = (job: Wanted, result: Done['result'], note?: string) => set((s) => ({ done: [{ key: job.key, label: job.label, at: Date.now(), result, ...(note ? { note } : {}) }, ...s.done].slice(0, 60) }))
   const run = async () => {
     if (running) return
     running = true
@@ -101,24 +119,36 @@ export const useImages = create<Images>()((set, get) => {
     const { url } = get()
     try {
       while (get().queue.length && !stop) {
+        if (get().held) {
+          set({ status: 'paused', message: `Paused with ${get().queue.length} waiting. Nothing more is sent until you resume.`, current: null })
+          return
+        }
         if (await busy(url)) {
           set({ status: 'busy', message: 'ComfyUI is busy with another job. Nothing was sent; press Resume when it is free.' })
           return
         }
         const [job, ...rest] = get().queue
-        set({ queue: rest, current: job, status: 'working', message: `Making a picture of ${job.label}…` })
+        set({ queue: rest, current: { ...job, since: Date.now() }, status: 'working', message: `Making a picture of ${job.label}…` })
         const id = await submit(url, job)
-        set({ current: { ...job, id } })
-        const blob = await collect(url, id, () => stop)
-        if (!blob) break
+        set({ current: { ...job, id, since: Date.now() } })
+        skipping = false
+        const blob = await collect(url, id, () => stop || skipping)
+        if (!blob) {
+          log(job, 'skipped')
+          if (skipping && !stop) { skipping = false; set({ current: null }); continue }
+          break
+        }
         await tx('readwrite', (st) => st.put({ blob, prompt: job.prompt, seed: job.seed, made: Date.now() }, job.key))
         link(job.key, blob)
         made++
+        log(job, 'made')
         set((s) => ({ made: s.made + 1, current: null }))
       }
-      set({ status: 'idle', message: made ? `Done: ${made} picture${made === 1 ? '' : 's'} made.` : '', current: null })
+      if (get().held && get().queue.length) set({ status: 'paused', message: `Paused with ${get().queue.length} waiting. Nothing more is sent until you resume.`, current: null })
+      else set({ status: 'idle', message: made ? `Done: ${made} picture${made === 1 ? '' : 's'} made.` : '', current: null })
     } catch (e) {
       const job = get().current
+      if (job) log(job, 'failed', e instanceof ComfyError ? e.message : 'Something went wrong while making the picture.')
       set((s) => ({ status: 'error', message: e instanceof ComfyError ? e.message : 'Something went wrong while making the picture.', current: null, queue: job ? [job, ...s.queue] : s.queue }))
     } finally {
       running = false
@@ -135,6 +165,8 @@ export const useImages = create<Images>()((set, get) => {
     queue: [],
     current: null,
     made: 0,
+    held: false,
+    done: [],
     links: {},
     tints: {},
     setUrl: (url) => { set({ url: url.trim() || defaultComfyUrl() }); keep(get()) },
@@ -164,6 +196,23 @@ export const useImages = create<Images>()((set, get) => {
       set((s) => ({ queue: [...s.queue, ...jobs.filter((j) => !waiting.has(j.key)).map((j) => ({ ...j, steps }))], made: running ? s.made : 0 }))
       void run()
     },
+    hold: () => { set({ held: true }); if (!running && get().queue.length) set({ status: 'paused', message: `Paused with ${get().queue.length} waiting. Nothing more is sent until you resume.` }) },
+    release: () => { set({ held: false }); if (get().queue.length) void run(); else if (get().status === 'paused') set({ status: 'idle', message: '' }) },
+    skip: async () => {
+      const id = get().current?.id
+      if (!id) return
+      skipping = true
+      try { await interruptOwn(get().url, id) } catch { /* it will be given up when next looked at */ }
+    },
+    drop: (key) => set((s) => ({ queue: s.queue.filter((j) => j.key !== key) })),
+    clear: () => set((s) => ({ queue: [], ...(s.status === 'paused' || s.status === 'busy' || s.status === 'error' ? { status: 'idle' as Status, message: '' } : {}) })),
+    move: (key, to) => set((s) => {
+      const at = s.queue.findIndex((j) => j.key === key)
+      if (at < 0) return {}
+      const queue = [...s.queue], [job] = queue.splice(at, 1)
+      queue.splice(to === 'first' ? 0 : Math.max(0, Math.min(queue.length, at + (to === 'earlier' ? -1 : 1))), 0, job)
+      return { queue }
+    }),
     cancel: async () => {
       stop = true
       const id = get().current?.id
