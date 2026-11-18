@@ -598,7 +598,10 @@ describe('drawn map', async () => {
         expect(inside([r.x, r.y], r.points), `${r.name} holds its own centre`).toBe(true)
         expect(r.name).toBe(s.names[r.id])
         for (const p of r.symbols) expect(inside([p.x, p.y], r.points)).toBe(true)
-        for (const site of r.sites) expect(inside([site.x, site.y], r.points), `${site.name} in ${r.name}`).toBe(true)
+        // A site stands on its land: the main body, or an island or a ring of it (where it may be right at the edge).
+        const pieces = r.d.split('Z').filter(Boolean).map((piece) => [...piece.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [+m[1], +m[2]] as [number, number]))
+        const onLand = (x: number, y: number) => [[0, 0], [7, 0], [-7, 0], [0, 7], [0, -7]].some(([ox, oy]) => pieces.some((poly) => inside([x + ox, y + oy], poly)))
+        for (const site of r.sites) expect(onLand(site.x, site.y), `${site.name} in ${r.name}`).toBe(true)
         // No region covers another place's centre.
         for (const o of map.regions) if (o !== r) expect(inside([o.x, o.y], r.points)).toBe(false)
       }
@@ -2054,7 +2057,9 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
         for (const r of map.regions) {
           expect(r.features.map((f) => f.id)).toEqual(G.featuresOf(s, r.id).map((f) => f.id))
           for (const f of r.features) { expect(f.x).toBeGreaterThan(0); expect(f.x).toBeLessThan(map.w); expect(f.y).toBeGreaterThan(0); expect(f.y).toBeLessThan(map.h) }
-          for (const p of r.spots) expect(M.inside([p.x, p.y], r.points)).toBe(true)
+          // Clear ground is on the land: its main body, or an island of it.
+          const pieces = r.d.split('Z').filter(Boolean).map((piece) => coords(piece))
+          for (const p of r.spots) expect(pieces.some((poly) => M.inside([p.x, p.y], poly)), `a spot in ${r.name}`).toBe(true)
         }
         expect(map.regions.filter((r) => r.spots.length > 4).length).toBeGreaterThan(map.regions.length / 2)
       }

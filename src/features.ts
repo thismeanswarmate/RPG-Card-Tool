@@ -18,6 +18,8 @@ export interface FeatureKind {
   /** For a lake, its least and greatest radius; for islands, how fine the scatter is. */
   size?: [number, number]
   grain?: number
+  /** For a named place on the coast, the shape it gives that coast: land thrust out, or sea let in. */
+  cut?: 'peninsula' | 'headland' | 'bay' | 'spit' | 'estuary' | 'delta'
   long?: boolean
   /** A sentence about it: {place} is its name and {land} the land it lies in. */
   text: string
@@ -29,14 +31,14 @@ const ANY: [number, number] = [-2, 2], COLD: [number, number] = [-2, -1], COOL: 
 export const FEATURES: FeatureKind[] = [
   // The coast.
   F('Fjord', 'inlets', 'coast', COOL, 'At {place} sheer rock drops straight into deep, still water, and the sea reaches far into {land}.'),
-  F('Headland', 'mark', 'coast', ANY, '{place} stands out into the sea on every side but one, the first of {land} that a ship sights and the last it loses.'),
+  F('Headland', 'mark', 'coast', ANY, '{place} stands out into the sea on every side but one, the first of {land} that a ship sights and the last it loses.', { cut: 'headland' }),
   F('Sea Cliffs', 'mark', 'coast', ANY, 'Along {place} the land ends all at once, in walls of rock loud with seabirds and surf.'),
-  F('Estuary', 'mark', 'coast', ANY, 'At {place} river and sea trade places twice a day, leaving mudflats, channels and clouds of wading birds.'),
+  F('Estuary', 'mark', 'coast', ANY, 'At {place} river and sea trade places twice a day, leaving mudflats, channels and clouds of wading birds.', { cut: 'estuary' }),
   F('Lagoon', 'lagoon', 'coast', WARM, 'A spit of sand holds back the open sea at {place}, keeping the water behind it shallow, warm and calm.'),
-  F('Delta', 'mark', 'coast', MILD, 'At {place} the river gives up being one river and reaches the sea by a dozen mouths, none of them the same two years running.'),
-  F('Peninsula', 'mark', 'coast', ANY, '{place} runs out from {land} like a pointing arm, joined to it by a neck narrow enough to wall.'),
-  F('Bay', 'mark', 'coast', ANY, 'The curve of {place} takes the worst out of any weather, and half the boats of {land} winter there.'),
-  F('Sand Spit', 'mark', 'coast', MILD, '{place} is a long finger of sand that the tides lengthen in one decade and shorten in the next.'),
+  F('Delta', 'mark', 'coast', MILD, 'At {place} the river gives up being one river and reaches the sea by a dozen mouths, none of them the same two years running.', { cut: 'delta' }),
+  F('Peninsula', 'mark', 'coast', ANY, '{place} runs out from {land} like a pointing arm, joined to it by a neck narrow enough to wall.', { cut: 'peninsula' }),
+  F('Bay', 'mark', 'coast', ANY, 'The curve of {place} takes the worst out of any weather, and half the boats of {land} winter there.', { cut: 'bay' }),
+  F('Sand Spit', 'mark', 'coast', MILD, '{place} is a long finger of sand that the tides lengthen in one decade and shorten in the next.', { cut: 'spit' }),
   F('Sea Stacks', 'isles', 'coast', COOL, 'Off {place} pillars of rock stand in the surf where the coast used to be.', { grain: 13 }),
   F('Sunken City', 'mark', 'coast', ANY, 'At low water the roofs of {place} show above the waves, and fishermen know its streets by where their nets catch.'),
   // Islands.
@@ -116,11 +118,13 @@ const BELONGS: Record<string, Country[]> = {
 /** The sorts of country a feature can lie in. */
 export const belongsIn = (what: string): Country[] => BELONGS[what] ?? ['open']
 
-/** What a feature is at heart, for the colour its ground is drawn in. */
+/** The colour each feature's ground is drawn in, so that it looks like what it is: ice pale, a grove green, a volcano dark. */
 const TONE: [RegExp, string][] = [
-  [/island|isles|atoll|reef|shoal|kelp|stacks/i, '#7fb3b0'], [/fjord|headland|cliff|estuary|lagoon|delta|peninsula|bay|spit|sunken|drowned/i, '#8fae9c'],
-  [/caldera|volcano|gorge|pass|butte|sinkhole|cavern|caves|glacier/i, '#9a8d86'], [/oasis|lake|springs|waterfall/i, '#7fa6b4'],
-  [/wadi|dry lake|tar/i, '#c4a070'], [/.*/, '#86a06c'],
+  [/glacier|ice caves/i, '#dfeaee'], [/dry lake/i, '#e6dcc0'], [/wadi|butte|tar/i, '#c9a26a'], [/oasis/i, '#7fae6a'],
+  [/volcano|caldera/i, '#7a5a52'], [/gorge|pass|sinkhole|sunless/i, '#8d8884'], [/crystal/i, '#9a86c4'],
+  [/grove|glen|hidden valley/i, '#5f8f58'], [/faerie/i, '#a8c46a'], [/barrow/i, '#9a9a6a'], [/springs|waterfall|great lake/i, '#7fa9b6'],
+  [/atoll|reef|lagoon/i, '#8fcfc0'], [/island|isles|shoal|kelp|stacks/i, '#b8b48a'], [/spit|delta|estuary|bay/i, '#c8c090'],
+  [/fjord|cliff|headland|peninsula/i, '#9aa39a'], [/sunken|drowned/i, '#7f9a9a'], [/.*/, '#86a06c'],
 ]
 export const toneOf = (what: string) => TONE.find(([re]) => re.test(what))![1]
 
