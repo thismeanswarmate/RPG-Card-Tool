@@ -19,7 +19,8 @@ import type { Rolls } from './roller'
 import { brief as settlementBrief, rollAll as rollSettlement, rollType, typeKey, typeLabel } from './settlement'
 import { blank, cardsOf, generateWorld, type WorldSize } from './store'
 import { STORY_CARDS } from './story'
-import { landOf, misfit, needsSea, sideNearness } from './terrain'
+import { featureOf, featuresFor } from './features'
+import { landOf, misfit, needsSea, openBearings, scaleOf, sideNearness } from './terrain'
 import type { Held } from './types'
 
 export type Size = 'region' | 'country' | 'continent'
@@ -80,6 +81,8 @@ export interface Setting {
   drawn?: Drawn[]
   /** The worlds that lie beyond the edges of the map: for now a name and the side each lies on. */
   beyond?: Beyond[]
+  /** The features each land is made up of: a fjord, a caldera, a string of islands. */
+  features?: Feature[]
   /** Things made from a word in a description: whose description, which word, and what it became. */
   mentioned?: { owner: string; word: string; id: string }[]
   /** Emblems changed by hand, by the id of the land, race or culture that bears them; the rest follow from the setting itself. */
@@ -92,6 +95,26 @@ export const SIDES = ['north', 'east', 'south', 'west'] as const
 export type Side = (typeof SIDES)[number]
 
 /** The neighbouring worlds of a setting: one at most on each side, each joined to it by land. */
+/** A feature of a land: what kind of formation it is, and which land it lies in. */
+export interface Feature { id: string; land: string; what: string }
+/** The features of one land, in the order they were made. */
+export const featuresOf = (s: Pick<Setting, 'features'>, land: string) => (s.features ?? []).filter((f) => f.land === land)
+/** A sentence about a feature. */
+export const featureText = (s: Pick<Setting, 'names'>, f: Feature) => {
+  const name = s.names[f.id] ?? f.what, land = s.names[f.land] ?? 'the land'
+  const text = featureOf(f.what).text.replace(/\{place\}/g, name).replace(/\{land\}/g, land)
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+/** The bearings from a land along which open sea lies beyond its coast. */
+export function seaBearings(s: Pick<Setting, 'board' | 'beyond' | 'names'>, land: string): number[] {
+  const roots = Object.values(s.board).filter((p) => !p.parent), p = s.board[land]
+  if (!p) return []
+  const taken = beyondOf(s).map((b) => b.side)
+  return openBearings(p, roots, SIDES.map((side) => taken.includes(side)))
+}
+/** Whether a land lies on the open sea. */
+export const coastal = (s: Pick<Setting, 'board' | 'beyond' | 'names'>, land: string) => seaBearings(s, land).length > 0
+
 export const beyondOf = (s: Pick<Setting, 'beyond' | 'names'>): Beyond[] =>
   SIDES.flatMap((side) => { const b = s.beyond?.find((x) => x.side === side && s.names[x.id]); return b ? [b] : [] })
 /** The seas on the sides with no neighbouring world, each named in the setting's own manner. */
@@ -438,8 +461,23 @@ export function weave(s: Setting, rng: Rng = Math.random, budget = { left: 0 }) 
     }
     if (DATED.includes(e.kind) && e.age === undefined && ages) e.age = Math.floor(rng() * ages)
   }
+  /** A feature for a land: a kind that suits its country and is not already there, named after the manner of the place. */
+  const feature = (land: string, what?: string): Feature | undefined => {
+    const list = (s.features ??= [])
+    const terrain = CARDS[land]?.cues[board[land]?.active ?? 0]?.text ?? ''
+    const here = list.filter((f) => f.land === land).map((f) => f.what), elsewhere = list.map((f) => f.what)
+    const fits = featuresFor(terrain, coastal(s, land), genres).filter((f) => !here.includes(f.what))
+    // What the world does not have yet comes first, so that lands differ.
+    const fresh = fits.filter((f) => !elsewhere.includes(f.what))
+    const kind = what ?? (fresh.length ? pick(fresh) : fits.length ? pick(fits) : undefined)?.what
+    if (!kind) return undefined
+    const f: Feature = { id: nextId('f', list), land, what: kind }
+    list.push(f)
+    name(f.id, { kind: 'site', tongue: tongueAt(land), base: kind.toLowerCase() }, land)
+    return f
+  }
   const tieAll = () => { for (const e of [...entities, ...people]) tie(e) }
-  return { pick, genres, depth, roles, drawOne, tie, tieAll, neighbour, deities, roots, sitesOf, sites, places, name, tongueAt, person, make, detail, story, hook, build }
+  return { pick, genres, depth, roles, drawOne, tie, tieAll, neighbour, feature, deities, roots, sitesOf, sites, places, name, tongueAt, person, make, detail, story, hook, build }
 }
 
 export function generateSetting(answers: Answers, seed: string): Setting {
@@ -459,6 +497,8 @@ export function generateSetting(answers: Answers, seed: string): Setting {
     generateWorld(world, scale.world, (s) => {
       // Common kinds of land come up more often than rare ones: each card draws a lot, weighted by how
       // common its land is, and the pile is taken from the top lot down.
+      // Only whole lands are drawn as lands: single formations are features within them, and places in space are held back.
+      s.piles.terrain = s.piles.terrain.filter((id) => scaleOf(CARDS[id].cues[0].text) === 'land')
       const lot = new Map(s.piles.terrain.map((id) => [id, rng() ** (1 / landOf(CARDS[id].cues[0].text).common)]))
       s.piles.terrain.sort((a, b) => lot.get(a)! - lot.get(b)!)
       // Without "temperate", the starter deck's terrains are held back unless the map would come up short.
@@ -539,6 +579,9 @@ export function generateSetting(answers: Answers, seed: string): Setting {
     // One to three sides are joined to a neighbour; the rest face the sea.
     // The first may take any side; the rest keep clear of sides that islands, lagoons and coasts need for the sea.
     for (let i = 0; i < 1 + Math.floor(rng() * 3); i++) w.neighbour(i > 0)
+
+    // 8. What each land is made up of: two to four features, suited to its country and its coast.
+    for (const r of w.roots()) for (let i = 0, n = 2 + Math.floor(rng() * 3); i < n; i++) w.feature(r)
     return s
   })
 }
@@ -805,6 +848,7 @@ export function settingMarkdown(s: Setting): string {
   for (const r of rootsOf(s)) {
     const v = placeView(s, r)
     out.push(`### ${v.name} — ${v.aka}`, v.land.text)
+    for (const f of featuresOf(s, r)) out.push(`- ${upper(s.names[f.id])} (${f.what.toLowerCase()}): ${featureText(s, f)}`)
     spot(v.land, 4)
     for (const site of v.sites) {
       out.push(`#### ${s.names[site.id]}`, site.text)

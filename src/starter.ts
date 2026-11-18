@@ -7,6 +7,9 @@ const terrain = [
   'Marsh', 'Steppe', 'Highlands', 'Archipelago', 'Fjord', 'Dunes', 'Old Forest', 'Tundra', 'Salt Flats',
   'Badlands', 'Savanna', 'Moor', 'Rift Valley', 'Lagoon', 'Karst', 'Floodplain', 'Caldera', 'Heath',
   'Glacier', 'Mangrove', 'Plateau', 'Estuary', 'Canyonlands', 'Atoll',
+  // Added later, after the first twenty-four, so that the cards before them keep their places.
+  'Rainforest', 'Pine Barrens', 'Prairie', 'Downs', 'Farmland', 'Mountain Range', 'Hill Country', 'Lake Country',
+  'River Valley', 'Fenland', 'Volcanic Fields',
 ]
 
 export const TERRAIN_COLORS: Record<string, [string, string]> = {
@@ -18,6 +21,9 @@ export const TERRAIN_COLORS: Record<string, [string, string]> = {
   Floodplain: ['#6f8f5a', '#4a6f6c'], Caldera: ['#70504c', '#3b3340'], Heath: ['#8a6f8c', '#5c6b4c'],
   Glacier: ['#b7d3de', '#6f97ab'], Mangrove: ['#3f6f52', '#2b4d55'], Plateau: ['#a8875c', '#6d5d4b'],
   Estuary: ['#7f9a86', '#46708a'], Canyonlands: ['#c0714a', '#7d3f33'], Atoll: ['#58b8b0', '#2c6f95'],
+  Rainforest: ['#2a6b46', '#1a4034'], 'Pine Barrens': ['#5f7458', '#3a4a40'], Prairie: ['#b3a85c', '#7a8048'], Downs: ['#9aae6c', '#64784e'],
+  Farmland: ['#b4b262', '#7c8444'], 'Mountain Range': ['#857f7c', '#4c4a52'], 'Hill Country': ['#8c9a66', '#5a6a4c'], 'Lake Country': ['#6c9a8c', '#3f6c7c'],
+  'River Valley': ['#7ea062', '#4a7468'], Fenland: ['#62805c', '#3c5850'], 'Volcanic Fields': ['#6c5450', '#342e34'],
 }
 
 const sites = [

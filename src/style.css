@@ -494,3 +494,6 @@ svg.emblem { flex: none; vertical-align: middle; }
   .mapview-map { position: static; max-height: none; overflow: visible; }
   .mapview-panel { max-height: none; overflow: visible; padding-right: 0; }
 }
+
+.entry.feature { border-left-color: var(--muted); }
+.feature-text { margin: 0; font-family: Georgia, 'Iowan Old Style', serif; line-height: 1.55; }

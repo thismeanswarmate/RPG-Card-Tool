@@ -31,6 +31,17 @@ Plateau :: Up on {place} the land lies high and level, ringed by cliffs that mak
 Estuary :: Across {place} river and sea trade places twice a day, leaving mudflats, channels and clouds of wading birds.
 Canyonlands :: Through {place} deep red gorges wind between flat-topped mesas, cool in their depths and scorching on the rim.
 Atoll :: Around {place} a thin ring of coral and palm encloses bright water, with nothing beyond the reef but open ocean.
+Rainforest :: In {place} it rains most afternoons, the canopy closes overhead in layers, and a cleared path is green again within the month.
+Pine Barrens :: Across {place} thin pines stand in sand too poor to farm, and fire runs through every few years and leaves them the better for it.
+Prairie :: Over {place} the grass stands shoulder-high and moves like water, and a rider can be seen an hour before arriving.
+Downs :: Across {place} smooth chalk hills roll under short turf, cropped by sheep and crossed by tracks older than any road.
+Farmland :: Through {place} every acre is hedged, ditched and spoken for, and the look of the fields tells the season at a glance.
+Mountain Range :: Along {place} peak follows peak further than anyone has walked, snow lies on the heights all year, and the passes decide who trades with whom.
+Hill Country :: In {place} no road runs straight and no two valleys agree, and every hilltop has had something built on it at one time or another.
+Lake Country :: Across {place} water lies in every hollow, and it is quicker to row between most villages than to walk.
+River Valley :: Down {place} one great river does the work of roads, boundary and calendar, and everything of note stands within sight of it.
+Fenland :: Over {place} the land is flat, black and half water, drained by dykes that need mending every winter.
+Volcanic Fields :: Across {place} the ground is black rock still warm in places, split by vents, and bare where the last flow ran.
 
 Lighthouse :: At the edge of {terrain}, the lamp of {place} can be seen for a day's travel in every direction.
 Ferry Landing :: At {place} a flat-bottomed ferry carries people, livestock and gossip across the water of {terrain}.

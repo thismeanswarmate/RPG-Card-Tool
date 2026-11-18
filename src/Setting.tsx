@@ -11,11 +11,11 @@ import { KIND_LABEL, type Kind } from './lore'
 import { LAND_FORMS, titleCase } from './names'
 import { RollRows } from './Roller'
 import {
-  ageNames, SIDES, beyondOf, seasOf, builtKind, builtText, charText, DATED, decksOf, DRAWN_DEF, drawnKind, drawnText, worldDrawn, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
+  ageNames, SIDES, beyondOf, seasOf, featuresOf, featureText, builtKind, builtText, charText, DATED, decksOf, DRAWN_DEF, drawnKind, drawnText, worldDrawn, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
   type Answers, type Side, type Built, type Char, type Drawn, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import {
-  addAge, nameForm, setNameForm, addBeyond, addBuilt, addDrawn, moveBeyond, removeBeyond, addMention, addPerson, bearsEmblem, belongsTo, emblemOf, rerollEmblem, setEmblem, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
+  addAge, addFeature, featureOptions, setFeature, nameForm, setNameForm, addBeyond, addBuilt, addDrawn, moveBeyond, removeBeyond, addMention, addPerson, bearsEmblem, belongsTo, emblemOf, rerollEmblem, setEmblem, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
   goneWith, redrawPlace, remove, removeStory, rerollStory, roleTheme, themeOf, toggleDeck, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
 } from './settingBuild'
 import { siteKind } from './mapgen'
@@ -318,6 +318,7 @@ function AddBar({ s, home, land }: { s: SettingData; home: string; land?: boolea
   return (
     <div className="addbar">
       <span>Add {land ? `to ${s.names[home]}` : 'here'}</span>
+      {land && <button onClick={() => add((d) => addFeature(d, home))} title="A formation the land is made up of: a fjord, a caldera, a string of islands">+ Feature</button>}
       {land && <button onClick={() => add((d) => addSite(d, home))}>+ Site</button>}
       <button onClick={() => add((d) => addPower(d, 'faction', home))}>+ Faction</button>
       <button onClick={() => add((d) => addPerson(d, home))}>+ Person</button>
@@ -625,6 +626,8 @@ function Gazetteer({ s }: { s: SettingData }) {
   /** The land a thing belongs to, or the world for what belongs to no one place. */
   const landFor = (id: string) => {
     if (s.board[id]) return rootOf(s.board, id)
+    const feature = s.features?.find((f) => f.id === id)
+    if (feature) return feature.land
     const home = [...s.entities, ...s.people, ...(s.built ?? []), ...(s.drawn ?? [])].find((x) => x.id === id)?.home
     return home && s.board[home] ? rootOf(s.board, home) : 'world'
   }
@@ -742,6 +745,20 @@ function Gazetteer({ s }: { s: SettingData }) {
                 </div>
               </>
             )}
+            {featuresOf(s, r).map((f) => (
+              <section key={f.id} id={`set-${f.id}`} className="entry nested feature">
+                <h5><Name id={f.id} s={s} /> <small>feature · {f.what.toLowerCase()}</small></h5>
+                <p className="feature-text">{featureText(s, f)}</p>
+                {editing && (
+                  <div className="edit-row">
+                    <select value={f.what} aria-label="Kind of feature" onChange={(e) => edit((d) => setFeature(d, f.id, e.target.value))}>
+                      {featureOptions(s, f.id).map((k) => <option key={k} value={k}>{k}</option>)}
+                    </select>
+                    <button onClick={() => drop(f.id)}>Remove feature</button>
+                  </div>
+                )}
+              </section>
+            ))}
             <SpotBody sp={v.land} s={s} />
             {v.sites.map((site) => folded.has(site.id) ? <Mini key={site.id} id={site.id} s={s} what={`site · ${siteKind(s, site.id).toLowerCase()}`} className="entry nested site" /> : (
               <section key={site.id} id={`set-${site.id}`} className="entry nested site">

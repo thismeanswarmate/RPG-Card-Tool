@@ -41,12 +41,16 @@ const BASE: Land = { temp: 0, bound: 0.5, wet: 1, shape: 'land', rugged: 0.35, h
 /** Rules in order; every one whose words appear in the name adds its part, later ones over earlier. */
 const RULES: [RegExp, Partial<Land>][] = [
   // Common, mild country.
-  [/forest|wood|steppe|heath|moor|highland|floodplain|savanna|plain|meadow/, { common: 4 }],
+  [/forest|wood|steppe|heath|moor|highland|floodplain|savanna|plain|meadow|prairie|downs|farmland|hill country|river valley/, { common: 4 }],
   [/marsh|plateau|estuary|karst|tundra|taiga|dune|mangrove|canyon|fjord|headland|cliff/, { common: 2.5 }],
-  [/caldera|atoll|archipelago|glacier|salt|rift|lagoon|badland|isles|islands|crystal|dragon|titan|enchanted|orbital|dome|derelict|asteroid|methane|drowned|bone|sunless|ice|oasis|erg|shoal|kelp|frozen/, { common: 1.2 }],
+  [/caldera|atoll|archipelago|glacier|salt|rift|lagoon|badland|isles|islands|crystal|dragon|titan|enchanted|orbital|dome|derelict|asteroid|methane|drowned|bone|sunless|ice|oasis|erg|shoal|kelp|frozen|fungal|petrified|ruined|volcanic|dust bowl|ice sheet/, { common: 1.2 }],
   // Warmth.
   [/glacier|ice|frozen|snow|permafrost/, { temp: -2, bound: 1 }],
-  [/tundra|taiga|fjord/, { temp: -1.2, bound: 1 }],
+  [/tundra|taiga|fjord|boreal/, { temp: -1.2, bound: 1 }],
+  [/pine barrens|downs|fenland|lake country/, { temp: -0.4, bound: 0.5 }],
+  [/rainforest|jungle/, { temp: 1.5, bound: 1 }],
+  [/scrubland|dust bowl/, { temp: 1.3, bound: 0.9 }],
+  [/petrified/, { temp: 2, bound: 0.8 }],
   [/moor|heath|highland|sea cliff|headland|karst/, { temp: -0.5, bound: 0.6 }],
   [/steppe|floodplain|rift|caldera|plateau/, { temp: 0.5, bound: 0.5 }],
   [/savanna|mangrove|lagoon|atoll|canyon|badland|mesa/, { temp: 1.3, bound: 0.9 }],
@@ -55,8 +59,8 @@ const RULES: [RegExp, Partial<Land>][] = [
   [/orbital|dome|derelict|asteroid|terraformed|floating|crystal|enchanted|faerie|blighted|bone|sunless|titan|dragon/, { bound: 0.15 }],
   // Water.
   [/marsh|fen|bog|swamp|mangrove|tidal|wetland|delta|drowned|moor/, { wet: 3 }],
-  [/floodplain|estuary|oasis|fjord|tundra|taiga|lagoon/, { wet: 2 }],
-  [/dune|erg|desert|salt|dry lake|stony|badland|mesa|ash|asteroid|bone|glacier|ice|snow|wadi|derelict|orbital|dome|frozen/, { wet: 0 }],
+  [/floodplain|estuary|oasis|fjord|tundra|taiga|lagoon|rainforest|lake country|river valley/, { wet: 2 }],
+  [/dune|erg|desert|salt|dry lake|stony|badland|mesa|ash|asteroid|bone|glacier|ice|snow|wadi|derelict|orbital|dome|frozen|dust bowl|petrified|volcanic|scrubland/, { wet: 0 }],
   // The size of lakes: mostly small everywhere, with a greatest size and a lean toward small ones that go by the land.
   // Forest and taiga hold the broadest waters and highlands long lochs; open grassland keeps to ponds; marsh and
   // moor are all pools with now and then a mere.
@@ -77,7 +81,8 @@ const RULES: [RegExp, Partial<Land>][] = [
   [/methane sea/, { wet: 2, pools: [1, 1], poolSize: [45, 160], poolSkew: 1.2, river: 0.5 }],
   [/wadi/, { river: 0.85 }],
   // Country a river made, or that a river always runs through.
-  [/floodplain|estuary|delta|canyon/, { river: 1 }],
+  [/floodplain|estuary|delta|canyon|river valley/, { river: 1 }],
+  [/lake country/, { pools: [4, 7], poolSize: [12, 90], poolSkew: 2 }],
   // Outline.
   [/archipelago|isles|islands|shoal|kelp|drowned|derelict fleet|asteroid field/, { shape: 'isles', rugged: 0.9 }],
   [/shoal|kelp|asteroid|derelict/, { grain: 19 }],
@@ -86,13 +91,27 @@ const RULES: [RegExp, Partial<Land>][] = [
   [/orbital ring/, { shape: 'ring', rugged: 0.2, ringWidth: 0.2 }],
   [/fjord|sea cliff|headland|estuary|mangrove|tidal|ice shelf|frozen sea|delta|lagoon/, { shape: 'coast' }],
   [/lagoon/, { lagoon: true, rugged: 0.3 }],
+  // A coast the sea has come up: land cut by arms of the sea.
+  [/drowned coast/, { shape: 'coast', inlets: true, wet: 2, rugged: 1 }],
+  [/coastal plain/, { shape: 'coast', rugged: 0.15 }],
   [/fjord|sea cliff|headland|karst|canyon|badland/, { rugged: 1 }],
   [/fjord/, { inlets: true }],
-  [/dune|erg|steppe|plain|salt|savanna|ice shelf|frozen sea/, { rugged: 0.15 }],
-  [/steppe|plateau|caldera|rift|canyon|salt|dry lake|mesa|cave|cavern|sunless|oasis|highland/, { shape: 'inland' }],
+  [/dune|erg|steppe|plain|salt|savanna|ice shelf|frozen sea|prairie|farmland|ice sheet|dust bowl/, { rugged: 0.15 }],
+  [/steppe|plateau|caldera|rift|canyon|salt|dry lake|mesa|cave|cavern|sunless|oasis|highland|mountain range|prairie|dust bowl/, { shape: 'inland' }],
   // High country.
-  [/highland|plateau|caldera|peak|steps|karst|canyon|mesa|glacier|rift|cliff|fjord/, { high: true }],
+  [/highland|plateau|caldera|peak|steps|karst|canyon|mesa|glacier|rift|cliff|fjord|mountain|hill country|volcanic|downs/, { high: true }],
 ]
+
+/** Kinds that are one formation and not a whole country: these are features of a land now, and no longer drawn as lands. */
+const FEATURE_KINDS = new Set(['fjord', 'lagoon', 'caldera', 'glacier', 'estuary', 'atoll', 'headland', 'sea cliffs', 'shoals', 'barrier islands', 'kelp forest',
+  'floating isles', 'faerie meadow', 'crystal caverns', 'ice caves', 'sunless valley', 'drowned village', 'dry lake bed', 'wadi', 'oasis basin'])
+/** Places off the world altogether, kept for a later day and not drawn for now. */
+const SPACE_KINDS = new Set(['orbital ring', 'dome colony', 'asteroid field', 'terraformed plain', 'derelict fleet', 'methane sea'])
+/** Whether a kind of terrain is a whole land, a feature within one, or a place in space. */
+export const scaleOf = (terrain: string): 'land' | 'feature' | 'space' => {
+  const name = terrain.toLowerCase()
+  return SPACE_KINDS.has(name) ? 'space' : FEATURE_KINDS.has(name) ? 'feature' : 'land'
+}
 
 const known = new Map<string, Land>()
 export function landOf(terrain: string): Land {
@@ -129,6 +148,29 @@ export function misfit(land: Land, lat: number, edge: number, sea = edge): numbe
   const climate = Math.abs(lat - latitudeOf(land)) * land.bound * 2.2
   const shore = land.shape === 'isles' || land.shape === 'ring' ? (1 - sea) * 1.6 : land.shape === 'coast' ? (1 - sea) * (land.lagoon ? 1.6 : 1.1) : land.shape === 'inland' ? edge * 0.8 : 0
   return climate + shore
+}
+
+/**
+ * The bearings from a land's middle along which open sea lies just beyond its coast: no other land in the way,
+ * and no neighbouring world on that side. Worked out from where the lands lie alone, so that what is decided
+ * when a land is made agrees with what the map later draws.
+ */
+export function openBearings(at: { x: number; y: number }, all: { x: number; y: number }[], taken: boolean[]): number[] {
+  const others = all.filter((p) => p !== at && (p.x !== at.x || p.y !== at.y))
+  if (!others.length) return Array.from({ length: 16 }, (_, k) => (k / 16) * Math.PI * 2)
+  const nearest = all.map((p) => Math.min(...all.filter((q) => q !== p).map((q) => Math.hypot(p.x - q.x, p.y - q.y)))).sort((a, b) => a - b)
+  const gap = nearest[Math.floor(nearest.length / 2)]
+  const [x0, y0, x1, y1] = [Math.min(...all.map((p) => p.x)), Math.min(...all.map((p) => p.y)), Math.max(...all.map((p) => p.x)), Math.max(...all.map((p) => p.y))]
+  return Array.from({ length: 16 }, (_, k) => (k / 16) * Math.PI * 2).filter((a) => {
+    const q = { x: at.x + Math.cos(a) * gap * 0.95, y: at.y + Math.sin(a) * gap * 0.95 }
+    if (others.some((p) => Math.hypot(p.x - q.x, p.y - q.y) < gap * 0.86)) return false
+    // North, east, south, west: a neighbouring world is joined on by land, so its side of the world has no sea.
+    if (taken[0] && q.y < y0 + gap * 0.35) return false
+    if (taken[1] && q.x > x1 - gap * 0.35) return false
+    if (taken[2] && q.y > y1 - gap * 0.35) return false
+    if (taken[3] && q.x < x0 + gap * 0.35) return false
+    return true
+  })
 }
 
 /** A draw of one item where each has a weight: heavier items come up more often. */

@@ -9,10 +9,11 @@ import { STORY_CARDS } from './story'
 import { cardOf, draw as drawCard, fill as fillCards } from './cardTool'
 import { emblemFrom, ICONS, tidy, type EmblemSpec } from './emblem'
 import { glyphFor, type Glyph } from './mapgen'
-import { ageNames, SIDES, beyondOf, rename, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, hasCapital, type Side, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
+import { ageNames, SIDES, beyondOf, coastal, rename, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, hasCapital, type Side, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
 import { rollAll as rollSettlement, rollType, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
-import { landOf, misfit, sideNearness, weighted } from './terrain'
+import { landOf, misfit, scaleOf, sideNearness, weighted } from './terrain'
+import { featuresFor } from './features'
 import type { CardType } from './types'
 
 const CARDS = cardsOf({ custom: [] })
@@ -35,9 +36,30 @@ export function newManual(genres: string[], lands: string[], title = ''): Settin
 function unused(s: Setting, type: CardType) {
   const used = new Set([...Object.keys(s.board), ...s.meta.map((h) => h.card)])
   const of = (decks: string[]) => Object.values(CARDS).filter((c) => c.type === type && decks.includes(c.deck) && !used.has(c.id))
-  const mixed = of(decksOf(s).world)
+  // Only whole lands are offered as lands: single formations are features now, and places in space are held back.
+  const whole = (list: typeof CARDS[string][]) => (type === 'terrain' ? list.filter((c) => scaleOf(c.cues[0].text) === 'land') : list)
+  const mixed = whole(of(decksOf(s).world))
   // Decks with nothing of this type left fall back on the starter deck.
-  return mixed.length ? mixed : of(['starter'])
+  return mixed.length ? mixed : whole(of(['starter']))
+}
+
+/** A new feature for a land, of a kind that suits it. Returns its id. */
+export const addFeature = (s: Setting, land: string) => weave(s).feature(land)?.id
+/** The kinds of feature a land could have, with the one it has first. */
+export const featureOptions = (s: Setting, id: string): string[] => {
+  const f = s.features?.find((x) => x.id === id)
+  if (!f) return []
+  const terrain = CARDS[f.land]?.cues[s.board[f.land]?.active ?? 0]?.text ?? ''
+  const others = (s.features ?? []).filter((x) => x.land === f.land && x.id !== id).map((x) => x.what)
+  return [f.what, ...featuresFor(terrain, coastal(s, f.land), s.answers.genres).map((k) => k.what).filter((k) => k !== f.what && !others.includes(k)).sort()]
+}
+/** Make a feature another kind of formation, and name it afresh. */
+export function setFeature(s: Setting, id: string, what: string) {
+  const f = s.features?.find((x) => x.id === id)
+  if (!f || f.what === what) return
+  f.what = what
+  s.specs[id] = { ...s.specs[id], base: what.toLowerCase() }
+  s.names[id] = rename(s, id)
 }
 
 /** Put a deck in or out of the mix for whatever is added from now on. */
@@ -417,6 +439,7 @@ export function moveBeyond(s: Setting, id: string, side: Side) {
 export function goneWith(s: Setting, id: string): string[] {
   const gone = new Set(s.board[id] ? subtree(s.board, id) : [id])
   for (const x of [...s.entities, ...s.people, ...(s.built ?? []), ...(s.drawn ?? [])]) if (x.home && gone.has(x.home)) gone.add(x.id)
+  for (const f of s.features ?? []) if (gone.has(f.land)) gone.add(f.id)
   return [...gone]
 }
 
@@ -428,6 +451,7 @@ export function remove(s: Setting, id: string) {
   s.people = s.people.filter((c) => !gone.has(c.id))
   s.built = (s.built ?? []).filter((b) => !gone.has(b.id))
   s.drawn = (s.drawn ?? []).filter((d) => !gone.has(d.id))
+  if (s.features) s.features = s.features.filter((f) => !gone.has(f.id))
   if (s.mentioned) s.mentioned = s.mentioned.filter((x) => !gone.has(x.id) && !gone.has(x.owner))
   for (const d of s.drawn) if (d.race && gone.has(d.race)) delete d.race
   const history = s.drawn.some((d) => d.tool === 'history')

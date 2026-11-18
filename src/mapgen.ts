@@ -12,7 +12,8 @@ import { typeKey } from './settlement'
 import { EXPANSION_COLORS } from './expansions'
 import { cueText, rootOf, subtree } from './logic'
 import { rngFrom, type Rng , TONGUES } from './names'
-import { rootsOf, terrainOf, type Setting , beyondOf, seasOf } from './setting'
+import { rootsOf, terrainOf, type Setting , beyondOf, seasOf, featuresOf, seaBearings } from './setting'
+import { featureOf, type FeatureForm } from './features'
 import { landOf } from './terrain'
 import { TERRAIN_COLORS } from './starter'
 import { cardsOf } from './store'
@@ -53,14 +54,19 @@ export interface MapRegion {
   glyph: Glyph
   symbols: { x: number; y: number; k: number }[]
   sites: MapSite[]
+  /** The features the land is made up of, each where it lies. */
+  features: MapFeature[]
+  /** Clear ground inside the land where other things can be shown when it is looked at closely. */
+  spots: { x: number; y: number }[]
 }
+export interface MapFeature { id: string; name: string; what: string; form: FeatureForm; x: number; y: number }
 export interface MapData {
   w: number
   h: number
   regions: MapRegion[]
   routes: { a: string; b: string; d: string }[]
   /** Still water inside the land: its outline, its name, and where the name goes. */
-  lakes: { d: string; name: string; x: number; y: number }[]
+  lakes: { d: string; name: string; x: number; y: number; feature?: string }[]
   /** Running water: each a line from its source to the sea or to a lake, with its name and the stretch the name is set along, running left to right. */
   /** `d` is the river's course; `shape` its water as an outline, wider and narrower along its length and run on into the lake or sea at each end. */
   rivers: { d: string; shape: string; name: string; along: string }[]
@@ -194,7 +200,10 @@ function smooth(loop: P[], g: number, pad: number): P[] {
   })
   // Long outlines are thinned, to keep later work on them quick.
   const keep = pts.length > 240 ? Math.ceil(pts.length / 190) : 1
-  return keep > 1 ? pts.filter((_, k) => k % keep === 0) : pts
+  // The ends of a long straight run are always kept: they are the corners of land that runs off the sheet, and
+  // dropping one would cut the corner away.
+  const far = (a: P, b: P) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) > 30
+  return keep > 1 ? pts.filter((p, k) => k % keep === 0 || far(p, pts[(k + pts.length - 1) % pts.length]) || far(p, pts[(k + 1) % pts.length])) : pts
 }
 
 export function buildMap(s: Setting): MapData {
@@ -295,6 +304,26 @@ export function buildMap(s: Setting): MapData {
     const best = openSides.reduce((a, d) => (d[0] * v[0] + d[1] * v[1] > a[0] * v[0] + a[1] * v[1] ? d : a))
     return Math.atan2(best[1] + 0.35 * v[1] / len, best[0] + 0.35 * v[0] / len)
   })
+  // The features of each land that change its coast: islands and rings offshore, a lagoon, arms of the sea. Each
+  // lies out along its own bearing from the middle of the land, spread round the side that faces open water.
+  // They have a chance of their own, so that a land without features is drawn exactly as it was before.
+  const frng: Rng = rngFrom(`${s.seed}:features`)
+  const feats = roots.map((id) => featuresOf(s, id).map((f) => ({ f, kind: featureOf(f.what) })))
+  const carves = feats.map((list, i) => {
+    const taken: number[] = []
+    // Open sea lies along some bearings and not others; each feature takes one, as far from the rest as may be.
+    const open = seaBearings(s, roots[i])
+    const apart = (a: number) => Math.min(9, ...taken.map((t) => Math.abs(Math.atan2(Math.sin(t - a), Math.cos(t - a)))))
+    return list.filter((x) => x.kind.where === 'coast').map((x, n) => {
+      const pick = open.length ? open.map((a) => ({ a: a + (frng() - 0.5) * 0.3, w: apart(a) + frng() * 0.6 })).sort((p, q) => q.w - p.w)[0].a : gapAt[i] + (frng() - 0.5) * 2.6
+      const ang = pick
+      taken.push(ang)
+      // With no sea in reach it is only a name on the land.
+      return { id: x.f.id, form: open.length ? x.kind.form : 'mark' as FeatureForm, ang, ca: Math.cos(ang), sa: Math.sin(ang), grain: x.kind.grain ?? 26, long: !!x.kind.long, k: n * 7.3 + i * 1.9 }
+    })
+  })
+  /** How far out along its bearing each kind of coastal feature lies, as a share of the land's reach. */
+  const OUTWARD: Record<FeatureForm, number> = { isles: 1.04, islet: 1.08, ring: 1.12, lagoon: 0.62, inlets: 0.72, lake: 0, mark: 0.9 }
   const SEA = 0.12
   for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
     const x0 = (cx - PADC) * g + g / 2, y0 = (cy - PADC) * g + g / 2
@@ -350,6 +379,44 @@ export function buildMap(s: Setting): MapData {
       const line = Math.abs(broken(x / 70 + 11, y / 70 + 11) - 0.5)
       if (line < 0.045) ground = Math.min(ground, SEA - 0.2 + line * 6)
     }
+    // The land's features that shape its coast.
+    let raised = false
+    for (const c of carves[nearOurs]) {
+      if (c.form === 'mark' || c.form === 'lake') continue
+      const s0 = span[nearOurs], px = x - pts[nearOurs][0], py = y - pts[nearOurs][1]
+      const u = (px * c.ca + py * c.sa) / s0, v = (-px * c.sa + py * c.ca) / s0
+      const k = cy * cols + cx
+      if (c.form === 'isles') {
+        // A cluster of islands just off the coast, in what would otherwise be open water.
+        const d = Math.hypot((u - 1.04) / 0.2, v / 0.34)
+        if (d < 1 && ground <= SEA) {
+          ground = SEA + (broken(x / (c.long ? c.grain * 2.6 : c.grain) + c.k, y / (c.long ? c.grain * 0.6 : c.grain) + c.k) - 0.66) * 2.4 + (1 - d) * 0.2
+          if (ground <= SEA) meant[k] = 1; else raised = true
+        }
+      } else if (c.form === 'islet') {
+        // One island by itself, with clear water round it.
+        const d = Math.hypot(u - 1.08, v) / 0.085 + 0.3 * (rough(x / 30 + c.k, y / 30) - 0.5)
+        if (d < 1) { if (ground <= SEA) raised = true; ground = Math.max(ground, SEA + 0.3) }
+        else if (d < 1.7 && ground <= SEA) meant[k] = 1
+      } else if (c.form === 'ring') {
+        // An atoll: a thin ring of land round still water, open on its seaward side.
+        const rr = Math.hypot(u - 1.12, v), open = Math.abs(Math.atan2(v, u - 1.12)) < 0.5
+        if (ground <= SEA && rr < 0.19) {
+          if (Math.abs(rr - 0.115) < 0.034 * (0.8 + 0.6 * rough(x / 26 + c.k, y / 26)) && !open) { ground = SEA + 0.25; raised = true }
+          else meant[k] = 1
+        }
+      } else if (c.form === 'lagoon') {
+        // A sheltered water behind a spit, with one narrow mouth and open sea beyond.
+        const e = Math.hypot((u - 0.62) / 0.11, v / 0.24) + 0.16 * (rough(x / 60 + 5 + c.k, y / 60 + 5) - 0.5)
+        if (e < 1) { ground = -1; meant[k] = 1 }
+        else if (u > 0.58 && e < 1.5) { if (Math.abs(v - 0.07) < 22 / s0) { ground = -1; meant[k] = 1 } else ground = Math.max(ground, SEA + 0.2) }
+        else if (u > 0.62 && Math.abs(v) < 0.4) ground = -1
+      } else if (c.form === 'inlets' && height < 0.78 && Math.hypot(u - 0.72, v) < 0.44) {
+        // Arms of the sea, cut into this stretch of the coast.
+        const line = Math.abs(broken(x / 70 + 11 + c.k, y / 70 + 11) - 0.5)
+        if (line < 0.045) ground = Math.min(ground, SEA - 0.2 + line * 6)
+      }
+    }
     if (dist < (kind.shape === 'isles' ? ((kind.grain ?? 31) < 25 ? 0.07 : 0.13) : 0.16) && kind.shape !== 'ring') ground = 1
     // A neighbouring world's land: in from its edge to an uneven depth, with the same rough coast.
     let band = -Infinity, bandOf = -1
@@ -360,10 +427,15 @@ export function buildMap(s: Setting): MapData {
       // Its depth swings widely along the edge, so that it comes in as capes and falls back into gulfs.
       const depth = depthOf[n] * (0.2 + 1.9 * edge(along / 300 + n * 9.1, n * 3.3 + 1) ** 1.4)
       // At both ends of its edge it holds the corner of the sheet, so that no corner beside a neighbour is left to the sea.
-      const end = Math.min(along, (flat ? W : H) - along)
-      const h = end < 110 && inFrom < 110 - end * 0.5 ? 1 : (1 - inFrom / depth) * 0.6 + cut * 0.9
+      // The corner is judged by where the cell truly lies on the sheet, not by where the bending of the coast puts it.
+      const end = Math.min(flat ? x0 : y0, (flat ? W : H) - (flat ? x0 : y0))
+      const deep = b.side === 'north' ? y0 : b.side === 'south' ? H - y0 : b.side === 'west' ? x0 : W - x0
+      const h = end < 110 && deep < 110 - end * 0.5 ? 1 : (1 - inFrom / depth) * 0.6 + cut * 0.9
       if (h > band) { band = h; bandOf = n }
     })
+    // Islands raised offshore give way to a neighbouring world's land, and the corner of the sheet beside a
+    // neighbour is always the neighbour's.
+    if ((raised && band > SEA) || band === 1) ground = -1
     // An open side always keeps a strip of sea along the edge of the sheet.
     const open = (side: string) => !outer.some((b) => b.side === side)
     if ((y0 < 40 && open('north')) || (y0 > H - 40 && open('south')) || (x0 < 40 && open('west')) || (x0 > W - 40 && open('east'))) ground = -1
@@ -448,7 +520,9 @@ export function buildMap(s: Setting): MapData {
   }
   const onLand = (p: P) => { const o = ownerAt(p[0], p[1]); return o >= 0 && o < N }
 
-  const lakes: { c: P; r: number; poly: P[]; region: number }[] = []
+  const lakes: { c: P; r: number; poly: P[]; region: number; feature?: string }[] = []
+  /** The clear ground found in each land, for showing more when it is looked at closely. */
+  const spotsOf: P[][] = []
   const regions = roots.map((id, i): MapRegion => {
     // The place's outline: its largest patch of land, with any islands it holds besides.
     const patches = loopsOf(own, cols, rows, i).filter((l) => l.area > 2).sort((a, b) => b.area - a.area)
@@ -460,9 +534,11 @@ export function buildMap(s: Setting): MapData {
     const kind = kinds[i]
 
     // Still water, by how wet the country is: none in dry land, a pond or lake in ordinary land, and many in marsh and fen.
-    const pools: { c: P; r: number; poly: P[] }[] = []
+    const pools: { c: P; r: number; poly: P[]; feature?: string }[] = []
+    // The land's features that are lakes — a caldera, a great lake, hot springs — come first and to their own measure.
+    const lakeFeats = feats[i].filter((x) => x.kind.form === 'lake')
     // Island groups and rings have the sea for their water; everywhere else it is by how wet the country is.
-    const want = kind.shape === 'isles' || kind.shape === 'ring' || kind.lagoon ? 0 : kind.pools ? kind.pools[0] + Math.floor(rng() * (kind.pools[1] - kind.pools[0] + 1)) : kind.wet >= 3 ? 8 + Math.floor(rng() * 5) : kind.wet === 2 ? 1 + Math.floor(rng() * 2) : kind.wet === 1 ? (rng() < 0.4 ? 1 : 0) : 0
+    const want = lakeFeats.length + (kind.shape === 'isles' || kind.shape === 'ring' || kind.lagoon ? 0 : kind.pools ? kind.pools[0] + Math.floor(rng() * (kind.pools[1] - kind.pools[0] + 1)) : kind.wet >= 3 ? 8 + Math.floor(rng() * 5) : kind.wet === 2 ? 1 + Math.floor(rng() * 2) : kind.wet === 1 ? (rng() < 0.4 ? 1 : 0) : 0)
     const fxs = fine.map((p) => p[0]), fys = fine.map((p) => p[1])
     const [bx0, by0, bx1, by1] = [Math.min(...fxs), Math.min(...fys), Math.max(...fxs), Math.max(...fys)]
     const close = kind.wet >= 3 ? 0.5 : 1
@@ -474,13 +550,14 @@ export function buildMap(s: Setting): MapData {
     for (let tries = 0; tries < 90 + want * 45 && pools.length < want; tries++) {
       if (pools.length > made) { made = pools.length; wish = 0 }
       if (wish && ++goes > (wish > 28 ? 18 : 5)) { wish *= 0.74; goes = 0; if (wish < least) wish = 0 }
-      if (!wish) { wish = least + rng() ** kind.poolSkew * (most - least); goes = 0 }
+      const forced = lakeFeats[pools.length]?.kind.size
+      if (!wish) { wish = forced ? forced[0] + rng() ** 1.3 * (forced[1] - forced[0]) : least + rng() ** kind.poolSkew * (most - least); goes = 0 }
       const r = wish
       const c: P = [bx0 + rng() * (bx1 - bx0), by0 + rng() * (by1 - by0)]
       if (!inside(c, fine)) continue
       if (pools.some((q) => Math.hypot(q.c[0] - c[0], q.c[1] - c[1]) < q.r + r + 14 * close)) continue
       // A rift's lakes are long and narrow; a crater lake is nearly round.
-      const tilt = rng() * Math.PI, squash = kind.long ? 0.24 + rng() * 0.12 : kind.pools?.[1] === 1 ? 0.85 : 0.42 + rng() * 0.55, phase = rng() * 9, arms = [rng() * Math.PI * 2, rng() * Math.PI * 2]
+      const tilt = rng() * Math.PI, squash = forced ? (forced[1] > 100 ? 0.5 + rng() * 0.3 : 0.85) : kind.long ? 0.24 + rng() * 0.12 : kind.pools?.[1] === 1 ? 0.85 : 0.42 + rng() * 0.55, phase = rng() * 9, arms = [rng() * Math.PI * 2, rng() * Math.PI * 2]
       const around = Math.max(34, Math.round(r * 0.8))
       const poly = Array.from({ length: around }, (_, k): P => {
         const a = (k / around) * Math.PI * 2
@@ -493,7 +570,7 @@ export function buildMap(s: Setting): MapData {
       const spare = 5 + 5 * close
       if (poly.some((q) => { const l = Math.hypot(q[0] - c[0], q[1] - c[1]) || 1; return !inside(q, fine) || !inside([q[0] + ((q[0] - c[0]) / l) * spare, q[1] + ((q[1] - c[1]) / l) * spare], fine) })) continue
       if (inside([cx, cy - 15], poly) || poly.some((q) => Math.abs(q[0] - cx) < 88 && q[1] > cy - 62 && q[1] < cy + 32)) continue
-      pools.push({ c, r, poly })
+      pools.push({ c, r, poly, feature: lakeFeats[pools.length]?.f.id })
     }
     lakes.push(...pools.map((p) => ({ ...p, region: i })))
     const glyph = glyphFor(terrain)
@@ -552,9 +629,23 @@ export function buildMap(s: Setting): MapData {
       symbols.push({ x: r1(p[0]), y: r1(p[1]), k: r1(0.85 + rng() * 0.4) })
     }
 
+    // Clear ground for whatever else is shown when the land is looked at closely: inside the land, off its name,
+    // its lakes and its marks, and each a little apart from the last.
+    const clear: P[] = []
+    const lettering = s.names[id].length * 5.4 + 30
+    for (let tries = 0; tries < 420 && clear.length < 40; tries++) {
+      const q: P = [bx0 + frng() * (bx1 - bx0), by0 + frng() * (by1 - by0)]
+      if (Math.abs(q[0] - cx) < lettering && q[1] > cy - 56 && q[1] < cy + 26) continue
+      if (clear.some((m) => Math.abs(m[0] - q[0]) < 44 && Math.abs(m[1] - q[1]) < 17)) continue
+      if (!inside(q, fine) || !inside([q[0] - 16, q[1] + 10], fine) || !inside([q[0] + 16, q[1] + 10], fine)) continue
+      if (pools.some((p) => wet(p, q, 12))) continue
+      if (sites.some((m) => Math.abs(m.x - q[0]) < 50 && Math.abs(m.y - q[1]) < 22) || clear.some((m) => Math.abs(m[0] - q[0]) < 44 && Math.abs(m[1] - q[1]) < 17)) continue
+      clear.push(q)
+    }
+    spotsOf[i] = clear
     return {
       id, name: s.names[id], terrain, d: [fine, ...isles].map(pathOf).join(''), points: fine, x: r1(cx), y: r1(cy),
-      colour: washFor(base, theme), glyph, symbols: symbols.sort((a, b) => a.y - b.y), sites,
+      colour: washFor(base, theme), glyph, symbols: symbols.sort((a, b) => a.y - b.y), sites, features: [], spots: [],
     }
   })
 
@@ -566,6 +657,34 @@ export function buildMap(s: Setting): MapData {
     const out = ([[1, 0], [-1, 0], [0, 1], [0, -1]] as P[]).find(([ox, oy]) => own[(cy + oy) * cols + cx + ox] < 0)
     if (out) shores.push({ p: [(cx - PADC) * g + g / 2, (cy - PADC) * g + g / 2], j, out })
   }
+
+  // Where each feature lies. A lake is where its water was put; islands, a ring, a lagoon and sea inlets lie out
+  // along their bearing; a place on the coast takes the stretch of shore nearest its bearing; anything inland
+  // takes the next piece of clear ground.
+  regions.forEach((r, i) => {
+    const free = [...spotsOf[i]]
+    const placed: P[] = []
+    const roomy = (q: P) => placed.every((m) => Math.hypot(m[0] - q[0], m[1] - q[1]) > 40) && !(Math.abs(q[0] - r.x) < 90 && q[1] > r.y - 56 && q[1] < r.y + 26)
+    const spot = (): P => { const k = free.findIndex(roomy); return k < 0 ? [r.x, r.y + 40 + placed.length * 14] : free.splice(k, 1)[0] }
+    for (const { f, kind } of feats[i]) {
+      const carve = carves[i].find((c) => c.id === f.id)
+      const lake = lakes.find((l) => l.feature === f.id)
+      let at: P
+      if (lake) at = lake.c
+      else if (carve && carve.form !== 'mark') {
+        const out = OUTWARD[carve.form] * span[i]
+        at = [Math.min(W - 60, Math.max(60, pts[i][0] + carve.ca * out)), Math.min(H - 40, Math.max(40, pts[i][1] + carve.sa * out))]
+      } else if (carve) {
+        const mine = shores.filter((x) => x.j === i && roomy([x.p[0] - x.out[0] * 14, x.p[1] - x.out[1] * 14]))
+        const turnTo = (x: P) => Math.abs(Math.atan2(Math.sin(Math.atan2(x[1] - pts[i][1], x[0] - pts[i][0]) - carve.ang), Math.cos(Math.atan2(x[1] - pts[i][1], x[0] - pts[i][0]) - carve.ang)))
+        const best = mine.sort((a, b) => turnTo(a.p) - turnTo(b.p))[0]
+        at = best ? [best.p[0] - best.out[0] * 14, best.p[1] - best.out[1] * 14] : spot()
+      } else at = spot()
+      placed.push(at)
+      r.features.push({ id: f.id, name: s.names[f.id] ?? f.what, what: f.what, form: kind.form, x: r1(at[0]), y: r1(at[1]) })
+    }
+    r.spots = free.filter(roomy).map(([x, y]) => ({ x: r1(x), y: r1(y) }))
+  })
 
   // Rivers. Each rises inside a place — high country and wet country more often than dry — and runs down to the sea,
   // crossing other places on the way if it must, or failing that to its own lake. It keeps to the land and clear of
@@ -659,7 +778,8 @@ export function buildMap(s: Setting): MapData {
   }
   const at = ([x, y]: P) => `${r1(x)} ${r1(y)}`
   const lakePaths = lakes.map((l, n) => ({
-    d: `M${l.poly.map(at).join('L')}Z`, name: waterName('lake', l.region, n),
+    // A lake that is one of the land's features goes by the feature's name.
+    d: `M${l.poly.map(at).join('L')}Z`, name: l.feature && s.names[l.feature] ? s.names[l.feature] : waterName('lake', l.region, n), ...(l.feature ? { feature: l.feature } : {}),
     x: r1(l.c[0]), y: r1(Math.max(...l.poly.map((p) => p[1])) + 9),
   }))
   const riverPaths = rivers.map((line, n) => {

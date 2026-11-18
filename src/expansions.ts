@@ -40,6 +40,9 @@ export const EXPANSION_COLORS: Record<string, [string, string]> = {
   'Ash Waste': ['#8a8580', '#4a4644'], 'Bone Fields': ['#b8ae98', '#6f6658'], 'Sunless Valley': ['#3f4658', '#1f222c'],
   Erg: ['#e0b060', '#b9783a'], 'Dry Lake Bed': ['#d6c8a8', '#a08c6c'], 'Mesa Country': ['#c2643f', '#7a3b34'],
   'Stony Desert': ['#8c7a68', '#54483f'], Wadi: ['#c49a62', '#7d6a4a'], 'Oasis Basin': ['#5f9a62', '#c29a52'],
+  'Fungal Forest': ['#8a6f9a', '#4a3f5c'], 'Ruined Sprawl': ['#7a7670', '#3c3a38'], 'Ice Sheet': ['#dde8ec', '#9fb8c6'], 'Boreal Bog': ['#5c6c5a', '#34423e'],
+  'Coastal Plain': ['#a8b47c', '#5c8a90'], 'Drowned Coast': ['#6c9a94', '#345c70'], Scrubland: ['#a89868', '#6c6444'], 'Petrified Forest': ['#a08878', '#5c4c44'],
+  'Dust Bowl': ['#c4a878', '#8a6c4c'],
 }
 
 const FROST = `
@@ -50,6 +53,8 @@ Frozen Sea :: Across {place} the water is locked under ice thick enough to drive
 Snowfield :: Over {place} wind-packed snow lies year-round, blinding at noon and blue in the long dusk.
 Permafrost Barrens :: Across {place} the soil never thaws below a hand's depth, and what little grows there grows low and slowly.
 Ice Caves :: Inside {place} blue tunnels wind through old ice, lit from above and never quite silent.
+Ice Sheet :: Over {place} the ice lies a mile deep and perfectly empty, and the only landmarks are the ones travellers leave.
+Boreal Bog :: Across {place} stunted spruce stand in moss and black water, frozen hard for half the year and impassable for the rest.
 @site
 Whaling Station :: Rusting boilers and bleached bones mark {place}, which still smells of oil on a warm day.
 Ice Road :: Each winter {place} is marked out across the frozen surface of {terrain}, and each spring it melts away.
@@ -133,6 +138,8 @@ Barrier Islands :: Along {place} a chain of low sandy islands takes the force of
 Tidal Marsh :: Through {place} salt creeks wind among cordgrass, flooded twice a day and smelling of mud and brine.
 Kelp Forest :: Beneath the swell of {place} great brown fronds rise from the seabed, sheltering fish, otters and things less often seen.
 Headland :: Out on {place} a spur of high ground pushes into the sea, with weather on three sides.
+Coastal Plain :: Along {place} low, level country runs down to the sea so gently that the tide comes in for miles.
+Drowned Coast :: Along {place} the sea has come up the valleys and left the hilltops as islands, so that every farm has a boat.
 @site
 Shipwreck :: The ribs of {place} show at low tide, picked clean by a century of salvagers.
 Smugglers’ Tunnel :: Cut through the rock in secret, {place} runs from a hidden landing to a cellar that changes owners often.
@@ -216,6 +223,9 @@ Mesa Country :: Through {place} flat-topped towers of rock rise from the plain, 
 Stony Desert :: Across {place} wind has stripped the ground to a pavement of dark pebbles that rings underfoot.
 Wadi :: Down {place} a dry riverbed winds between steep banks, harmless for years and deadly for an hour when the rain comes.
 Oasis Basin :: In the hollow of {place} groundwater comes close to the surface, and a ring of green stands against the glare.
+Scrubland :: Across {place} thorn and grey-leaved brush cover the hills, green for a month after rain and the colour of dust for the rest.
+Petrified Forest :: Through {place} trees of stone lie where they fell an age ago, their rings still countable.
+Dust Bowl :: Over {place} the topsoil has gone with the wind, and what was farmland is drifted fences and bare hardpan.
 @site
 Caravanserai :: Behind high walls, {place} offers water, fodder and a locked gate to every caravan crossing {terrain}.
 Well :: Everything within three days' walk depends on {place}, and its rope is the most carefully kept thing in {terrain}.
@@ -299,6 +309,7 @@ Dragon Peaks :: Among {place} the summits are scorched black, and the caves are 
 Faerie Meadow :: Across {place} the flowers bloom in rings, and anyone who naps there wakes with the wrong year in their head.
 Titan’s Steps :: Up through {place} rise terraces too vast and too regular to be natural, each one a day's climb.
 Crystal Caverns :: Deep inside {place} the walls glitter with crystals that hum when spoken to.
+Fungal Forest :: In {place} the trees are mushrooms the height of towers, the light is the colour of old paper, and the air is thick with drifting spores.
 @site
 Wizard’s Tower :: Too tall for its foundations, {place} leans over {terrain} and is lit at odd hours in odd colours.
 Fairy Ring :: A circle of pale mushrooms marks {place}, and the locals walk around it rather than through.
@@ -465,6 +476,7 @@ Drowned Village :: Beneath the still water of {place} rooftops and a steeple can
 Ash Waste :: Across {place} grey ash lies ankle-deep over what was once farmland, and the wind never clears it.
 Bone Fields :: Throughout {place} the plough turns up more bones than stones, and no one can say whose.
 Sunless Valley :: Down in {place} the cliffs stand so close that direct sun reaches the floor on one day a year.
+Ruined Sprawl :: Across {place} the shells of a city no one remembers run for miles, roofless and overgrown, with streets that still lead somewhere.
 @site
 Abandoned Asylum :: The doors of {place} were chained from the outside, and some of the lights still come on.
 Gallows Hill :: A bare rise above {terrain}, {place} has not been used in years and is still avoided after dark.

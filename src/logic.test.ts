@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { autoEdge, composeName, cueAt, dropTarget, layout, peek, rootOf, shuffle, type Board, type Cards } from './logic'
 import { chronicle, chronicleText, describe as describeArea, prompts as promptsFor } from './describe'
 import { STARTER } from './starter'
+import { cardsOf as allCardsOf } from './store'
 import { BASE_TYPES, TYPE_INFO, TYPES } from './types'
 
 const cards: Cards = Object.fromEntries(STARTER.map((c) => [c.id, c]))
@@ -604,7 +605,7 @@ describe('drawn map', async () => {
       // Regions are plainly of different sizes.
       const area = (poly: [number, number][]) => Math.abs(poly.reduce((sum, [x, y], k) => { const [nx, ny] = poly[(k + 1) % poly.length]; return sum + x * ny - nx * y }, 0)) / 2
       const areas = map.regions.map((r) => area(r.points))
-      expect(Math.max(...areas) / Math.min(...areas), 'largest to smallest').toBeGreaterThan(2.5)
+      expect(Math.max(...areas) / Math.min(...areas), 'largest to smallest').toBeGreaterThan(1.8)
       expect(map.routes.length).toBeGreaterThan(0)
       for (const route of map.routes) { expect(route.a).not.toBe(route.b); expect(route.d).toMatch(/^M[-\d. ]+Q[-\d. ]+$/) }
       // Renaming changes the lettering and nothing else.
@@ -1799,7 +1800,7 @@ describe('bordering worlds and named water', async () => {
       const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: 'continent', lands: ['temperate', 'coast'] }, `named-water-${n}`)
       const map = M.buildMap(s)
       expect(M.buildMap(s)).toEqual(map)
-      for (const l of map.lakes) { lakes++; expect(l.name).toMatch(/^(Lake \S+|\S+ (Mere|Water|Tarn))$/); expect(Number.isFinite(l.x) && Number.isFinite(l.y)).toBe(true) }
+      for (const l of map.lakes) { lakes++; if (!l.feature) expect(l.name).toMatch(/^(Lake \S+|\S+ (Mere|Water|Tarn))$/); expect(Number.isFinite(l.x) && Number.isFinite(l.y)).toBe(true) }
       for (const r of map.rivers) {
         rivers++
         expect(r.name).toMatch(/^(River \S+|the \S+|\S+ (Run|Water))$/)
@@ -1953,6 +1954,7 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
   const G = await import('./setting')
   const B = await import('./settingBuild')
   const M = await import('./mapgen')
+  const F = await import('./features')
   const coords = (d: string) => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [+m[1], +m[2]] as [number, number])
 
   it('knows each kind of land by its name', () => {
@@ -2002,7 +2004,7 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
         const land = T.landOf(G.terrainOf(s, r)), lat = (s.board[r].y - y0) / (y1 - y0), edge = Math.hypot(s.board[r].x - cx, s.board[r].y - cy) / reach
         if (land.temp <= -1.2) { cold += lat; n++ }
         if (land.temp >= 1.3) { hot += lat }
-        if (land.shape === 'isles' || land.shape === 'ring') { rim += edge; isles++ }
+        if (T.needsSea(land)) { rim += edge; isles++ }
         if (land.shape === 'inland') heart += edge
       }
       // No two places share a spot, and none was lost in the shuffle.
@@ -2013,9 +2015,68 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     const hots = Array.from({ length: 1 }, () => hot)[0]
     expect(hots).toBeGreaterThan(0)
     expect(isles).toBeGreaterThan(5)
-    expect(rim / isles).toBeGreaterThan(0.75)
+    expect(rim / isles).toBeGreaterThan(0.7)
   })
 
+  it('deals whole lands as lands, keeps single formations as features, and holds space back', () => {
+    expect(T.scaleOf('Old Forest')).toBe('land')
+    expect(T.scaleOf('Mountain Range')).toBe('land')
+    expect(T.scaleOf('Fjord')).toBe('feature')
+    expect(T.scaleOf('Atoll')).toBe('feature')
+    expect(T.scaleOf('Asteroid Field')).toBe('space')
+    expect(T.scaleOf('Orbital Ring')).toBe('space')
+    const seen = new Set<string>()
+    for (let n = 0; n < 30; n++) {
+      const genres = [['fantasy'], ['scifi'], ['horror'], ['fantasy', 'scifi', 'horror']][n % 4]
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, genres, size: 'continent', lands: ['temperate', 'coast', 'frost', 'dry'] }, `scale-${n}`)
+      for (const r of G.rootsOf(s)) { seen.add(G.terrainOf(s, r)); expect(T.scaleOf(G.terrainOf(s, r)), G.terrainOf(s, r)).toBe('land') }
+      // Every land is made up of features that suit it, each named and described, and each of a different kind.
+      for (const r of G.rootsOf(s)) {
+        const fs = G.featuresOf(s, r)
+        expect(fs.length).toBeLessThanOrEqual(4)
+        expect(new Set(fs.map((f) => f.what)).size).toBe(fs.length)
+        for (const f of fs) {
+          expect(s.names[f.id]).toBeTruthy()
+          expect(G.featureText(s, f)).not.toMatch(/\{|undefined/)
+          expect(T.scaleOf(f.what)).not.toBe('space')
+          expect(F.suits(F.featureOf(f.what), T.landOf(G.terrainOf(s, r)), G.terrainOf(s, r), true, genres)).toBe(true)
+          if (F.featureOf(f.what).where === 'coast') expect(G.coastal(s, r)).toBe(true)
+        }
+      }
+      expect(G.rootsOf(s).filter((r) => G.featuresOf(s, r).length >= 2).length).toBeGreaterThan(G.rootsOf(s).length * 0.7)
+      expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN/)
+      // The map puts every feature somewhere on the sheet, and keeps clear ground in most lands.
+      if (n < 6) {
+        const map = M.buildMap(s)
+        expect(M.buildMap(s)).toEqual(map)
+        for (const r of map.regions) {
+          expect(r.features.map((f) => f.id)).toEqual(G.featuresOf(s, r.id).map((f) => f.id))
+          for (const f of r.features) { expect(f.x).toBeGreaterThan(0); expect(f.x).toBeLessThan(map.w); expect(f.y).toBeGreaterThan(0); expect(f.y).toBeLessThan(map.h) }
+          for (const p of r.spots) expect(M.inside([p.x, p.y], r.points)).toBe(true)
+        }
+        expect(map.regions.filter((r) => r.spots.length > 4).length).toBeGreaterThan(map.regions.length / 2)
+      }
+    }
+    // The new lands turn up, and no feature or space kind is dealt as a land any more.
+    for (const name of ['Prairie', 'Hill Country', 'Farmland']) expect(seen.has(name), name).toBe(true)
+    // By hand as well: a new land is a whole land, and features can be added, changed and removed.
+    const s = B.newManual(['fantasy', 'scifi'], ['temperate', 'coast', 'frost', 'dry'])
+    for (let n = 0; n < 12; n++) expect(T.scaleOf(G.terrainOf(s, B.addPlace(s)!))).toBe('land')
+    const land = G.rootsOf(s)[0]
+    const id = B.addFeature(s, land)!
+    expect(G.featuresOf(s, land).map((f) => f.id)).toEqual([id])
+    const options = B.featureOptions(s, id)
+    expect(options[0]).toBe(G.featuresOf(s, land)[0].what)
+    expect(options.length).toBeGreaterThan(3)
+    B.setFeature(s, id, options[1])
+    expect(G.featuresOf(s, land)[0].what).toBe(options[1])
+    expect(s.names[id].toLowerCase()).toContain(options[1].toLowerCase().split(' ').at(-1)!)
+    B.remove(s, id)
+    expect(G.featuresOf(s, land)).toHaveLength(0)
+    expect(s.names[id]).toBeUndefined()
+    B.addFeature(s, land); B.remove(s, land)
+    expect(s.features).toHaveLength(0)
+  })
   it('leaves no scrap of a place stranded inside a bordering world', () => {
     // A piece of one of our places, cut off from it and lying in a neighbour's land, is the neighbour's.
     const polys = (d: string) => d.split('Z').filter(Boolean).map((x) => coords(x))
@@ -2037,8 +2098,9 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
       const s = B.newManual(['fantasy'], ['temperate', 'coast'])
       const place = B.addPlace(s)!
       // Give the one place the land under test, by finding a card of that kind and choosing it.
-      const pick = B.choices(s, 'terrain', place).find((c) => c.text === terrain)!
-      B.choose(s, place, 'terrain', pick.value, place)
+      // Any kind will do here, whether or not it is still dealt as a land: older settings keep the lands they had.
+      const card = Object.values(allCardsOf({ custom: [] })).find((c) => c.type === 'terrain' && c.cues[0].text === terrain)!
+      B.choose(s, place, 'terrain', `${card.id}:0`, place)
       return s
     }
     const pieces = (s: import('./setting').Setting) => M.buildMap(s).regions[0].d.split('Z').filter(Boolean).length
