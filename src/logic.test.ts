@@ -2153,6 +2153,57 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     expect(F.toneOf('Atoll')).not.toBe(F.toneOf('Caldera'))
     expect(F.toneOf('Great Lake')).toMatch(/^#[0-9a-f]{6}$/)
   })
+  it('keeps features of the coast by the sea: islands stand offshore, and one that loses its sea becomes something else', () => {
+    let islands = 0, changed = 0
+    for (let n = 0; n < 8; n++) {
+      const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, size: n % 2 ? 'continent' : 'country', lands: ['temperate', 'coast', 'frost', 'dry'] }, `shore-${n}`)
+      let map = M.buildMap(s)
+      // Whatever the map finds no sea for is made into a feature that needs none.
+      const lost = map.regions.flatMap((r) => r.features.filter((f) => f.landlocked).map((f) => f.id))
+      for (const id of lost) expect(F.featureOf(s.features!.find((f) => f.id === id)!.what).where).toBe('coast')
+      B.landlock(s, lost)
+      changed += lost.length
+      for (const id of lost) {
+        const f = s.features!.find((x) => x.id === id)!
+        expect(F.featureOf(f.what).where, f.what).toBe('inland')
+        expect(s.names[id].toLowerCase()).toContain(f.what.toLowerCase().split(' ').at(-1)!)
+      }
+      // Changing one can leave another cut off in its turn; a few rounds settle it, as the map does on screen.
+      for (let round = 0; round < 4; round++) {
+        map = M.buildMap(s)
+        const more = map.regions.flatMap((r) => r.features.filter((f) => f.landlocked).map((f) => f.id))
+        if (!more.length) break
+        B.landlock(s, more)
+      }
+      map = M.buildMap(s)
+      expect(map.regions.flatMap((r) => r.features.filter((f) => f.landlocked))).toHaveLength(0)
+      // A lone island is an island: it has ground of its own, and is lettered off the main body of its land.
+      for (const r of map.regions) for (const f of r.features) if (f.what === 'Lone Island') {
+        islands++
+        expect(f.d, `${f.name} has ground`).toBeTruthy()
+        expect(M.inside([f.x, f.y], r.points), `${f.name} stands apart from ${r.name}`).toBe(false)
+        const own = f.d!.split('Z').filter(Boolean).map((piece) => coords(piece))
+        expect([[0, 0], [7, 0], [-7, 0], [0, 7], [0, -7]].some(([ox, oy]) => own.some((poly) => M.inside([f.x + ox, f.y + oy], poly)))).toBe(true)
+      }
+    }
+    expect(islands).toBeGreaterThan(1)
+    expect(changed).toBeGreaterThan(0)
+    // By hand: a land with sea on every side may have an island; hem it in on all sides and the island is gone.
+    const s = B.newManual(['fantasy'], ['temperate'])
+    const land = B.addPlace(s)!
+    s.features = [{ id: 'f0', land, what: 'Lone Island' }]
+    s.names.f0 = 'Test Island'; s.specs.f0 = { kind: 'site', tongue: 0, base: 'lone island' }
+    expect(M.buildMap(s).regions[0].features[0].landlocked).toBeFalsy()
+    for (let n = 0; n < 18; n++) B.addPlace(s)
+    const hemmed = G.rootsOf(s).find((r) => !G.coastal(s, r))
+    expect(hemmed).toBeTruthy()
+    s.features!.push({ id: 'f99', land: hemmed!, what: 'Lone Island' })
+    s.names.f99 = 'Hemmed Island'; s.specs.f99 = { kind: 'site', tongue: 0, base: 'lone island' }
+    const cut = M.buildMap(s).regions.flatMap((r) => r.features).find((f) => f.id === 'f99')!
+    expect(cut.landlocked).toBe(true)
+    B.landlock(s, ['f99'])
+    expect(s.features!.find((f) => f.id === 'f99')!.what).not.toBe('Lone Island')
+  })
   it('leaves no scrap of a place stranded inside a bordering world', () => {
     // A piece of one of our places, cut off from it and lying in a neighbour's land, is the neighbour's.
     const polys = (d: string) => d.split('Z').filter(Boolean).map((x) => coords(x))

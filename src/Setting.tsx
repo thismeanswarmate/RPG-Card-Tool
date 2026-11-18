@@ -15,7 +15,7 @@ import {
   type Answers, type Side, type Built, type Char, type Drawn, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import {
-  addAge, addFeature, featureOptions, setFeature, setAt, nameForm, setNameForm, addBeyond, addBuilt, addDrawn, moveBeyond, removeBeyond, addMention, addPerson, bearsEmblem, belongsTo, emblemOf, rerollEmblem, setEmblem, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
+  addAge, addFeature, featureOptions, setFeature, setAt, landlock, nameForm, setNameForm, addBeyond, addBuilt, addDrawn, moveBeyond, removeBeyond, addMention, addPerson, bearsEmblem, belongsTo, emblemOf, rerollEmblem, setEmblem, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
   goneWith, redrawPlace, remove, removeStory, rerollStory, roleTheme, themeOf, toggleDeck, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
 } from './settingBuild'
 import { siteKind } from './mapgen'
@@ -900,7 +900,7 @@ function Gazetteer({ s }: { s: SettingData }) {
         <>
           {roots.length > 0 && <ImagePanel s={s} />}
           {roots.length > 0 && <Picture id="world" s={s} />}
-          {roots.length > 0 && <SettingMap s={s} onOpen={setOpen} />}
+          {roots.length > 0 && <SettingMap s={s} onOpen={setOpen} onLandlocked={(ids) => edit((d) => landlock(d, ids))} />}
           <nav className="gaz-nav">
             {roots.map((r) => <button key={r} onClick={() => go(r)}>{upper(s.names[r])}</button>)}
           </nav>
@@ -911,7 +911,7 @@ function Gazetteer({ s }: { s: SettingData }) {
       ) : (
         <div className="mapview">
           <div className="mapview-map">
-            <SettingMap s={s} compact onPick={(id) => setPicked(landFor(id))} onOpen={setOpen} selected={shown} tools={
+            <SettingMap s={s} compact onPick={(id) => setPicked(landFor(id))} onOpen={setOpen} onLandlocked={(ids) => edit((d) => landlock(d, ids))} selected={shown} tools={
               <div className="map-tools">
                 <button className={shown === 'world' ? 'on' : ''} onClick={() => setPicked('world')}>World</button>
                 {roots.map((r) => <button key={r} className={shown === r ? 'on' : ''} onClick={() => setPicked(r)}>{upper(s.names[r])}</button>)}

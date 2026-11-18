@@ -12,7 +12,7 @@ import { typeKey } from './settlement'
 import { EXPANSION_COLORS } from './expansions'
 import { cueText, rootOf, subtree } from './logic'
 import { rngFrom, type Rng , TONGUES } from './names'
-import { rootsOf, terrainOf, type Setting , beyondOf, seasOf, featuresOf, seaBearings, featureAt } from './setting'
+import { rootsOf, terrainOf, type Setting , beyondOf, seasOf, featuresOf, featureAt } from './setting'
 import { featureOf, type FeatureForm } from './features'
 import { landOf } from './terrain'
 import { TERRAIN_COLORS } from './starter'
@@ -60,7 +60,7 @@ export interface MapRegion {
   spots: { x: number; y: number; feature?: string }[]
 }
 /** A feature of a land: where its name goes, the middle of the ground it takes up, and the outline of that ground where the land has more than one. */
-export interface MapFeature { id: string; name: string; what: string; form: FeatureForm; x: number; y: number; ax: number; ay: number; d?: string }
+export interface MapFeature { id: string; name: string; what: string; form: FeatureForm; x: number; y: number; ax: number; ay: number; d?: string; /** It is of the coast, and no sea is in reach of it. */ landlocked?: boolean }
 export interface MapData {
   w: number
   h: number
@@ -292,6 +292,8 @@ export function buildMap(s: Setting): MapData {
   // Ground that a feature has made for itself — an island, a ring, a peninsula — and so is that feature's own,
   // as its number among its land's features.
   const forced = new Int8Array(cols * rows).fill(-1)
+  // Islands a land has raised offshore are that land's, even in water that lies nearer another.
+  const ownBy = new Int16Array(cols * rows).fill(-1)
   // Water that is meant to be there — a lagoon behind its spit — and is not to be closed up as a stray hole.
   const meant = new Uint8Array(cols * rows)
   const span = pts.map((_, i) => typical * (1.02 + 0.16 * (weight[i] - 1)))
@@ -313,25 +315,42 @@ export function buildMap(s: Setting): MapData {
   // They have a chance of their own, so that a land without features is drawn exactly as it was before.
   const frng: Rng = rngFrom(`${s.seed}:features`)
   const feats = roots.map((id) => featuresOf(s, id).map((f) => ({ f, kind: featureOf(f.what) })))
+  const SEA = 0.12
+  /** How far out along its bearing each kind of coastal feature lies, as a share of the land's reach. */
+  const OUTWARD: Record<FeatureForm, number> = { isles: 1.2, islet: 1.22, ring: 1.22, lagoon: 0.62, inlets: 0.72, lake: 0, mark: 0.9 }
+  // Whether open sea lies at a spot, as near as can be told before the land is drawn: clear of every land's
+  // ground, of the neighbouring worlds' land along their edges, and of the edge of the sheet.
+  const landAt = (q: P) => Math.max(...pts.map((p, j) => 1 - Math.hypot(q[0] - p[0], q[1] - p[1]) / span[j]))
+  const seaAt = (q: P) => {
+    if (q[0] < 66 || q[1] < 66 || q[0] > W - 66 || q[1] > H - 66 || landAt(q) > SEA - 0.03) return false
+    return !outer.some((b, n) => {
+      const flat = b.side === 'north' || b.side === 'south'
+      const inFrom = b.side === 'north' ? q[1] : b.side === 'south' ? H - q[1] : b.side === 'west' ? q[0] : W - q[0]
+      const along = flat ? q[0] : q[1]
+      return inFrom < depthOf[n] * (0.2 + 1.9 * edge(along / 300 + n * 9.1, n * 3.3 + 1) ** 1.4) * 1.5 + 40
+    })
+  }
   const carves = feats.map((list, i) => {
     const taken: number[] = []
-    // Open sea lies along some bearings and not others; each feature takes one, as far from the rest as may be.
-    const open = seaBearings(s, roots[i])
     const apart = (a: number) => Math.min(9, ...taken.map((t) => Math.abs(Math.atan2(Math.sin(t - a), Math.cos(t - a)))))
     return list.filter((x) => x.kind.where === 'coast').map((x, n) => {
-      const pick = open.length ? open.map((a) => ({ a: a + (frng() - 0.5) * 0.3, w: apart(a) + frng() * 0.6 })).sort((p, q) => q.w - p.w)[0].a : gapAt[i] + (frng() - 0.5) * 2.6
-      const ang = pick
+      const sea = ['isles', 'islet', 'ring'].includes(x.kind.form)
+      // Every bearing is tried, and those kept along which the sea truly lies where the feature needs it: out
+      // where its islands would stand, or just beyond the shore for a feature of the coast itself.
+      const at = (a: number, out: number, side = 0): P => [pts[i][0] + (Math.cos(a) * out - Math.sin(a) * side) * span[i], pts[i][1] + (Math.sin(a) * out + Math.cos(a) * side) * span[i]]
+      const open = Array.from({ length: 28 }, (_, k) => (k / 28) * Math.PI * 2 + frng() * 0.1).filter((a) =>
+        sea ? seaAt(at(a, OUTWARD[x.kind.form])) && seaAt(at(a, OUTWARD[x.kind.form], 0.14)) && seaAt(at(a, OUTWARD[x.kind.form], -0.14)) && seaAt(at(a, 1.42))
+          : seaAt(at(a, 1.22)) && seaAt(at(a, 1.4)))
+      const ang = open.length ? open.map((a) => ({ a, w: apart(a) + frng() * 0.6 })).sort((p, q) => q.w - p.w)[0].a : gapAt[i] + (frng() - 0.5) * 2.6
       taken.push(ang)
-      // With no sea in reach it is only a name on the land.
+      // With no sea in reach it is only a name on the land, and is marked as cut off from the water.
       return {
-        id: x.f.id, fi: list.indexOf(x), form: open.length ? x.kind.form : 'mark' as FeatureForm, cut: open.length ? x.kind.cut : undefined, ang, ca: Math.cos(ang), sa: Math.sin(ang),
-        grain: x.kind.grain ?? 26, long: !!x.kind.long, k: n * 7.3 + i * 1.9, small: x.f.what === 'Tidal Island',
+        id: x.f.id, i, fi: list.indexOf(x), sea, landlocked: !open.length, form: open.length ? x.kind.form : 'mark' as FeatureForm, cut: open.length ? x.kind.cut : undefined, ang, ca: Math.cos(ang), sa: Math.sin(ang),
+        grain: x.kind.grain ?? 26, long: !!x.kind.long, arc: x.f.what === 'Reef', k: n * 7.3 + i * 1.9, small: x.f.what === 'Tidal Island',
       }
     })
   })
-  /** How far out along its bearing each kind of coastal feature lies, as a share of the land's reach. */
-  const OUTWARD: Record<FeatureForm, number> = { isles: 1.2, islet: 1.22, ring: 1.22, lagoon: 0.62, inlets: 0.72, lake: 0, mark: 0.9 }
-  const SEA = 0.12
+  const allCarves = carves.flat()
   for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
     const x0 = (cx - PADC) * g + g / 2, y0 = (cy - PADC) * g + g / 2
     const x = x0 + warp(dx, x0, y0), y = y0 + warp(dy, x0, y0)
@@ -387,30 +406,40 @@ export function buildMap(s: Setting): MapData {
       if (line < 0.045) ground = Math.min(ground, SEA - 0.2 + line * 6)
     }
     // The land's features that shape its coast.
-    let raised = false
-    for (const c of carves[nearOurs]) {
+    let raised = false, moat = false
+    for (const c of allCarves) {
       if ((c.form === 'mark' && !c.cut) || c.form === 'lake') continue
-      const s0 = span[nearOurs], px = x - pts[nearOurs][0], py = y - pts[nearOurs][1]
+      // What shapes the coast itself works on its own land's ground; islands stand wherever their place is.
+      if (!c.sea && c.i !== nearOurs) continue
+      const s0 = span[c.i], px = x - pts[c.i][0], py = y - pts[c.i][1]
+      if (Math.abs(px) > s0 * 1.9 || Math.abs(py) > s0 * 1.9) continue
       const u = (px * c.ca + py * c.sa) / s0, v = (-px * c.sa + py * c.ca) / s0
       const k = cy * cols + cx
       if (c.form === 'isles') {
         // A cluster of islands just off the coast, in what would otherwise be open water.
         const d = Math.hypot((u - 1.2) / 0.24, v / 0.44)
-        if (d < 1 && ground <= SEA) {
+        if (c.arc) {
+          // A reef: a long broken line of rock and coral lying along the coast, a little way out.
+          const off = u - 1.14 - v * v * 0.5
+          if (Math.abs(v) < 0.6 && Math.abs(off) < 0.1 && ground <= SEA) {
+            if (Math.abs(off) < 0.036 && broken(x / 24 + c.k, y / 24 + c.k) > 0.36) { ground = SEA + 0.2; raised = true; forced[k] = c.fi; ownBy[k] = c.i }
+            else meant[k] = 1
+          }
+        } else if (d < 1 && ground <= SEA) {
           ground = SEA + (broken(x / (c.long ? c.grain * 2.6 : c.grain) + c.k, y / (c.long ? c.grain * 0.6 : c.grain) + c.k) - 0.6) * 2.4 + (1 - d) * 0.2
-          if (ground <= SEA) meant[k] = 1; else { raised = true; forced[k] = c.fi }
+          if (ground <= SEA) meant[k] = 1; else { raised = true; forced[k] = c.fi; ownBy[k] = c.i }
         }
       } else if (c.form === 'islet') {
         // One island by itself, a fair size, with clear water all round it: the sea is let in between it and the shore.
         const size = c.small ? 0.13 : 0.21, d = Math.hypot(u - (size + (c.small ? 0.99 : 1.06)), v) / size + 0.34 * (rough(x / 34 + c.k, y / 34) - 0.5)
-        if (d < 1) { raised = true; forced[k] = c.fi; ground = Math.max(ground, SEA + 0.3) }
-        else if (d < 1.42) { ground = -1; meant[k] = 1 }
+        if (d < 1) { raised = true; forced[k] = c.fi; ownBy[k] = c.i; ground = Math.max(ground, SEA + 0.3) }
+        else if (d < 1.42) { ground = -1; meant[k] = 1; ownBy[k] = -1; moat = true }
       } else if (c.form === 'ring') {
         // An atoll: a ring of land round still water, open on its seaward side, standing clear of the shore.
         const rr = Math.hypot(u - 1.22, v), open = Math.abs(Math.atan2(v, u - 1.22)) < 0.45
         if (rr < 0.25) {
-          if (Math.abs(rr - 0.15) < 0.042 * (0.8 + 0.6 * rough(x / 26 + c.k, y / 26)) && !open) { ground = SEA + 0.25; raised = true; forced[k] = c.fi }
-          else { ground = -1; meant[k] = 1 }
+          if (Math.abs(rr - 0.15) < 0.042 * (0.8 + 0.6 * rough(x / 26 + c.k, y / 26)) && !open) { ground = SEA + 0.25; raised = true; forced[k] = c.fi; ownBy[k] = c.i }
+          else { ground = -1; meant[k] = 1; ownBy[k] = -1; moat = true }
         }
       } else if (c.cut === 'peninsula' || c.cut === 'headland') {
         // Land thrust out into the sea: a long arm for a peninsula, a short blunt one for a headland.
@@ -448,6 +477,8 @@ export function buildMap(s: Setting): MapData {
       }
     }
     if (dist < (kind.shape === 'isles' ? ((kind.grain ?? 31) < 25 ? 0.07 : 0.13) : 0.16) && kind.shape !== 'ring') ground = 1
+    // The water round an island or inside an atoll stays water, whatever else would stand there.
+    if (moat) { ground = -1; forced[cy * cols + cx] = -1 }
     // A neighbouring world's land: in from its edge to an uneven depth, with the same rough coast.
     let band = -Infinity, bandOf = -1
     outer.forEach((b, n) => {
@@ -469,7 +500,7 @@ export function buildMap(s: Setting): MapData {
     // An open side always keeps a strip of sea along the edge of the sheet.
     const open = (side: string) => !outer.some((b) => b.side === side)
     if ((y0 < 40 && open('north')) || (y0 > H - 40 && open('south')) || (x0 < 40 && open('west')) || (x0 > W - 40 && open('east'))) ground = -1
-    if (ground > SEA) own[cy * cols + cx] = near < N ? nearOurs : near
+    if (ground > SEA) own[cy * cols + cx] = ownBy[cy * cols + cx] >= 0 ? ownBy[cy * cols + cx] : near < N ? nearOurs : near
     else if (band > SEA) own[cy * cols + cx] = N + bandOf
     // The water between and around a group of islands is meant to be there, however narrow its channels.
     if (own[cy * cols + cx] < 0 && kind.shape === 'isles') meant[cy * cols + cx] = 1
@@ -653,7 +684,8 @@ export function buildMap(s: Setting): MapData {
       // Islands, a lone island or an atoll: the feature is the islands themselves, and is lettered on them.
       const cells = madeBy.get(f.id)
       // Only where the islands are big enough to stand on; a scatter of specks is lettered from the shore.
-      if (cells && cells.length >= 5 && (madeWithin.get(f.id)?.length ?? 0) >= 2) {
+      // And only where they truly stand apart: an island that the land has closed round is no island.
+      if (cells && cells.length >= 5 && (madeWithin.get(f.id)?.length ?? 0) >= 2 && !inside(cells.reduce((best, q) => (q[0] + q[1] < best[0] + best[1] ? q : best)), fine) && !inside(cells[cells.length >> 1], fine)) {
         const mid: P = [cells.reduce((n, q) => n + q[0], 0) / cells.length, cells.reduce((n, q) => n + q[1], 0) / cells.length]
         const on = cells.reduce((best, q) => (Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.hypot(best[0] - mid[0], best[1] - mid[1]) ? q : best))
         const within = madeWithin.get(f.id)
@@ -815,6 +847,9 @@ export function buildMap(s: Setting): MapData {
       r.features.push({
         id: f.id, name: s.names[f.id] ?? f.what, what: f.what, form: kind.form, x: r1(m.label[0]), y: r1(m.label[1]), ax: r1(m.at[0]), ay: r1(m.at[1]),
         ...(ground.length ? { d: ground.map(pathOf).join('') } : {}),
+        // Cut off from the sea: no open water along any bearing, or the island it should be never rose — taken
+        // by a neighbouring world's shore, or by the edge of the sheet.
+        ...((() => { const c = carves[i].find((x) => x.id === f.id); return !!c && (c.landlocked || (c.sea && (c.form === 'isles' ? !madeBy.get(f.id)?.length : !m.off))) })() ? { landlocked: true } : {}),
       })
     })
     const taken = (q: P) => r.features.some((f) => Math.abs(f.x - q[0]) < 62 && q[1] > f.y - 22 && q[1] < f.y + 24)

@@ -13,7 +13,7 @@ import { ageNames, SIDES, beyondOf, coastal, house, rename, decksOf, DEFAULT_ANS
 import { rollAll as rollSettlement, rollType, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
 import { landOf, misfit, scaleOf, sideNearness, weighted } from './terrain'
-import { featuresFor } from './features'
+import { featureOf, featuresFor } from './features'
 import type { CardType } from './types'
 
 const CARDS = cardsOf({ custom: [] })
@@ -49,6 +49,23 @@ export function addFeature(s: Setting, land: string) {
   house(s)
   return id
 }
+/**
+ * A feature of the coast that has lost its sea — a land has been added beside it, or a neighbouring world now
+ * holds that side — becomes something that needs none: an inland feature that suits its land, named afresh.
+ */
+export function landlock(s: Setting, ids: string[]) {
+  for (const id of ids) {
+    const f = s.features?.find((x) => x.id === id)
+    if (!f || featureOf(f.what).where !== 'coast') continue
+    const terrain = CARDS[f.land]?.cues[s.board[f.land]?.active ?? 0]?.text ?? ''
+    const here = (s.features ?? []).filter((x) => x.land === f.land).map((x) => x.what)
+    const fits = featuresFor(terrain, false, s.answers.genres).map((k) => k.what)
+    const fresh = fits.filter((k) => !here.includes(k))
+    const pool = fresh.length ? fresh : fits
+    if (pool.length) setFeature(s, id, pool[rand(pool.length)])
+  }
+}
+
 /** Put something in a feature of its land. */
 export function setAt(s: Setting, id: string | undefined, feature: string) {
   if (id && s.features?.some((f) => f.id === feature)) (s.at ??= {})[id] = feature

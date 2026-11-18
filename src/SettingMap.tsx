@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Emblem } from './Emblem'
 import { useImages } from './imageStore'
 import { buildMap, washFor } from './mapgen'
@@ -64,10 +64,10 @@ const LAYERS: { group: string; items: [key: string, label: string, sample: (t: T
 const HIDDEN_KEY = 'storyloom-map-hidden'
 
 /**
- * `onPick` is told which land is being looked at; `onOpen` is told what was clicked, to show its description; `selected` is the land shown as
+ * `onLandlocked` is told of features of the coast that the map finds no sea for. `onPick` is told which land is being looked at; `onOpen` is told what was clicked, to show its description; `selected` is the land shown as
  * picked; `tools` sit above the map; `compact` folds the legend away.
  */
-export function SettingMap({ s, onPick, onOpen, selected, tools, compact }: { s: Setting; onPick?: (id: string) => void; onOpen?: (id: string) => void; selected?: string; tools?: ReactNode; compact?: boolean }) {
+export function SettingMap({ s, onPick, onOpen, onLandlocked, selected, tools, compact }: { s: Setting; onPick?: (id: string) => void; onOpen?: (id: string) => void; onLandlocked?: (ids: string[]) => void; selected?: string; tools?: ReactNode; compact?: boolean }) {
   // Clicking something on the map opens its description in a box; without one to open, the page goes to its entry.
   const go = onOpen ?? scrollGo
   // Looking closely at one land: the map draws in on it and shows everything it holds. With a panel beside the
@@ -83,6 +83,9 @@ export function SettingMap({ s, onPick, onOpen, selected, tools, compact }: { s:
   // Renaming changes the lettering but never the land, so the drawing is redone only when names change.
   const map = useMemo(() => buildMap(s), [s.id, s.seed, s.names, s.board, s.built, s.entities, s.people, s.beyond])
   const t = THEMES[map.theme]
+  // A feature of the coast with no sea in reach is reported, so that it can be made into something else.
+  const cutOff = map.regions.flatMap((r) => r.features.filter((f) => f.landlocked).map((f) => f.id)).join()
+  useEffect(() => { if (cutOff) onLandlocked?.(cutOff.split(',')) }, [cutOff])
   const near = map.regions.find((r) => r.id === (onPick ? selected : inner))
   // How far in: the land and its features fill the sheet, within reason.
   const view = (() => {
