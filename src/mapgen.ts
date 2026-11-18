@@ -524,6 +524,21 @@ export function buildMap(s: Setting): MapData {
   const lakes: { c: P; r: number; poly: P[]; region: number; feature?: string }[] = []
   /** The clear ground found in each land, for showing more when it is looked at closely. */
   const spotsOf: P[][] = []
+  /**
+   * Which of a land's features a spot belongs to. Not simply the nearest: the ground is bent by the same sort of
+   * roughness that shapes the coast, in broad swells and smaller wobbles, and some features reach further than
+   * others, so that the borders between them wander like the borders of lands and no two are the same size.
+   */
+  const groundIn = (i: number, list: { at: P }[], q: P): number => {
+    const bx = q[0] + (rough(q[0] / 150 + 31 + i, q[1] / 150 + 2) - 0.5) * 150 + (broken(q[0] / 52 + 7, q[1] / 52 + i) - 0.5) * 64 + (edge(q[0] / 21 + i, q[1] / 21 + 5) - 0.5) * 22
+    const by = q[1] + (rough(q[0] / 150 + 9, q[1] / 150 + 47 + i) - 0.5) * 150 + (broken(q[0] / 52 + i + 13, q[1] / 52 + 3) - 0.5) * 64 + (edge(q[0] / 21 + 11, q[1] / 21 + i) - 0.5) * 22
+    let best = 0, least = Infinity
+    list.forEach((m, k) => {
+      const d = Math.hypot(m.at[0] - bx, m.at[1] - by) - ((k * 37 + i * 11) % 5) * 9
+      if (d < least) { least = d; best = k }
+    })
+    return best
+  }
   /** The middle of the ground each feature takes up within its land, and where its name is lettered. */
   const anchorsOf: { id: string; at: P; label: P }[][] = []
   const regions = roots.map((id, i): MapRegion => {
@@ -614,7 +629,7 @@ export function buildMap(s: Setting): MapData {
     }
     anchorsOf[i] = anchors
     /** Which feature's ground a spot is on. */
-    const groundOf = (q: P) => anchors.reduce((best, m) => (Math.hypot(m.at[0] - q[0], m.at[1] - q[1]) < Math.hypot(best.at[0] - q[0], best.at[1] - q[1]) ? m : best), anchors[0])?.id
+    const groundOf = (q: P) => anchors[groundIn(i, anchors, q)]?.id
 
     // Sites first, then the settlements and dangerous places that stand anywhere in the place.
     const within = new Set(subtree(s.board, id))
@@ -711,7 +726,7 @@ export function buildMap(s: Setting): MapData {
     const anchors = anchorsOf[i]
     const base = shareIds.length
     anchors.forEach((m) => shareIds.push(m.id))
-    const nearest = (q: P) => anchors.reduce((best, m, k) => (Math.hypot(m.at[0] - q[0], m.at[1] - q[1]) < Math.hypot(anchors[best].at[0] - q[0], anchors[best].at[1] - q[1]) ? k : best), 0)
+    const nearest = (q: P) => groundIn(i, anchors, q)
     if (anchors.length > 1) for (let k = 0; k < own.length; k++) if (own[k] === i) {
       const gx = k % cols, gy = (k - gx) / cols
       share[k] = base + nearest([(gx - PADC) * g + g / 2, (gy - PADC) * g + g / 2])

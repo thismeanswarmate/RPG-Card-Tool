@@ -2093,12 +2093,17 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     expect(G.featureAt(s, stray)).toBe(given)
     // The map sets each mark on the ground of its own feature.
     const region = M.buildMap(s).regions.find((r) => r.id === land)!
-    const nearest = (x: number, y: number) => region.features.reduce((a, f) => (Math.hypot(f.ax - x, f.ay - y) < Math.hypot(a.ax - x, a.ay - y) ? f : a)).id
     expect(region.features.map((f) => f.id)).toEqual([first[0].id, id])
     expect(region.features.every((f) => f.d)).toBe(true)
-    const placed = region.sites.filter((m) => nearest(m.x, m.y) === G.featureAt(s, m.id)).length
+    // The ground of a feature is its outline; a mark or a clear spot is on a feature's ground when it lies inside it.
+    const groundOf = (x: number, y: number) => region.features.find((f) => f.d!.split('Z').filter(Boolean).some((piece) => M.inside([x, y], coords(piece))))?.id
+    const placed = region.sites.filter((m) => groundOf(m.x, m.y) === G.featureAt(s, m.id)).length
     expect(placed).toBeGreaterThanOrEqual(region.sites.length - 1)
-    for (const p of region.spots) expect(p.feature).toBe(nearest(p.x, p.y))
+    expect(region.spots.filter((p) => groundOf(p.x, p.y) === p.feature).length).toBeGreaterThanOrEqual(region.spots.length * 0.85)
+    // The border between two features wanders: it is far longer than a straight line across the land would be.
+    const outline = coords(region.features[0].d!.split('Z')[0])
+    const turns = outline.slice(2).filter((p, k) => { const a = outline[k], b = outline[k + 1]; return Math.abs((b[0] - a[0]) * (p[1] - b[1]) - (b[1] - a[1]) * (p[0] - b[0])) > 4 }).length
+    expect(turns).toBeGreaterThan(20)
     // Removing a feature moves what it held to another of the land's; removing the land takes its features with it.
     B.remove(s, id)
     expect(G.featuresOf(s, land).map((f) => f.id)).toEqual([first[0].id])
