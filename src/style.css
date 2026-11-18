@@ -497,3 +497,7 @@ svg.emblem { flex: none; vertical-align: middle; }
 
 .entry.feature { border-left-color: var(--muted); }
 .feature-text { margin: 0; font-family: Georgia, 'Iowan Old Style', serif; line-height: 1.55; }
+
+.map-popup { gap: 12px; }
+.map-popup .entry { background: none; padding: 0 0 0 12px; }
+.map-popup .actions { display: flex; justify-content: flex-end; gap: 8px; }

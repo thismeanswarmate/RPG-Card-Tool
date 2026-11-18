@@ -63,11 +63,12 @@ const LAYERS: { group: string; items: [key: string, label: string, sample: (t: T
 const HIDDEN_KEY = 'storyloom-map-hidden'
 
 /**
- * `onPick` is told what was clicked, in place of scrolling the page to it; `selected` is the land shown as
+ * `onPick` is told which land is being looked at; `onOpen` is told what was clicked, to show its description; `selected` is the land shown as
  * picked; `tools` sit above the map; `compact` folds the legend away.
  */
-export function SettingMap({ s, onPick, selected, tools, compact }: { s: Setting; onPick?: (id: string) => void; selected?: string; tools?: ReactNode; compact?: boolean }) {
-  const go = onPick ?? scrollGo
+export function SettingMap({ s, onPick, onOpen, selected, tools, compact }: { s: Setting; onPick?: (id: string) => void; onOpen?: (id: string) => void; selected?: string; tools?: ReactNode; compact?: boolean }) {
+  // Clicking something on the map opens its description in a box; without one to open, the page goes to its entry.
+  const go = onOpen ?? scrollGo
   // Looking closely at one land: the map draws in on it and shows everything it holds. With a panel beside the
   // map the land picked there is the one looked at; on the long page the map keeps its own.
   const [inner, setInner] = useState<string | null>(null)
@@ -93,8 +94,9 @@ export function SettingMap({ s, onPick, selected, tools, compact }: { s: Setting
   // Lettering and marks grow less than the land does, so that a land seen closely has room for more of them.
   const z = view.k ** -0.45
   const about = (x: number, y: number) => (near ? `translate(${x} ${y}) scale(${z}) translate(${-x} ${-y})` : undefined)
-  /** Clicking a land looks closely at it; clicking it again, or anything in it, goes to its entry. */
-  const enter = (id: string) => { if (onPick) onPick(id); else if (inner === id) scrollGo(id); else setInner(id) }
+  /** Clicking a land looks closely at it and nothing more; clicking its name or emblem once there opens its description. */
+  const enter = (id: string) => { if (near?.id === id) return; if (onPick) onPick(id); else setInner(id) }
+  const name = (id: string) => (near?.id === id ? go(id) : enter(id))
   const leave = () => { if (onPick) onPick('world'); else setInner(null) }
   // What else the land holds, shown on its clear ground when it is looked at closely.
   const within = (home?: string) => !!near && !!home && !!s.board[home] && rootOf(s.board, home) === near.id
@@ -144,7 +146,7 @@ export function SettingMap({ s, onPick, selected, tools, compact }: { s: Setting
   return (
     <figure className="atlas">
       {tools}
-      {!onPick && near && <div className="map-tools"><button onClick={leave}>← World map</button><span className="hint">Looking at {near.name}: click it again, or anything in it, to read about it.</span></div>}
+      {!onPick && near && <div className="map-tools"><button onClick={leave}>← World map</button><span className="hint">Looking at {near.name}: click its name, or anything in it, to read about it.</span></div>}
       <svg ref={svg} viewBox={`0 0 ${map.w} ${map.h}`} role="img" aria-label={`Map of ${title}`} fontFamily="Georgia, 'Iowan Old Style', serif">
         <defs>
           <radialGradient id="vignette" cx="50%" cy="50%" r="72%">
@@ -280,7 +282,7 @@ export function SettingMap({ s, onPick, selected, tools, compact }: { s: Setting
                 const at = { x: r.x + (land ? 15 : 0) - nameHalf(r.name) - 30, y: r.y - 19, size: 24 }
                 return (
                   <g className="map-emblems" transform={about(r.x, r.y)}>
-                    {land && <g onClick={() => enter(r.id)}><Emblem spec={land} size={at.size} x={at.x} y={at.y} title={`Emblem of ${r.name}`} /></g>}
+                    {land && <g onClick={() => name(r.id)}><Emblem spec={land} size={at.size} x={at.x} y={at.y} title={`Emblem of ${r.name}`} /></g>}
                     {kept.map((d, i) => {
                       const spec = emblemOf(s, d.id)
                       const cx = picture ? r.x - 35 - i * 17 : r.x - kept.length * 9 + i * 18 + 0.5
@@ -289,7 +291,7 @@ export function SettingMap({ s, onPick, selected, tools, compact }: { s: Setting
                   </g>
                 )
               })()}
-              <g className="place-label" transform={about(r.x, r.y)} onClick={() => enter(r.id)}>
+              <g className="place-label" transform={about(r.x, r.y)} onClick={() => name(r.id)}>
                 {on('names') && <text x={r.x + shift} y={r.y} textAnchor="middle" fontSize="17" fontWeight="700" letterSpacing=".06em" fill={t.ink} stroke={t.halo} strokeWidth="4.5" paintOrder="stroke">{r.name.charAt(0).toUpperCase() + r.name.slice(1)}</text>}
                 {on('terrain') && <text x={r.x + shift} y={r.y + (on('names') ? 13 : 3)} textAnchor="middle" fontSize="8.5" letterSpacing=".16em" fill={t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{r.terrain.toUpperCase()}</text>}
               </g>
@@ -376,7 +378,7 @@ export function SettingMap({ s, onPick, selected, tools, compact }: { s: Setting
         <rect x="14" y="14" width={map.w - 28} height={map.h - 28} fill="none" stroke={t.ink} strokeWidth=".8" pointerEvents="none" />
       </svg>
       <figcaption>
-        <span className="hint">Click a place, a mark or an emblem to read about it. A neighbouring world lies behind a dot-and-dash frontier. Turn any part of the map on or off in the legend; Save map saves it as it is shown.</span>
+        <span className="hint">Click a land to look closely at it, then its name or anything in it to read about it. A neighbouring world lies behind a dot-and-dash frontier. Turn any part of the map on or off in the legend; Save map saves it as it is shown.</span>
         <button onClick={save}>Save map</button>
       </figcaption>
       {compact ? <details className="legend-fold"><summary>Legend: turn parts of the map on and off</summary>{legend}</details> : legend}

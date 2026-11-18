@@ -608,6 +608,14 @@ function Gazetteer({ s }: { s: SettingData }) {
   const show = (next: 'map' | 'page') => { setView(next); try { localStorage.setItem('storyloom-view', next) } catch { /* private window */ } }
   // What the panel beside the map shows: one land with everything in it, or the world as a whole.
   const [picked, setPicked] = useState('world')
+  // What is open in a box over the map: one thing clicked on it, with its description.
+  const [open, setOpen] = useState<string | null>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(null) }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [open])
   // What is folded is remembered for each setting in this browser.
   const foldKey = `storyloom-folded:${s.id}`
   const [folded, setFolded] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem(foldKey) ?? '[]') as string[]) } catch { return new Set() } })
@@ -783,6 +791,40 @@ function Gazetteer({ s }: { s: SettingData }) {
           </article>
         )
   }
+  /** What the box over the map shows for one thing: its name, what it is, and its description. */
+  const popup = (id: string) => {
+    const feature = s.features?.find((f) => f.id === id)
+    const entity = s.entities.find((e) => e.id === id), person = s.people.find((c) => c.id === id)
+    const built = s.built?.find((b) => b.id === id), made = s.drawn?.find((d) => d.id === id)
+    if (feature) return (
+      <section className="entry nested feature">
+        <h5><Name id={id} s={s} /> <small>feature · {feature.what.toLowerCase()} · in {s.names[feature.land]}</small></h5>
+        <p className="feature-text">{featureText(s, feature)}</p>
+      </section>
+    )
+    if (entity) return <EntityBlock e={entity} s={s} />
+    if (person) return <PersonBlock c={person} s={s} />
+    if (built) return <BuiltBlock b={built} s={s} />
+    if (made) return <DrawnBlock d={made} s={s} />
+    if (!s.board[id]) return null
+    const root = rootOf(s.board, id), v = placeView(s, root)
+    if (id === root) return (
+      <section className="entry place">
+        <h4><Crest id={id} s={s} size={32} /> <Name id={id} s={s} /> <small>{v.aka}</small></h4>
+        <Picture id={id} s={s} />
+        <Prose s={s} text={[v.land.text]} home={id} owner={id} />
+        {featuresOf(s, id).length > 0 && <p className="hint">Made up of {featuresOf(s, id).map((f) => s.names[f.id]).join(', ')}.</p>}
+      </section>
+    )
+    const site = v.sites.find((x) => x.id === id)
+    return site ? (
+      <section className="entry nested site">
+        <h5><Name id={id} s={s} /> <small>site · {siteKind(s, id).toLowerCase()} · in {s.names[root]}</small></h5>
+        <Picture id={id} s={s} />
+        <Prose s={s} text={[site.text]} home={id} owner={id} />
+      </section>
+    ) : null
+  }
   return (
     <EditCtx.Provider value={editing}>
     <FoldCtx.Provider value={fold}>
@@ -819,7 +861,7 @@ function Gazetteer({ s }: { s: SettingData }) {
         <>
           {roots.length > 0 && <ImagePanel s={s} />}
           {roots.length > 0 && <Picture id="world" s={s} />}
-          {roots.length > 0 && <SettingMap s={s} />}
+          {roots.length > 0 && <SettingMap s={s} onOpen={setOpen} />}
           <nav className="gaz-nav">
             {roots.map((r) => <button key={r} onClick={() => go(r)}>{upper(s.names[r])}</button>)}
           </nav>
@@ -830,10 +872,10 @@ function Gazetteer({ s }: { s: SettingData }) {
       ) : (
         <div className="mapview">
           <div className="mapview-map">
-            <SettingMap s={s} compact onPick={go} selected={shown} tools={
+            <SettingMap s={s} compact onPick={(id) => setPicked(landFor(id))} onOpen={setOpen} selected={shown} tools={
               <div className="map-tools">
-                <button className={shown === 'world' ? 'on' : ''} onClick={() => go('world')}>World</button>
-                {roots.map((r) => <button key={r} className={shown === r ? 'on' : ''} onClick={() => go(r)}>{upper(s.names[r])}</button>)}
+                <button className={shown === 'world' ? 'on' : ''} onClick={() => setPicked('world')}>World</button>
+                {roots.map((r) => <button key={r} className={shown === r ? 'on' : ''} onClick={() => setPicked(r)}>{upper(s.names[r])}</button>)}
                 {editing && <button className="primary" onClick={() => add(addPlace)}>+ Land</button>}
               </div>
             } />
@@ -842,7 +884,7 @@ function Gazetteer({ s }: { s: SettingData }) {
           <aside className="mapview-panel" aria-label="What is picked on the map">
             {shown === 'world' ? (
               <>
-                <p className="hint">Click a land, a site or a settlement on the map to see it here{editing ? ', and use the buttons under the map to add to whatever is picked' : ''}.</p>
+                <p className="hint">Click a land on the map to look closely at it, and anything in it to read about it{editing ? ', and use the buttons under the map to add to whatever is picked' : ''}.</p>
                 <ImagePanel s={s} />
                 <Picture id="world" s={s} />
                 {worldPart}
@@ -850,6 +892,18 @@ function Gazetteer({ s }: { s: SettingData }) {
               </>
             ) : placeEntry(shown, true)}
           </aside>
+        </div>
+      )}
+      {open && s.names[open] && (
+        <div className="modal-back" onClick={() => setOpen(null)}>
+          <div className="modal wide map-popup" role="dialog" aria-modal="true" aria-label={s.names[open]} onClick={(e) => e.stopPropagation()}>
+            {/* Shown open here whether or not it is folded on the page. */}
+            <FoldCtx.Provider value={{ folded: new Set(), toggle: () => setOpen(null) }}>{popup(open)}</FoldCtx.Provider>
+            <div className="actions">
+              {view === 'page' && <button onClick={() => { const id = open; setOpen(null); setTimeout(() => go(id), 30) }}>Go to its entry</button>}
+              <button className="primary" onClick={() => setOpen(null)}>Close</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
