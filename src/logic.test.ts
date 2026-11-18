@@ -2108,6 +2108,32 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     expect(s.features!.some((f) => f.land === land)).toBe(false)
     expect(Object.keys(s.at ?? {}).some((x) => !s.names[x])).toBe(false)
   })
+  it('keeps each feature to the sorts of country it belongs in, and gives every land enough to choose from', async () => {
+    const { cardsOf } = await import('./store')
+    const lands = Object.values(cardsOf({ custom: [] })).filter((c) => c.type === 'terrain').map((c) => c.cues[0].text).filter((n) => T.scaleOf(n) === 'land')
+    expect(lands.length).toBeGreaterThan(50)
+    for (const land of lands) {
+      // Without a coast and with no genre in the mix there are still several features that suit it …
+      const inland = F.featuresFor(land, false, [])
+      expect(inland.length, land).toBeGreaterThanOrEqual(3)
+      // … and every one of them belongs to a sort of country that the land is.
+      for (const f of F.featuresFor(land, true, ['fantasy', 'horror'])) expect(F.belongsIn(f.what).some((c) => F.countryOf(land).includes(c)), `${f.what} in ${land}`).toBe(true)
+    }
+    const names = (land: string, coast = true) => F.featuresFor(land, coast, ['fantasy', 'horror']).map((f) => f.what)
+    // Dry country has its buttes and oases and no glaciers or groves; ice has its caves and no oasis.
+    expect(names('Dunes')).toEqual(expect.arrayContaining(['Butte', 'Oasis Basin', 'Wadi']))
+    for (const no of ['Glacier', 'Grove', 'Fjord', 'Great Lake', 'Mountain Pass', 'Kelp Forest']) expect(names('Dunes')).not.toContain(no)
+    expect(names('Ice Sheet')).toEqual(expect.arrayContaining(['Glacier', 'Ice Caves']))
+    for (const no of ['Oasis Basin', 'Butte', 'Grove', 'Atoll', 'Lagoon', 'Reef']) expect(names('Ice Sheet')).not.toContain(no)
+    // High country has passes and calderas; flat farmland has neither.
+    expect(names('Mountain Range')).toEqual(expect.arrayContaining(['Mountain Pass', 'Caldera', 'Gorge']))
+    for (const no of ['Mountain Pass', 'Caldera', 'Volcano', 'Butte']) expect(names('Farmland')).not.toContain(no)
+    // Nothing of the coast turns up in a land with no sea.
+    for (const f of F.featuresFor('Old Forest', false, ['fantasy'])) expect(f.where).toBe('inland')
+    // Each feature's ground has a colour of its own kind.
+    expect(F.toneOf('Atoll')).not.toBe(F.toneOf('Caldera'))
+    expect(F.toneOf('Great Lake')).toMatch(/^#[0-9a-f]{6}$/)
+  })
   it('leaves no scrap of a place stranded inside a bordering world', () => {
     // A piece of one of our places, cut off from it and lying in a neighbour's land, is the neighbour's.
     const polys = (d: string) => d.split('Z').filter(Boolean).map((x) => coords(x))
@@ -2132,6 +2158,8 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
       // Any kind will do here, whether or not it is still dealt as a land: older settings keep the lands they had.
       const card = Object.values(allCardsOf({ custom: [] })).find((c) => c.type === 'terrain' && c.cues[0].text === terrain)!
       B.choose(s, place, 'terrain', `${card.id}:0`, place)
+      // The land alone is under test here, so the feature it arrived with is set aside.
+      s.features = []
       return s
     }
     const pieces = (s: import('./setting').Setting) => M.buildMap(s).regions[0].d.split('Z').filter(Boolean).length

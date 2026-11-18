@@ -4,6 +4,7 @@ import { useImages } from './imageStore'
 import { buildMap, washFor } from './mapgen'
 import { rootOf } from './logic'
 import { titleCase } from './names'
+import { toneOf } from './features'
 import { featureAt, type Setting } from './setting'
 import { emblemOf } from './settingBuild'
 
@@ -30,7 +31,7 @@ const LAYERS: { group: string; items: [key: string, label: string, sample: (t: T
     ['borders', 'Borders', (t) => <path d="M3 8H21" stroke={t.faint} strokeWidth="1.4" strokeDasharray="4 3" />],
     ['emblems', 'Land emblems', (t) => <path d="M7 2H17V9Q17 13 12 15Q7 13 7 9Z" fill={t.route} stroke={t.ink} strokeWidth=".8" />],
     ['cultures', 'Culture emblems', (t) => <path d="M9 4H15V9Q15 11.500 12 13Q9 11.500 9 9Z" fill={t.water} stroke={t.ink} strokeWidth=".8" />],
-    ['features', 'Features', (t) => <><path d="M12 3L15.500 8L12 13L8.5 8Z" fill={t.faint} stroke={t.ink} strokeWidth=".7" /></>],
+    ['features', 'Features', (t) => <><rect x="3" y="3" width="9" height="10" fill="#b9c79a" /><rect x="12" y="3" width="9" height="10" fill="#a9bfae" /><path d="M12 3V13" stroke={t.ink} strokeWidth=".8" strokeDasharray="2 2" /></>],
     ['pictures', 'Pictures', (t) => <circle cx="12" cy="8" r="6" fill={t.faint} stroke={t.ink} strokeWidth="1.2" />],
   ] },
   { group: 'Water', items: [
@@ -165,7 +166,7 @@ export function SettingMap({ s, onPick, onOpen, selected, tools, compact }: { s:
             <stop offset="100%" stopColor={t.edge} stopOpacity=".85" />
           </radialGradient>
           {/* The land, for keeping a river's banks off the sea at its mouth; and all fresh water, for keeping its shallows inside it. */}
-          {near && <clipPath id={`land-${near.id}`}><path d={near.d} /></clipPath>}
+          {map.regions.map((r) => r.features.some((f) => f.d) && <clipPath key={r.id} id={`ground-${r.id}`}><path d={r.d} /></clipPath>)}
           <clipPath id="dry-land">{[...map.regions, ...map.beyond].map((r) => <path key={r.id} d={r.d} />)}</clipPath>
           <clipPath id="fresh-water">{rivers.map((r, i) => <path key={`r${i}`} d={r.shape} />)}{lakes.map((l, i) => <path key={`l${i}`} d={l.d} />)}</clipPath>
           {/* The land of the neighbouring worlds, for keeping the frontier line to where it belongs. */}
@@ -204,6 +205,21 @@ export function SettingMap({ s, onPick, onOpen, selected, tools, compact }: { s:
           <path key={r.id} className="region" d={r.d} fill={!on('wash') ? t.paper : tints[`${s.id}:${r.id}`] ? washFor(tints[`${s.id}:${r.id}`], map.theme) : r.colour} fillOpacity=".8" stroke={r.id === near?.id ? t.ink : on('borders') ? t.faint : 'none'} strokeWidth={r.id === near?.id ? 2.6 * z : 0.9} strokeDasharray={r.id === near?.id ? undefined : '5 4'} onClick={() => enter(r.id)}>
             <title>{r.name} — {r.terrain}</title>
           </path>
+        ))}
+
+        {/* The features of each land, drawn as small lands within it: each has its own ground, washed in a colour
+            of its own kind over the land's, with a fine border between it and the next. Clicking one in the land
+            being looked at opens it; anywhere else it is part of its land. */}
+        {on('features') && map.regions.map((r) => r.features.some((f) => f.d) && (
+          <g key={r.id} clipPath={`url(#ground-${r.id})`}>
+            {r.features.map((f) => f.d && (
+              <path key={f.id} className="region" d={f.d} fill={on('wash') ? washFor(toneOf(f.what), map.theme) : 'none'} fillOpacity=".42"
+                stroke={on('borders') ? t.ink : 'none'} strokeOpacity=".5" strokeWidth={r.id === near?.id ? 1.2 * z : 0.7} strokeDasharray={r.id === near?.id ? `${4 * z} ${3 * z}` : '3 3'}
+                onClick={() => (r.id === near?.id ? go(f.id) : enter(r.id))}>
+                <title>{f.name} — {f.what}, in {r.name}</title>
+              </path>
+            ))}
+          </g>
         ))}
 
         {/* Fresh water, drawn as the sea is: a dark shore, the sea's colour, and paler shallows along the banks.
@@ -311,21 +327,14 @@ export function SettingMap({ s, onPick, onOpen, selected, tools, compact }: { s:
           )
         })}
 
-        {/* Seen closely, a land shows what it is made up of, and everyone and everything in it. The ground of each
-            feature is bounded by a fine line, as the lands are on the world map. */}
-        {near && on('features') && (
-          <g fill="none" stroke={t.ink} strokeWidth={1.1 * z} strokeDasharray={`${3 * z} ${3 * z}`} opacity=".55" pointerEvents="none" clipPath={`url(#land-${near.id})`}>
-            {near.features.map((f) => f.d && <path key={f.id} d={f.d} />)}
-          </g>
-        )}
+        {/* Seen closely, each feature is lettered as a land is: its name, and what kind of place it is beneath. */}
         {near && on('features') && near.features.map((f) => {
           const lake = map.lakes.find((l) => l.feature === f.id)
-          const [x, y] = lake ? [lake.x, lake.y - 9] : [f.x, f.y]
+          const [x, y] = lake ? [lake.x, lake.y + 4] : [f.x, f.y]
           return (
-            <g key={f.id} className="site" transform={about(x, y)} onClick={() => go(f.id)}>
-              {!lake && <path d="M0-5L3.500 0L0 5L-3.5 0Z" transform={`translate(${x} ${y})`} fill={t.faint} stroke={t.ink} strokeWidth=".8" />}
-              <text x={x} y={y + (lake ? 9 : 15)} textAnchor="middle" fontSize="10.5" fontStyle="italic" fontWeight="700" fill={t.ink} stroke={t.halo} strokeWidth="3" paintOrder="stroke">{f.name}</text>
-              <text x={x} y={y + (lake ? 18 : 24)} textAnchor="middle" fontSize="6.5" letterSpacing=".14em" fill={t.ink} stroke={t.halo} strokeWidth="2.4" paintOrder="stroke">{f.what.toUpperCase()}</text>
+            <g key={f.id} className="place-label" transform={about(x, y)} onClick={() => go(f.id)}>
+              <text x={x} y={y} textAnchor="middle" fontSize="12.5" fontWeight="700" letterSpacing=".05em" fill={t.ink} stroke={t.halo} strokeWidth="3.6" paintOrder="stroke">{f.name}</text>
+              <text x={x} y={y + 10} textAnchor="middle" fontSize="6.5" letterSpacing=".16em" fill={t.ink} stroke={t.halo} strokeWidth="2.4" paintOrder="stroke">{f.what.toUpperCase()}</text>
             </g>
           )
         })}

@@ -608,7 +608,9 @@ export function buildMap(s: Setting): MapData {
         }
         at = best
       }
-      anchors.push({ id: f.id, at, label: label ?? at })
+      // A feature is lettered at the middle of its own ground, as a land is.
+      void label
+      anchors.push({ id: f.id, at, label: at })
     }
     anchorsOf[i] = anchors
     /** Which feature's ground a spot is on. */
@@ -632,7 +634,7 @@ export function buildMap(s: Setting): MapData {
       // features, round the land's own.
       const home = anchors.find((m) => m.id === featureAt(s, sid))
       const [ox, oy] = home ? home.at : [cx, cy]
-      const mine = (p: P) => !home || (groundOf(p) === home.id && !anchors.some((m) => Math.abs(m.label[0] - p[0]) < 44 && p[1] > m.label[1] - 12 && p[1] < m.label[1] + 30))
+      const mine = (p: P) => !home || (groundOf(p) === home.id && !anchors.some((m) => Math.abs(m.label[0] - p[0]) < 62 && p[1] > m.label[1] - 20 && p[1] < m.label[1] + 22))
       let spot: P = [ox, oy]
       let found = false
       // Step round the centre until the mark sits on its own land, clear of the place's lettering and of the marks before it.
@@ -722,7 +724,7 @@ export function buildMap(s: Setting): MapData {
         ...(ground.length ? { d: ground.map(pathOf).join('') } : {}),
       })
     })
-    const taken = (q: P) => r.features.some((f) => Math.abs(f.x - q[0]) < 46 && q[1] > f.y - 12 && q[1] < f.y + 30)
+    const taken = (q: P) => r.features.some((f) => Math.abs(f.x - q[0]) < 62 && q[1] > f.y - 22 && q[1] < f.y + 24)
     r.spots = spotsOf[i].filter((q) => !taken(q)).map((q) => ({ x: r1(q[0]), y: r1(q[1]), ...(anchors.length ? { feature: anchors[nearest(q)].id } : {}) }))
   })
 

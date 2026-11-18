@@ -13,8 +13,6 @@ export interface FeatureKind {
   where: 'coast' | 'inland'
   /** The coldest and warmest land it suits, on the scale lands use: -2 polar to 2 hot. */
   temp: [number, number]
-  /** It belongs to high country, to wet country or to dry. */
-  needs?: 'high' | 'wet' | 'dry' | 'wood'
   /** It turns up only with this genre in the mix. */
   genre?: string
   /** For a lake, its least and greatest radius; for islands, how fine the scatter is. */
@@ -51,24 +49,24 @@ export const FEATURES: FeatureKind[] = [
   F('Lone Island', 'islet', 'coast', ANY, '{place} sits by itself off the coast of {land}, near enough to see and far enough to be left alone.'),
   F('Floating Isles', 'isles', 'coast', ANY, 'The rocks of {place} hang above the water, tethered by chains and rope bridges.', { genre: 'fantasy', grain: 22 }),
   // Mountain and rock.
-  F('Caldera', 'lake', 'inland', ANY, 'Long ago a mountain collapsed to form {place}, and the ring of cliffs it left still steams in cold weather.', { needs: 'high', size: [18, 60] }),
+  F('Caldera', 'lake', 'inland', ANY, 'Long ago a mountain collapsed to form {place}, and the ring of cliffs it left still steams in cold weather.', { size: [18, 60] }),
   F('Glacier', 'mark', 'inland', COLD, 'Down {place} a river of old ice grinds toward the lowlands, groaning at night and shedding milky meltwater.'),
-  F('Volcano', 'mark', 'inland', ANY, '{place} smokes most days and rumbles on some, and the soil on its slopes is the best in {land}.', { needs: 'high' }),
+  F('Volcano', 'mark', 'inland', ANY, '{place} smokes most days and rumbles on some, and the soil on its slopes is the best in {land}.'),
   F('Gorge', 'mark', 'inland', ANY, 'The river has cut {place} so deep that the bottom sees the sun for an hour a day.'),
-  F('Mountain Pass', 'mark', 'inland', ANY, '{place} is the one way through, open for part of the year and paid for by everyone who uses it.', { needs: 'high' }),
-  F('Butte', 'mark', 'inland', WARM, '{place} stands alone on the flat, steep on every side and visible for two days before you reach it.', { needs: 'dry' }),
+  F('Mountain Pass', 'mark', 'inland', ANY, '{place} is the one way through, open for part of the year and paid for by everyone who uses it.'),
+  F('Butte', 'mark', 'inland', WARM, '{place} stands alone on the flat, steep on every side and visible for two days before you reach it.'),
   F('Sinkhole', 'lake', 'inland', ANY, 'The ground fell in at {place} within living memory, and the pool at the bottom has never been sounded.', { size: [5, 12] }),
   // Water.
-  F('Oasis Basin', 'lake', 'inland', HOT, 'Water rises at {place} in the middle of dry country, and everything green for a week in any direction is here.', { needs: 'dry', size: [8, 22] }),
-  F('Wadi', 'mark', 'inland', HOT, '{place} is dry for all but a few days a year, and on those days it is a river in a hurry.', { needs: 'dry' }),
-  F('Dry Lake Bed', 'mark', 'inland', HOT, 'The cracked clay of {place} lies where water once stood, flat and hard enough to race across.', { needs: 'dry' }),
+  F('Oasis Basin', 'lake', 'inland', HOT, 'Water rises at {place} in the middle of dry country, and everything green for a week in any direction is here.', { size: [8, 22] }),
+  F('Wadi', 'mark', 'inland', HOT, '{place} is dry for all but a few days a year, and on those days it is a river in a hurry.'),
+  F('Dry Lake Bed', 'mark', 'inland', HOT, 'The cracked clay of {place} lies where water once stood, flat and hard enough to race across.'),
   F('Hot Springs', 'lake', 'inland', ANY, 'Warm water comes up at {place} smelling of struck matches, and people travel a long way to sit in it.', { size: [5, 11] }),
   F('Great Lake', 'lake', 'inland', COOL, '{place} is wide enough to have its own weather, and the far shore is a rumour on most days.', { size: [60, 150] }),
   F('Waterfall', 'mark', 'inland', ANY, 'The river goes over the edge at {place} and can be heard long before it is seen.'),
   F('Tar Pits', 'lake', 'inland', WARM, 'Black pools seep up at {place}, and now and then give back the bones of something that walked in long ago.', { size: [5, 10] }),
   // Hidden places.
   F('Hidden Valley', 'mark', 'inland', ANY, 'One path leads into {place}, and those who live there have never seen a reason to mark it.'),
-  F('Grove', 'mark', 'inland', MILD, 'The trees of {place} were standing before {land} had a name, and nobody has cut one in all that time.', { needs: 'wood' }),
+  F('Grove', 'mark', 'inland', MILD, 'The trees of {place} were standing before {land} had a name, and nobody has cut one in all that time.'),
   F('Glen', 'mark', 'inland', COOL, '{place} is a narrow green fold in the hills, wet underfoot and out of the wind.'),
   F('Barrow Downs', 'mark', 'inland', COOL, 'Grassed-over mounds crowd the ridges of {place}, each one somebody once thought worth remembering.'),
   F('Ice Caves', 'mark', 'inland', COLD, 'Inside {place} blue tunnels wind through old ice, lit from above and never quite silent.'),
@@ -81,18 +79,58 @@ export const FEATURES: FeatureKind[] = [
 export const FEATURE_BY_NAME = new Map(FEATURES.map((f) => [f.what, f]))
 export const featureOf = (what: string) => FEATURE_BY_NAME.get(what) ?? F(what, 'mark', 'inland', ANY, '{place} lies in {land}.')
 
-/** Whether a kind of feature suits a land, by its climate, its country and whether it has a coast. */
+/** The sorts of country a land can be, for saying which features belong in it. A land may be of more than one. */
+export type Country = 'wood' | 'open' | 'high' | 'wet' | 'dry' | 'cold' | 'strange'
+const COUNTRY: [Country, RegExp][] = [
+  ['wood', /forest|wood|taiga|pine barrens|sprawl/],
+  ['open', /steppe|savanna|heath|moor|prairie|downs|farmland|plain|scrubland|hill country|river valley|floodplain|archipelago|meadow/],
+  ['high', /highland|plateau|peak|steps|karst|mountain|volcanic|canyon|mesa|rift|badland|hill country|downs|archipelago/],
+  ['wet', /marsh|fen|bog|mangrove|floodplain|lake country|river valley|drowned coast|rainforest/],
+  ['dry', /dune|erg|desert|badland|mesa|canyon|salt|ash waste|dust bowl|scrubland|petrified|savanna/],
+  ['cold', /tundra|permafrost|snowfield|ice|frozen|taiga|boreal/],
+  ['strange', /bone fields|sprawl|blighted|ash waste|volcanic|fungal|petrified/],
+]
+/** The sorts of country a land is. A kind with no sort of its own counts as open country. */
+export function countryOf(terrain: string): Country[] {
+  const name = terrain.toLowerCase()
+  const sorts = COUNTRY.filter(([, re]) => re.test(name)).map(([c]) => c)
+  return sorts.length ? sorts : ['open']
+}
+
+/** Which sorts of country each feature can lie in. A feature turns up only in a land of one of these sorts. */
+const BELONGS: Record<string, Country[]> = {
+  Fjord: ['high', 'cold', 'wood'], Headland: ['wood', 'open', 'high', 'wet', 'dry', 'cold', 'strange'], 'Sea Cliffs': ['high', 'open', 'cold'],
+  Estuary: ['wet', 'open', 'wood'], Lagoon: ['dry', 'wet', 'open', 'wood'], Delta: ['wet', 'open'],
+  Peninsula: ['wood', 'open', 'high', 'dry', 'cold', 'strange'], Bay: ['wood', 'open', 'high', 'wet', 'dry', 'cold', 'strange'], 'Sand Spit': ['open', 'dry', 'wet'],
+  'Sea Stacks': ['high', 'cold', 'open'], 'Sunken City': ['wood', 'open', 'wet', 'dry', 'strange'],
+  Atoll: ['dry', 'wet', 'open', 'wood'], 'Barrier Islands': ['open', 'wet', 'dry'], Shoals: ['open', 'wet', 'dry'], 'Kelp Forest': ['cold', 'high', 'wood', 'open'],
+  Reef: ['dry', 'wet', 'open', 'wood'], 'Tidal Island': ['open', 'wet', 'cold'], 'Lone Island': ['wood', 'open', 'high', 'wet', 'dry', 'cold', 'strange'],
+  'Floating Isles': ['wood', 'open', 'high', 'wet', 'dry', 'cold', 'strange'],
+  Caldera: ['high'], Glacier: ['cold', 'high'], Volcano: ['high', 'strange'], Gorge: ['high', 'dry', 'wood'], 'Mountain Pass': ['high'], Butte: ['dry'],
+  Sinkhole: ['high', 'open', 'wood', 'wet', 'strange'], 'Oasis Basin': ['dry'], Wadi: ['dry'], 'Dry Lake Bed': ['dry'],
+  'Hot Springs': ['high', 'cold', 'strange'], 'Great Lake': ['wood', 'open', 'wet', 'cold'], Waterfall: ['high', 'wood', 'wet'], 'Tar Pits': ['dry', 'open', 'strange'],
+  'Hidden Valley': ['high', 'wood', 'strange'], Grove: ['wood', 'open', 'wet'], Glen: ['high', 'open', 'wood'], 'Barrow Downs': ['open', 'strange', 'cold'],
+  'Ice Caves': ['cold'], 'Crystal Caverns': ['high', 'cold', 'strange'], 'Faerie Meadow': ['wood', 'open'], 'Sunless Valley': ['high', 'wood', 'strange'],
+  'Drowned Village': ['wet', 'open'],
+}
+/** The sorts of country a feature can lie in. */
+export const belongsIn = (what: string): Country[] => BELONGS[what] ?? ['open']
+
+/** What a feature is at heart, for the colour its ground is drawn in. */
+const TONE: [RegExp, string][] = [
+  [/island|isles|atoll|reef|shoal|kelp|stacks/i, '#7fb3b0'], [/fjord|headland|cliff|estuary|lagoon|delta|peninsula|bay|spit|sunken|drowned/i, '#8fae9c'],
+  [/caldera|volcano|gorge|pass|butte|sinkhole|cavern|caves|glacier/i, '#9a8d86'], [/oasis|lake|springs|waterfall/i, '#7fa6b4'],
+  [/wadi|dry lake|tar/i, '#c4a070'], [/.*/, '#86a06c'],
+]
+export const toneOf = (what: string) => TONE.find(([re]) => re.test(what))![1]
+
+/** Whether a kind of feature can lie in a land: by the sort of country it is, its climate, and whether it has a coast. */
 export function suits(f: FeatureKind, land: Land, terrain: string, coastal: boolean, genres: string[]): boolean {
   if (f.genre && !genres.includes(f.genre)) return false
   if (f.where === 'coast' && !coastal) return false
   if (land.temp < f.temp[0] - 0.01 || land.temp > f.temp[1] + 0.01) return false
-  if (f.needs === 'high' && !land.high) return false
-  if (f.needs === 'wet' && land.wet < 2) return false
-  if (f.needs === 'dry' && !(land.wet === 0 || (land.wet === 1 && land.temp >= 1.2))) return false
-  if (f.needs === 'wood' && !/forest|wood|taiga|grove/i.test(terrain)) return false
-  // Still water does not stand in desert or on ice, save where the feature is the reason for it.
-  if (f.form === 'lake' && land.wet === 0 && f.needs !== 'dry' && f.what !== 'Tar Pits' && f.what !== 'Hot Springs' && f.what !== 'Caldera') return false
-  return true
+  const sorts = countryOf(terrain)
+  return belongsIn(f.what).some((c) => sorts.includes(c))
 }
 /** The kinds of feature that suit a land. */
 export const featuresFor = (terrain: string, coastal: boolean, genres: string[]) => FEATURES.filter((f) => suits(f, landOf(terrain), terrain, coastal, genres))
