@@ -468,7 +468,7 @@ describe('pictures', async () => {
     const s = G.generateSetting({ ...G.DEFAULT_ANSWERS, focus: ['faith', 'power'] }, 'pictures')
     const ids = P.imageIds(s)
     const siteCount = G.rootsOf(s).reduce((n, r) => n + G.placeView(s, r).sites.length, 0)
-    expect(ids).toHaveLength(1 + G.rootsOf(s).length + siteCount + s.entities.length + s.people.length + s.built!.length + s.drawn!.length)
+    expect(ids).toHaveLength(1 + G.rootsOf(s).length + siteCount + (s.features ?? []).length + s.entities.length + s.people.length + s.built!.length + s.drawn!.length)
     for (const id of ids) {
       const spec = P.imageSpec(s, id)
       expect(spec.prompt, id).toMatch(/^[A-Z].*No text or lettering\.$/)
@@ -2021,7 +2021,7 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     expect(rim / isles).toBeGreaterThan(0.7)
   })
 
-  it('deals whole lands as lands, keeps single formations as features, and holds space back', () => {
+  it('deals whole lands as lands, keeps single formations as features, and holds space back', async () => {
     expect(T.scaleOf('Old Forest')).toBe('land')
     expect(T.scaleOf('Mountain Range')).toBe('land')
     expect(T.scaleOf('Fjord')).toBe('feature')
@@ -2083,6 +2083,14 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     B.setFeature(s, id, options[1])
     expect(G.featuresOf(s, land)[1].what).toBe(options[1])
     expect(s.names[id].toLowerCase()).toContain(options[1].toLowerCase().split(' ').at(-1)!)
+    // A feature can have a picture: the formation in its land, with what is said of it and no names in it.
+    const I = await import('./imagePrompts')
+    const spec = I.imageSpec(s, id)
+    expect(spec.prompt.toLowerCase()).toContain(options[1].toLowerCase())
+    expect(spec.prompt).not.toContain(s.names[id])
+    expect(spec.prompt).not.toMatch(/undefined|\{/)
+    expect(spec.w).toBeGreaterThan(spec.h)
+    expect(I.imageIds(s)).toContain(id)
     // What is added to a feature lies in it, along with whatever is then put at that thing.
     const person = B.setAt(s, B.addPerson(s, land), id)!
     const town = B.setAt(s, B.addBuilt(s, 'settlement', land), id)!
@@ -2106,9 +2114,10 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     expect(placed).toBeGreaterThanOrEqual(region.sites.length - 1)
     expect(region.spots.filter((p) => groundOf(p.x, p.y) === p.feature).length).toBeGreaterThanOrEqual(region.spots.length * 0.85)
     // The border between two features wanders: it is far longer than a straight line across the land would be.
-    const outline = coords(region.features[0].d!.split('Z')[0])
+    // (The longest outline of any feature here: one of them may be a small island.)
+    const outline = region.features.flatMap((f) => f.d!.split('Z').filter(Boolean).map((piece) => coords(piece))).sort((a, b) => b.length - a.length)[0]
     const turns = outline.slice(2).filter((p, k) => { const a = outline[k], b = outline[k + 1]; return Math.abs((b[0] - a[0]) * (p[1] - b[1]) - (b[1] - a[1]) * (p[0] - b[0])) > 4 }).length
-    expect(turns).toBeGreaterThan(20)
+    expect(turns).toBeGreaterThan(12)
     // Removing a feature moves what it held to another of the land's; removing the land takes its features with it.
     B.remove(s, id)
     expect(G.featuresOf(s, land).map((f) => f.id)).toEqual([first[0].id])

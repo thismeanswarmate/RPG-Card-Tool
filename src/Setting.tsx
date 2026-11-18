@@ -802,6 +802,7 @@ function Gazetteer({ s }: { s: SettingData }) {
             {fs.map((f) => (
               <section key={f.id} id={`set-${f.id}`} className="entry nested feature">
                 <h5><Name id={f.id} s={s} /> <small>feature · {f.what.toLowerCase()}</small></h5>
+                <Picture id={f.id} s={s} />
                 <p className="feature-text">{featureText(s, f)}</p>
                 {editing && (
                   <div className="edit-row">
@@ -833,6 +834,7 @@ function Gazetteer({ s }: { s: SettingData }) {
     if (feature) return (
       <section className="entry nested feature">
         <h5><Name id={id} s={s} /> <small>feature · {feature.what.toLowerCase()} · in {s.names[feature.land]}</small></h5>
+        <Picture id={id} s={s} />
         <p className="feature-text">{featureText(s, feature)}</p>
         {(() => { const held = directlyIn(s, feature.land).filter((x) => featureAt(s, x) === feature.id).map((x) => s.names[x]); return held.length > 0 && <p className="hint">Here: {held.join(', ')}.</p> })()}
         <AddBar s={s} home={feature.land} land feature={feature.id} />

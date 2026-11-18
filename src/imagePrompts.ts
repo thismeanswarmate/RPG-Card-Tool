@@ -4,7 +4,7 @@
 import { describe } from './describe'
 import { cueText, rootOf, subtree } from './logic'
 import { detailParts, type DetailInst } from './lore'
-import { builtKind, builtText, drawnText, raceLooks, rootsOf, terrainOf, type Char, type Entity, type Setting } from './setting'
+import { builtKind, builtText, drawnText, featureText, raceLooks, rootsOf, terrainOf, type Char, type Entity, type Setting } from './setting'
 import { cardsOf } from './store'
 
 const CARDS = cardsOf({ custom: [] })
@@ -118,6 +118,13 @@ export function imageSpec(s: Setting, id: string): ImageSpec {
     const lands = [...new Set(rootsOf(s).map((r) => terrainOf(s, r).toLowerCase()))].slice(0, 5)
     return done(`A sweeping aerial vista of a wide land made up of ${lands.join(', ')}, stretching to the horizon.`, WIDE)
   }
+  const feature = s.features?.find((f) => f.id === id)
+  if (feature) {
+    // A feature: the formation itself, in the land it lies in, with what is said of it and no names.
+    const what = feature.what.toLowerCase()
+    const told = featureText({ names: { ...s.names, [id]: /s$/.test(what) ? 'they' : 'it', [feature.land]: 'the land' } }, feature)
+    return done(`A wide landscape view of ${/s$/.test(what) ? what : an(what)} ${where(s, feature.land)}. ${told}`, WIDE)
+  }
   if (s.board[id]?.parent) {
     // A site: the thing itself up close, in the land it stands in.
     const kind = cueText(CARDS, s.board[id]).toLowerCase()
@@ -171,6 +178,7 @@ export function imageSpec(s: Setting, id: string): ImageSpec {
 /** Everything in a setting that can have a picture, in reading order. */
 export const imageIds = (s: Setting) => [
   'world', ...rootsOf(s), ...Object.keys(s.board).filter((id) => s.board[id].parent && CARDS[id].type === 'site'),
+  ...(s.features ?? []).map((f) => f.id),
   ...s.entities.map((e) => e.id), ...s.people.map((c) => c.id), ...(s.built ?? []).map((b) => b.id), ...(s.drawn ?? []).map((d) => d.id),
 ]
 
