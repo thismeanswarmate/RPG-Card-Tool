@@ -660,7 +660,12 @@ function Gazetteer({ s }: { s: SettingData }) {
       setPicked(landFor(id))
       // Anything folded away opens, and the panel turns to the thing itself.
       if (!document.getElementById(`set-${id}`)) keep(new Set())
-      setTimeout(() => (document.getElementById(`set-${id}`) ?? document.querySelector('.mapview-panel'))?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80)
+      // The page itself never moves. Where the panel scrolls by itself, beside the map, it turns to the thing.
+      setTimeout(() => {
+        const panel = document.querySelector<HTMLElement>('.mapview-panel'), el = document.getElementById(`set-${id}`)
+        if (!panel || getComputedStyle(panel).overflowY !== 'auto') return
+        panel.scrollTo({ top: el && panel.contains(el) ? panel.scrollTop + el.getBoundingClientRect().top - panel.getBoundingClientRect().top - 8 : 0, behavior: 'smooth' })
+      }, 80)
     }
     return () => { showInPanel = null }
   })
