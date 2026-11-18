@@ -9,7 +9,7 @@ import { STORY_CARDS } from './story'
 import { cardOf, draw as drawCard, fill as fillCards } from './cardTool'
 import { emblemFrom, ICONS, tidy, type EmblemSpec } from './emblem'
 import { glyphFor, type Glyph } from './mapgen'
-import { ageNames, SIDES, beyondOf, coastal, rename, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, hasCapital, type Side, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
+import { ageNames, SIDES, beyondOf, coastal, house, rename, decksOf, DEFAULT_ANSWERS, DRAWN_DEF, hasCapital, type Side, drawnPacks, weave, type Drawn, type Built, type Char, type Entity, type Setting } from './setting'
 import { rollAll as rollSettlement, rollType, stepsFor as settlementSteps, TYPES as SETTLEMENT_TYPES } from './settlement'
 import { cardsOf } from './store'
 import { landOf, misfit, scaleOf, sideNearness, weighted } from './terrain'
@@ -44,7 +44,16 @@ function unused(s: Setting, type: CardType) {
 }
 
 /** A new feature for a land, of a kind that suits it. Returns its id. */
-export const addFeature = (s: Setting, land: string) => weave(s).feature(land)?.id
+export function addFeature(s: Setting, land: string) {
+  const id = weave(s).feature(land)?.id
+  house(s)
+  return id
+}
+/** Put something in a feature of its land. */
+export function setAt(s: Setting, id: string | undefined, feature: string) {
+  if (id && s.features?.some((f) => f.id === feature)) (s.at ??= {})[id] = feature
+  return id
+}
 /** The kinds of feature a land could have, with the one it has first. */
 export const featureOptions = (s: Setting, id: string): string[] => {
   const f = s.features?.find((x) => x.id === id)
@@ -126,8 +135,11 @@ export function addPlace(s: Setting): string | undefined {
   }
   s.board[id] = { id, active: rand(CARDS[id].cues.length), x, y, order: Object.values(s.board).reduce((n, p) => Math.max(n, p.order), 0) + 1 }
   weave(s).name(id, { kind: 'land', tongue, base: cueText(CARDS, s.board[id]).toLowerCase() })
+  // A land holds only features: it arrives with one, and its first site lies there.
+  weave(s).feature(id)
   addSite(s, id)
   dress(s, id)
+  house(s)
   return id
 }
 
@@ -452,6 +464,9 @@ export function remove(s: Setting, id: string) {
   s.built = (s.built ?? []).filter((b) => !gone.has(b.id))
   s.drawn = (s.drawn ?? []).filter((d) => !gone.has(d.id))
   if (s.features) s.features = s.features.filter((f) => !gone.has(f.id))
+  if (s.at) for (const id of Object.keys(s.at)) if (gone.has(id) || gone.has(s.at[id])) delete s.at[id]
+  // What stood in a feature that is gone moves to another of the land's.
+  house(s)
   if (s.mentioned) s.mentioned = s.mentioned.filter((x) => !gone.has(x.id) && !gone.has(x.owner))
   for (const d of s.drawn) if (d.race && gone.has(d.race)) delete d.race
   const history = s.drawn.some((d) => d.tool === 'history')

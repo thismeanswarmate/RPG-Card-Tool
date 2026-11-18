@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { generateSetting, rename, type Answers, type Setting } from './setting'
+import { generateSetting, house, rename, type Answers, type Setting } from './setting'
 import { newManual } from './settingBuild'
 
 interface Settings {
@@ -36,7 +36,7 @@ export const useSettings = create<Settings>()(
       }),
       edit: (change) => set((s) => {
         const setting = s.settings.find((x) => x.id === s.current)
-        if (setting) change(setting)
+        if (setting) { change(setting); house(setting) }
       }),
       select: (id) => set((s) => { s.current = id }),
       remove: (id) => set((s) => {

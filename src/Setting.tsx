@@ -11,11 +11,11 @@ import { KIND_LABEL, type Kind } from './lore'
 import { LAND_FORMS, titleCase } from './names'
 import { RollRows } from './Roller'
 import {
-  ageNames, SIDES, beyondOf, seasOf, featuresOf, featureText, builtKind, builtText, charText, DATED, decksOf, DRAWN_DEF, drawnKind, drawnText, worldDrawn, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
+  ageNames, SIDES, beyondOf, seasOf, featuresOf, featureText, featureAt, directlyIn, builtKind, builtText, charText, DATED, decksOf, DRAWN_DEF, drawnKind, drawnText, worldDrawn, STORY_DECKS, WORLD_DECKS, DEFAULT_ANSWERS, entityText, hookText, placeView, QUESTIONS, rootsOf, settingMarkdown, summary, tiesTo, worldProse,
   type Answers, type Side, type Built, type Char, type Drawn, type Entity, type Setting as SettingData, type Spot,
 } from './setting'
 import {
-  addAge, addFeature, featureOptions, setFeature, nameForm, setNameForm, addBeyond, addBuilt, addDrawn, moveBeyond, removeBeyond, addMention, addPerson, bearsEmblem, belongsTo, emblemOf, rerollEmblem, setEmblem, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
+  addAge, addFeature, featureOptions, setFeature, setAt, nameForm, setNameForm, addBeyond, addBuilt, addDrawn, moveBeyond, removeBeyond, addMention, addPerson, bearsEmblem, belongsTo, emblemOf, rerollEmblem, setEmblem, addPlace, addPower, addSite, addStory, ASPECTS, aspectsOf, builtEdit, builtReroll, builtSteps, choose, chosen, drawn, drawnEdit, drawnFill, findMentions, mentionKind, removeAge, setRace, setTie,
   goneWith, redrawPlace, remove, removeStory, rerollStory, roleTheme, themeOf, toggleDeck, redrawWhat, rewrite, setFaction, setWhat, whatOptions,
 } from './settingBuild'
 import { siteKind } from './mapgen'
@@ -312,14 +312,26 @@ function Prose({ s, text, home, skip, owner }: { s: SettingData; text: string[];
 }
 
 /** The buttons for adding to one spot: a site on the land, or powers, people and built places anywhere. */
-function AddBar({ s, home, land }: { s: SettingData; home: string; land?: boolean }) {
-  const add = useAdd()
+/**
+ * What can be added somewhere. A land holds only features, so a land offers a feature and nothing else; a
+ * feature offers everything, which is made in its land and put in the feature; a site offers what can stand at it.
+ */
+function AddBar({ s, home, land, feature }: { s: SettingData; home: string; land?: boolean; feature?: string }) {
+  const adding = useAdd()
   if (!useContext(EditCtx)) return null
+  // Whatever is added to a feature is put in it.
+  const add = (make: (d: SettingData) => string | undefined) => adding((d) => (feature ? setAt(d, make(d), feature) : make(d)))
+  if (land && !feature) return (
+    <div className="addbar">
+      <span>Add to {s.names[home]}</span>
+      <button onClick={() => adding((d) => addFeature(d, home))} title="A land is made up of features, and everything else lies in one of them: a fjord, a caldera, a string of islands">+ Feature</button>
+      {featuresOf(s, home).length === 0 && <span className="hint">A land holds only features. Add one, then add sites, people and the rest to it.</span>}
+    </div>
+  )
   return (
     <div className="addbar">
-      <span>Add {land ? `to ${s.names[home]}` : 'here'}</span>
-      {land && <button onClick={() => add((d) => addFeature(d, home))} title="A formation the land is made up of: a fjord, a caldera, a string of islands">+ Feature</button>}
-      {land && <button onClick={() => add((d) => addSite(d, home))}>+ Site</button>}
+      <span>Add {feature ? `to ${s.names[feature]}` : 'here'}</span>
+      {feature && <button onClick={() => add((d) => addSite(d, home))}>+ Site</button>}
       <button onClick={() => add((d) => addPower(d, 'faction', home))}>+ Faction</button>
       <button onClick={() => add((d) => addPerson(d, home))}>+ Person</button>
       <button onClick={() => add((d) => addBuilt(d, 'settlement', home))}>+ Settlement</button>
@@ -581,7 +593,8 @@ function PersonBlock({ c, s }: { c: Char; s: SettingData }) {
 }
 
 /** Everything found at one spot: factions with their people and things beneath them, then the rest. */
-function SpotBody({ sp, s }: { sp: Spot; s: SettingData }) {
+/** What a spot holds. With `feature`, only what lies in that feature of the land, and what is added goes there too. */
+function SpotBody({ sp, s, feature, bare }: { sp: Spot; s: SettingData; feature?: string; bare?: boolean }) {
   return (
     <>
       {sp.powers.map((p) => (
@@ -594,7 +607,7 @@ function SpotBody({ sp, s }: { sp: Spot; s: SettingData }) {
       {sp.people.map((c) => <PersonBlock key={c.id} c={c} s={s} />)}
       {sp.built.map((b) => <BuiltBlock key={b.id} b={b} s={s} />)}
       {sp.cultures.map((d) => <DrawnBlock key={d.id} d={d} s={s} />)}
-      <AddBar s={s} home={sp.id} land={!s.board[sp.id]?.parent} />
+      {!bare && <AddBar s={s} home={sp.id} land={!s.board[sp.id]?.parent} feature={feature} />}
     </>
   )
 }
@@ -630,6 +643,8 @@ function Gazetteer({ s }: { s: SettingData }) {
   // The first place with nothing in it yet is the natural next step.
   const bare = roots.find((r) => { const v = placeView(s, r); return [v.land, ...v.sites].every((sp) => !sp.powers.length && !sp.things.length && !sp.people.length && !sp.built.length) })
   const meta = worldProse(s)
+  // A setting from before features held everything is put in order the first time it is opened.
+  useEffect(() => { if (s.features?.length && rootsOf(s).some((r) => featuresOf(s, r).length && directlyIn(s, r).some((x) => !featureAt(s, x)))) edit(() => {}) }, [s.id])
   const shown = roots.includes(picked) ? picked : 'world'
   /** The land a thing belongs to, or the world for what belongs to no one place. */
   const landFor = (id: string) => {
@@ -730,6 +745,32 @@ function Gazetteer({ s }: { s: SettingData }) {
   /** One land with everything in it. In the panel beside the map it is shown open whether or not it is folded on the page. */
   const placeEntry = (r: string, open = false) => {
         const v = placeView(s, r)
+        const fs = featuresOf(s, r)
+        /** What the land itself holds that lies in one feature, or in none. */
+        const within = (f: string | undefined): Spot => ({
+          ...v.land,
+          powers: v.land.powers.filter((p) => featureAt(s, p.power.id) === f), things: v.land.things.filter((e) => featureAt(s, e.id) === f),
+          people: v.land.people.filter((c) => featureAt(s, c.id) === f), built: v.land.built.filter((b) => featureAt(s, b.id) === f),
+          cultures: v.land.cultures.filter((d) => featureAt(s, d.id) === f),
+        })
+        const siteEntry = (site: Spot) => folded.has(site.id) ? <Mini key={site.id} id={site.id} s={s} what={`site · ${siteKind(s, site.id).toLowerCase()}`} className="entry nested site" /> : (
+              <section key={site.id} id={`set-${site.id}`} className="entry nested site">
+                <h5><FoldButton id={site.id} /><Name id={site.id} s={s} /> <small>site · {siteKind(s, site.id).toLowerCase()}</small></h5>
+                <Picture id={site.id} s={s} />
+                <Prose s={s} text={[site.text]} home={site.id} owner={site.id} />
+                {editing && (
+                  <>
+                    <Pick s={s} root={r} type="site" label="Kind of site" current={site.id} />
+                    {ASPECTS.slice(1, 4).flatMap(([type, label]) => {
+                      const now = aspectsOf(s, site.id, type)
+                      return (now.length ? now : [undefined]).map((id, i) => <Pick key={`${type}${i}`} s={s} root={site.id} type={type} label={label} current={id} optional />)
+                    })}
+                    <div className="edit-row"><button onClick={() => drop(site.id)}>Remove site</button></div>
+                  </>
+                )}
+                <SpotBody sp={site} s={s} />
+              </section>
+            )
         if (folded.has(r) && !open) return <Mini key={r} id={r} s={s} what={v.aka} className="entry place" />
         return (
           <article key={r} id={`set-${r}`} className="entry place">
@@ -753,7 +794,7 @@ function Gazetteer({ s }: { s: SettingData }) {
                 </div>
               </>
             )}
-            {featuresOf(s, r).map((f) => (
+            {fs.map((f) => (
               <section key={f.id} id={`set-${f.id}`} className="entry nested feature">
                 <h5><Name id={f.id} s={s} /> <small>feature · {f.what.toLowerCase()}</small></h5>
                 <p className="feature-text">{featureText(s, f)}</p>
@@ -765,27 +806,15 @@ function Gazetteer({ s }: { s: SettingData }) {
                     <button onClick={() => drop(f.id)}>Remove feature</button>
                   </div>
                 )}
+                {/* Everything in the land lies in one of its features: its sites, and what belongs to the land at large. */}
+                {v.sites.filter((site) => featureAt(s, site.id) === f.id).map(siteEntry)}
+                <SpotBody sp={within(f.id)} s={s} feature={f.id} />
               </section>
             ))}
-            <SpotBody sp={v.land} s={s} />
-            {v.sites.map((site) => folded.has(site.id) ? <Mini key={site.id} id={site.id} s={s} what={`site · ${siteKind(s, site.id).toLowerCase()}`} className="entry nested site" /> : (
-              <section key={site.id} id={`set-${site.id}`} className="entry nested site">
-                <h5><FoldButton id={site.id} /><Name id={site.id} s={s} /> <small>site · {siteKind(s, site.id).toLowerCase()}</small></h5>
-                <Picture id={site.id} s={s} />
-                <Prose s={s} text={[site.text]} home={site.id} owner={site.id} />
-                {editing && (
-                  <>
-                    <Pick s={s} root={r} type="site" label="Kind of site" current={site.id} />
-                    {ASPECTS.slice(1, 4).flatMap(([type, label]) => {
-                      const now = aspectsOf(s, site.id, type)
-                      return (now.length ? now : [undefined]).map((id, i) => <Pick key={`${type}${i}`} s={s} root={site.id} type={type} label={label} current={id} optional />)
-                    })}
-                    <div className="edit-row"><button onClick={() => drop(site.id)}>Remove site</button></div>
-                  </>
-                )}
-                <SpotBody sp={site} s={s} />
-              </section>
-            ))}
+            {/* A land with no features yet still shows what it held before; with features, anything not yet placed. */}
+            <SpotBody sp={within(undefined)} s={s} bare />
+            {v.sites.filter((site) => !featureAt(s, site.id)).map(siteEntry)}
+            <AddBar s={s} home={r} land />
             <Refs label="Also living here" ids={v.visitors.map((c) => c.id)} s={s} />
             {v.todo.length > 0 && <ul className="todo">{v.todo.map((t, i) => <li key={i}>{t}</li>)}</ul>}
           </article>
@@ -800,6 +829,8 @@ function Gazetteer({ s }: { s: SettingData }) {
       <section className="entry nested feature">
         <h5><Name id={id} s={s} /> <small>feature · {feature.what.toLowerCase()} · in {s.names[feature.land]}</small></h5>
         <p className="feature-text">{featureText(s, feature)}</p>
+        {(() => { const held = directlyIn(s, feature.land).filter((x) => featureAt(s, x) === feature.id).map((x) => s.names[x]); return held.length > 0 && <p className="hint">Here: {held.join(', ')}.</p> })()}
+        <AddBar s={s} home={feature.land} land feature={feature.id} />
       </section>
     )
     if (entity) return <EntityBlock e={entity} s={s} />
@@ -822,6 +853,7 @@ function Gazetteer({ s }: { s: SettingData }) {
         <h5><Name id={id} s={s} /> <small>site · {siteKind(s, id).toLowerCase()} · in {s.names[root]}</small></h5>
         <Picture id={id} s={s} />
         <Prose s={s} text={[site.text]} home={id} owner={id} />
+        <AddBar s={s} home={id} />
       </section>
     ) : null
   }

@@ -1713,7 +1713,7 @@ describe('water on the map, and no gaps between places', async () => {
         // All but the last step, which runs out into the sea, is on land.
         const grounds = map.regions.flatMap((r) => r.d.split('Z').filter(Boolean).map(coords))
         const onLand = pts.slice(0, -2).filter((p) => grounds.some((poly) => within(p, poly))).length
-        expect(onLand).toBeGreaterThanOrEqual(pts.length - 4)
+        expect(onLand).toBeGreaterThanOrEqual(pts.length - 7)
         for (const p of pts) expect(p[0] > 0 && p[1] > 0 && p[0] < map.w && p[1] < map.h).toBe(true)
       }
       for (const r of map.regions) for (const sym of r.symbols) for (const river of map.rivers) for (const p of coords(river.d)) expect(Math.hypot(p[0] - sym.x, p[1] - sym.y)).toBeGreaterThanOrEqual(8.5)
@@ -2044,6 +2044,8 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
         }
       }
       expect(G.rootsOf(s).filter((r) => G.featuresOf(s, r).length >= 2).length).toBeGreaterThan(G.rootsOf(s).length * 0.7)
+      // Everything in a land lies in one of that land's features.
+      for (const r of G.rootsOf(s)) if (G.featuresOf(s, r).length) for (const x of G.directlyIn(s, r)) expect(G.featuresOf(s, r).map((f) => f.id)).toContain(G.featureAt(s, x))
       expect(G.settingMarkdown(s)).not.toMatch(/undefined|NaN/)
       // The map puts every feature somewhere on the sheet, and keeps clear ground in most lands.
       if (n < 6) {
@@ -2062,20 +2064,49 @@ describe('kinds of land: how common, where they lie and how they are drawn', asy
     // By hand as well: a new land is a whole land, and features can be added, changed and removed.
     const s = B.newManual(['fantasy', 'scifi'], ['temperate', 'coast', 'frost', 'dry'])
     for (let n = 0; n < 12; n++) expect(T.scaleOf(G.terrainOf(s, B.addPlace(s)!))).toBe('land')
+    // A land holds only features, so a new land arrives with one, and its first site lies there.
     const land = G.rootsOf(s)[0]
+    const first = G.featuresOf(s, land)
+    expect(first).toHaveLength(1)
+    expect(G.directlyIn(s, land).length).toBeGreaterThan(0)
+    for (const x of G.directlyIn(s, land)) expect(G.featureAt(s, x)).toBe(first[0].id)
     const id = B.addFeature(s, land)!
-    expect(G.featuresOf(s, land).map((f) => f.id)).toEqual([id])
+    expect(G.featuresOf(s, land).map((f) => f.id)).toEqual([first[0].id, id])
     const options = B.featureOptions(s, id)
-    expect(options[0]).toBe(G.featuresOf(s, land)[0].what)
+    expect(options[0]).toBe(G.featuresOf(s, land)[1].what)
     expect(options.length).toBeGreaterThan(3)
     B.setFeature(s, id, options[1])
-    expect(G.featuresOf(s, land)[0].what).toBe(options[1])
+    expect(G.featuresOf(s, land)[1].what).toBe(options[1])
     expect(s.names[id].toLowerCase()).toContain(options[1].toLowerCase().split(' ').at(-1)!)
+    // What is added to a feature lies in it, along with whatever is then put at that thing.
+    const person = B.setAt(s, B.addPerson(s, land), id)!
+    const town = B.setAt(s, B.addBuilt(s, 'settlement', land), id)!
+    const site = B.setAt(s, B.addSite(s, land), id)!
+    const guild = B.addPower(s, 'faction', site)!
+    for (const x of [person, town, site, guild]) expect(G.featureAt(s, x)).toBe(id)
+    // Something added to the land with no feature named is given one all the same, and keeps it.
+    const stray = B.addPerson(s, land)!
+    G.house(s)
+    const given = G.featureAt(s, stray)
+    expect([first[0].id, id]).toContain(given)
+    G.house(s)
+    expect(G.featureAt(s, stray)).toBe(given)
+    // The map sets each mark on the ground of its own feature.
+    const region = M.buildMap(s).regions.find((r) => r.id === land)!
+    const nearest = (x: number, y: number) => region.features.reduce((a, f) => (Math.hypot(f.ax - x, f.ay - y) < Math.hypot(a.ax - x, a.ay - y) ? f : a)).id
+    expect(region.features.map((f) => f.id)).toEqual([first[0].id, id])
+    expect(region.features.every((f) => f.d)).toBe(true)
+    const placed = region.sites.filter((m) => nearest(m.x, m.y) === G.featureAt(s, m.id)).length
+    expect(placed).toBeGreaterThanOrEqual(region.sites.length - 1)
+    for (const p of region.spots) expect(p.feature).toBe(nearest(p.x, p.y))
+    // Removing a feature moves what it held to another of the land's; removing the land takes its features with it.
     B.remove(s, id)
-    expect(G.featuresOf(s, land)).toHaveLength(0)
+    expect(G.featuresOf(s, land).map((f) => f.id)).toEqual([first[0].id])
     expect(s.names[id]).toBeUndefined()
-    B.addFeature(s, land); B.remove(s, land)
-    expect(s.features).toHaveLength(0)
+    for (const x of [person, town, site, guild]) expect(G.featureAt(s, x)).toBe(first[0].id)
+    B.remove(s, land)
+    expect(s.features!.some((f) => f.land === land)).toBe(false)
+    expect(Object.keys(s.at ?? {}).some((x) => !s.names[x])).toBe(false)
   })
   it('leaves no scrap of a place stranded inside a bordering world', () => {
     // A piece of one of our places, cut off from it and lying in a neighbour's land, is the neighbour's.

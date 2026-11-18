@@ -12,7 +12,7 @@ import { typeKey } from './settlement'
 import { EXPANSION_COLORS } from './expansions'
 import { cueText, rootOf, subtree } from './logic'
 import { rngFrom, type Rng , TONGUES } from './names'
-import { rootsOf, terrainOf, type Setting , beyondOf, seasOf, featuresOf, seaBearings } from './setting'
+import { rootsOf, terrainOf, type Setting , beyondOf, seasOf, featuresOf, seaBearings, featureAt } from './setting'
 import { featureOf, type FeatureForm } from './features'
 import { landOf } from './terrain'
 import { TERRAIN_COLORS } from './starter'
@@ -57,9 +57,10 @@ export interface MapRegion {
   /** The features the land is made up of, each where it lies. */
   features: MapFeature[]
   /** Clear ground inside the land where other things can be shown when it is looked at closely. */
-  spots: { x: number; y: number }[]
+  spots: { x: number; y: number; feature?: string }[]
 }
-export interface MapFeature { id: string; name: string; what: string; form: FeatureForm; x: number; y: number }
+/** A feature of a land: where its name goes, the middle of the ground it takes up, and the outline of that ground where the land has more than one. */
+export interface MapFeature { id: string; name: string; what: string; form: FeatureForm; x: number; y: number; ax: number; ay: number; d?: string }
 export interface MapData {
   w: number
   h: number
@@ -523,6 +524,8 @@ export function buildMap(s: Setting): MapData {
   const lakes: { c: P; r: number; poly: P[]; region: number; feature?: string }[] = []
   /** The clear ground found in each land, for showing more when it is looked at closely. */
   const spotsOf: P[][] = []
+  /** The middle of the ground each feature takes up within its land, and where its name is lettered. */
+  const anchorsOf: { id: string; at: P; label: P }[][] = []
   const regions = roots.map((id, i): MapRegion => {
     // The place's outline: its largest patch of land, with any islands it holds besides.
     const patches = loopsOf(own, cols, rows, i).filter((l) => l.area > 2).sort((a, b) => b.area - a.area)
@@ -576,6 +579,41 @@ export function buildMap(s: Setting): MapData {
     const glyph = glyphFor(terrain)
     const base = (TERRAIN_COLORS[terrain] ?? EXPANSION_COLORS[terrain] ?? ['#8a8f7a'])[0]
 
+    // The land's features divide it between them: each has a middle, and the ground nearest that middle is its own.
+    // A lake is at its water; a feature of the coast lies where its bearing meets the shore, with its name out
+    // at the islands or lagoon themselves; the rest take the emptiest ground left.
+    const anchors: { id: string; at: P; label: P }[] = []
+    const off = (q: P) => Math.min(9e9, ...anchors.map((m) => Math.hypot(m.at[0] - q[0], m.at[1] - q[1])))
+    for (const { f } of feats[i]) {
+      const carve = carves[i].find((c) => c.id === f.id), pool = pools.find((p) => p.feature === f.id)
+      let at: P | undefined, label: P | undefined
+      if (pool) at = label = pool.c
+      else if (carve) {
+        // Out along the bearing to the last of the land, and a little back from the shore.
+        let reach = 0
+        while (reach < 900 && inside([cx + carve.ca * (reach + 8), cy + carve.sa * (reach + 8)], fine)) reach += 8
+        const back = Math.max(0, reach - 26)
+        at = [cx + carve.ca * back, cy + carve.sa * back]
+        if (carve.form !== 'mark') { const out = OUTWARD[carve.form] * span[i]; label = [Math.min(W - 60, Math.max(60, pts[i][0] + carve.ca * out)), Math.min(H - 40, Math.max(40, pts[i][1] + carve.sa * out))] }
+        if (back < 30 || off(at) < 46) at = undefined
+      }
+      if (!at) {
+        let best: P = [cx, cy + 46], most = -1
+        for (let tries = 0; tries < 60; tries++) {
+          const q: P = [bx0 + frng() * (bx1 - bx0), by0 + frng() * (by1 - by0)]
+          if (!inside(q, fine) || !inside([q[0], q[1] + 22], fine) || pools.some((p) => inside(q, p.poly))) continue
+          if (Math.abs(q[0] - cx) < 96 && q[1] > cy - 60 && q[1] < cy + 30) continue
+          const room = Math.min(off(q), 220)
+          if (room > most) { most = room; best = q }
+        }
+        at = best
+      }
+      anchors.push({ id: f.id, at, label: label ?? at })
+    }
+    anchorsOf[i] = anchors
+    /** Which feature's ground a spot is on. */
+    const groundOf = (q: P) => anchors.reduce((best, m) => (Math.hypot(m.at[0] - q[0], m.at[1] - q[1]) < Math.hypot(best.at[0] - q[0], best.at[1] - q[1]) ? m : best), anchors[0])?.id
+
     // Sites first, then the settlements and dangerous places that stand anywhere in the place.
     const within = new Set(subtree(s.board, id))
     const marks = new Map<string, MapSite['kind']>([
@@ -590,26 +628,31 @@ export function buildMap(s: Setting): MapData {
       Math.hypot(p.c[0] - at[0], p.c[1] - at[1]) < p.r * 1.7 + by && (inside(at, p.poly) || p.poly.some((q) => Math.hypot(q[0] - at[0], q[1] - at[1]) < by))
     hubs.forEach((sid, k) => {
       let a = turn + (k / Math.max(1, hubs.length)) * Math.PI * 2
-      let spot: P = [cx, cy]
+      // A mark stands on the ground of the feature it lies in, round that feature's middle; in a land with no
+      // features, round the land's own.
+      const home = anchors.find((m) => m.id === featureAt(s, sid))
+      const [ox, oy] = home ? home.at : [cx, cy]
+      const mine = (p: P) => !home || (groundOf(p) === home.id && !anchors.some((m) => Math.abs(m.label[0] - p[0]) < 44 && p[1] > m.label[1] - 12 && p[1] < m.label[1] + 30))
+      let spot: P = [ox, oy]
       let found = false
       // Step round the centre until the mark sits on its own land, clear of the place's lettering and of the marks before it.
       const half = s.names[id].length * 5.4 + 30
       const lettered = (p: P) => Math.abs(p[0] - cx) < half + s.names[sid].length * 2.4 && p[1] > cy - 52 && p[1] < cy + 22
       // Each ring is walked right round before moving to the next: the usual distance first, then nearer and farther.
-      const rings = [60, 42, 80, 100, 26, 122, 146]
+      const rings = home ? [46, 30, 64, 84, 104, 126, 150] : [60, 42, 80, 100, 26, 122, 146]
       for (let tries = 0; tries < rings.length * 14; tries++, a += 0.45) {
         const r = rings[Math.floor(tries / 14)]
-        spot = [cx + Math.cos(a) * r * 0.95, cy + Math.sin(a) * r + (Math.sin(a) >= 0 ? 16 : -10)]
+        spot = [ox + Math.cos(a) * r * 0.95, oy + Math.sin(a) * r + (Math.sin(a) >= 0 ? 16 : -10)]
         const crowded = sites.some((q) => Math.abs(q.x - spot[0]) < 46 && Math.abs(q.y - spot[1]) < 24)
           || pools.some((p) => wet(p, spot, 18))
-        if (inside(spot, fine) && inside([spot[0], spot[1] + 14], fine) && !lettered(spot) && !crowded) { found = true; break }
+        if (inside(spot, fine) && inside([spot[0], spot[1] + 14], fine) && !lettered(spot) && !crowded && mine(spot)) { found = true; break }
       }
       // On a small island or among many pools there may be no clear spot: then any dry ground close in will do,
       // and failing that the heart of the place, which is always land.
       if (!found) {
-        spot = [cx, cy]
+        spot = [ox, oy + (home ? 34 : 0)]
         search: for (const r of [34, 22, 48, 12, 64]) for (let t = 0; t < 12; t++) {
-          const b = a + (t / 12) * Math.PI * 2, at: P = [cx + Math.cos(b) * r, cy + Math.sin(b) * r]
+          const b = a + (t / 12) * Math.PI * 2, at: P = [ox + Math.cos(b) * r, oy + Math.sin(b) * r]
           if (inside(at, fine) && !pools.some((p) => wet(p, at, 8)) && !sites.some((q) => Math.hypot(q.x - at[0], q.y - at[1]) < 14)) { spot = at; break search }
         }
       }
@@ -658,32 +701,29 @@ export function buildMap(s: Setting): MapData {
     if (out) shores.push({ p: [(cx - PADC) * g + g / 2, (cy - PADC) * g + g / 2], j, out })
   }
 
-  // Where each feature lies. A lake is where its water was put; islands, a ring, a lagoon and sea inlets lie out
-  // along their bearing; a place on the coast takes the stretch of shore nearest its bearing; anything inland
-  // takes the next piece of clear ground.
+  // The ground each feature takes up: every cell of the land goes to the feature whose middle is nearest, and the
+  // outline of each share is traced as the land's own was. Clear ground is marked with the feature it lies in.
+  const share = new Int16Array(cols * rows).fill(-1)
+  const shareIds: string[] = []
   regions.forEach((r, i) => {
-    const free = [...spotsOf[i]]
-    const placed: P[] = []
-    const roomy = (q: P) => placed.every((m) => Math.hypot(m[0] - q[0], m[1] - q[1]) > 40) && !(Math.abs(q[0] - r.x) < 90 && q[1] > r.y - 56 && q[1] < r.y + 26)
-    const spot = (): P => { const k = free.findIndex(roomy); return k < 0 ? [r.x, r.y + 40 + placed.length * 14] : free.splice(k, 1)[0] }
-    for (const { f, kind } of feats[i]) {
-      const carve = carves[i].find((c) => c.id === f.id)
-      const lake = lakes.find((l) => l.feature === f.id)
-      let at: P
-      if (lake) at = lake.c
-      else if (carve && carve.form !== 'mark') {
-        const out = OUTWARD[carve.form] * span[i]
-        at = [Math.min(W - 60, Math.max(60, pts[i][0] + carve.ca * out)), Math.min(H - 40, Math.max(40, pts[i][1] + carve.sa * out))]
-      } else if (carve) {
-        const mine = shores.filter((x) => x.j === i && roomy([x.p[0] - x.out[0] * 14, x.p[1] - x.out[1] * 14]))
-        const turnTo = (x: P) => Math.abs(Math.atan2(Math.sin(Math.atan2(x[1] - pts[i][1], x[0] - pts[i][0]) - carve.ang), Math.cos(Math.atan2(x[1] - pts[i][1], x[0] - pts[i][0]) - carve.ang)))
-        const best = mine.sort((a, b) => turnTo(a.p) - turnTo(b.p))[0]
-        at = best ? [best.p[0] - best.out[0] * 14, best.p[1] - best.out[1] * 14] : spot()
-      } else at = spot()
-      placed.push(at)
-      r.features.push({ id: f.id, name: s.names[f.id] ?? f.what, what: f.what, form: kind.form, x: r1(at[0]), y: r1(at[1]) })
+    const anchors = anchorsOf[i]
+    const base = shareIds.length
+    anchors.forEach((m) => shareIds.push(m.id))
+    const nearest = (q: P) => anchors.reduce((best, m, k) => (Math.hypot(m.at[0] - q[0], m.at[1] - q[1]) < Math.hypot(anchors[best].at[0] - q[0], anchors[best].at[1] - q[1]) ? k : best), 0)
+    if (anchors.length > 1) for (let k = 0; k < own.length; k++) if (own[k] === i) {
+      const gx = k % cols, gy = (k - gx) / cols
+      share[k] = base + nearest([(gx - PADC) * g + g / 2, (gy - PADC) * g + g / 2])
     }
-    r.spots = free.filter(roomy).map(([x, y]) => ({ x: r1(x), y: r1(y) }))
+    feats[i].forEach(({ f, kind }, n) => {
+      const m = anchors[n]
+      const ground = anchors.length > 1 ? loopsOf(share, cols, rows, base + n).filter((l) => l.area > 2).map((l) => smooth(l.pts, g, PADC)) : []
+      r.features.push({
+        id: f.id, name: s.names[f.id] ?? f.what, what: f.what, form: kind.form, x: r1(m.label[0]), y: r1(m.label[1]), ax: r1(m.at[0]), ay: r1(m.at[1]),
+        ...(ground.length ? { d: ground.map(pathOf).join('') } : {}),
+      })
+    })
+    const taken = (q: P) => r.features.some((f) => Math.abs(f.x - q[0]) < 46 && q[1] > f.y - 12 && q[1] < f.y + 30)
+    r.spots = spotsOf[i].filter((q) => !taken(q)).map((q) => ({ x: r1(q[0]), y: r1(q[1]), ...(anchors.length ? { feature: anchors[nearest(q)].id } : {}) }))
   })
 
   // Rivers. Each rises inside a place — high country and wet country more often than dry — and runs down to the sea,

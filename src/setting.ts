@@ -83,6 +83,8 @@ export interface Setting {
   beyond?: Beyond[]
   /** The features each land is made up of: a fjord, a caldera, a string of islands. */
   features?: Feature[]
+  /** Which feature of its land each thing lies in: sites, and whatever else belongs to the land directly. What stands at a site goes where the site does. */
+  at?: Record<string, string>
   /** Things made from a word in a description: whose description, which word, and what it became. */
   mentioned?: { owner: string; word: string; id: string }[]
   /** Emblems changed by hand, by the id of the land, race or culture that bears them; the rest follow from the setting itself. */
@@ -105,6 +107,40 @@ export const featureText = (s: Pick<Setting, 'names'>, f: Feature) => {
   const text = featureOf(f.what).text.replace(/\{place\}/g, name).replace(/\{land\}/g, land)
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
+/** Everything that lies in a land directly, and so needs a feature of that land to stand in: its sites, and what is homed on the land itself. */
+export function directlyIn(s: Pick<Setting, 'board' | 'entities' | 'people' | 'built' | 'drawn'>, land: string): string[] {
+  return [
+    ...Object.values(s.board).filter((p) => p.parent === land && CARDS[p.id].type === 'site').map((p) => p.id),
+    ...[...s.entities, ...s.people, ...(s.built ?? []), ...(s.drawn ?? [])].filter((x) => x.home === land).map((x) => x.id),
+  ]
+}
+/** The feature a thing lies in: its own where it has one, or else that of the site it stands at. */
+export function featureAt(s: Pick<Setting, 'board' | 'entities' | 'people' | 'built' | 'drawn' | 'features' | 'at'>, id: string): string | undefined {
+  const home = s.board[id] ? id : [...s.entities, ...s.people, ...(s.built ?? []), ...(s.drawn ?? [])].find((x) => x.id === id)?.home
+  const own = s.at?.[id] ?? (home && home !== id ? s.at?.[home] : undefined)
+  return own && s.features?.some((f) => f.id === own) ? own : undefined
+}
+/**
+ * See that everything in a land stands in one of its features. A land holds only features, and they hold the
+ * rest; whatever has none yet, or has lost the one it had, is given one. The choice goes by the thing itself,
+ * so that it is the same each time.
+ */
+export function house(s: Setting) {
+  const features = s.features ?? []
+  if (!features.length) return
+  const at = (s.at ??= {})
+  for (const land of Object.values(s.board).filter((p) => !p.parent).map((p) => p.id)) {
+    const here = features.filter((f) => f.land === land)
+    if (!here.length) continue
+    for (const id of directlyIn(s, land)) {
+      if (here.some((f) => f.id === at[id])) continue
+      let h = 0
+      for (const ch of `${s.seed}:${id}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+      at[id] = here[h % here.length].id
+    }
+  }
+}
+
 /** The bearings from a land along which open sea lies beyond its coast. */
 export function seaBearings(s: Pick<Setting, 'board' | 'beyond' | 'names'>, land: string): number[] {
   const roots = Object.values(s.board).filter((p) => !p.parent), p = s.board[land]
@@ -582,6 +618,8 @@ export function generateSetting(answers: Answers, seed: string): Setting {
 
     // 8. What each land is made up of: two to four features, suited to its country and its coast.
     for (const r of w.roots()) for (let i = 0, n = 2 + Math.floor(rng() * 3); i < n; i++) w.feature(r)
+    // A land holds only its features, and everything else stands in one of them.
+    house(s)
     return s
   })
 }

@@ -4,7 +4,7 @@ import { useImages } from './imageStore'
 import { buildMap, washFor } from './mapgen'
 import { rootOf } from './logic'
 import { titleCase } from './names'
-import type { Setting } from './setting'
+import { featureAt, type Setting } from './setting'
 import { emblemOf } from './settingBuild'
 
 // The setting drawn as an ink map on parchment (or a blueprint, for science fiction).
@@ -100,10 +100,21 @@ export function SettingMap({ s, onPick, onOpen, selected, tools, compact }: { s:
   const leave = () => { if (onPick) onPick('world'); else setInner(null) }
   // What else the land holds, shown on its clear ground when it is looked at closely.
   const within = (home?: string) => !!near && !!home && !!s.board[home] && rootOf(s.board, home) === near.id
-  const tokens = near ? [
-    ...(on('powers') ? s.entities.filter((e) => within(e.home)).map((e) => ({ id: e.id, kind: e.kind === 'faction' ? 'faction' : 'thing' })) : []),
-    ...(on('people') ? s.people.filter((c) => within(c.home)).map((c) => ({ id: c.id, kind: 'person' })) : []),
-  ].slice(0, near.spots.length) : []
+  // Each stands on the ground of the feature it lies in, on the next clear spot there; with none left, on any.
+  const tokens = (() => {
+    if (!near) return []
+    const free = [...near.spots]
+    const all = [
+      ...(on('powers') ? s.entities.filter((e) => within(e.home)).map((e) => ({ id: e.id, kind: e.kind === 'faction' ? 'faction' : 'thing' })) : []),
+      ...(on('people') ? s.people.filter((c) => within(c.home)).map((c) => ({ id: c.id, kind: 'person' })) : []),
+    ]
+    return all.flatMap((k) => {
+      const f = featureAt(s, k.id)
+      const n = Math.max(0, free.findIndex((p) => !f || p.feature === f))
+      const at = free.splice(n, 1)[0]
+      return at ? [{ ...k, x: at.x, y: at.y }] : []
+    })
+  })()
   const lakes = on('lakes') ? map.lakes : [], rivers = on('rivers') ? map.rivers : []
   // On the world map only the great places show: the capital and the cities. The rest appear with their land.
   const shown = (site: (typeof map.regions)[number]['sites'][number], rid: string) => (rid === near?.id || site.rank === 'capital' || site.rank === 'city') && on(site.kind === 'settlement' ? `rank-${site.rank ?? 'town'}` : site.kind === 'peril' ? 'perils' : 'sites')
@@ -154,6 +165,7 @@ export function SettingMap({ s, onPick, onOpen, selected, tools, compact }: { s:
             <stop offset="100%" stopColor={t.edge} stopOpacity=".85" />
           </radialGradient>
           {/* The land, for keeping a river's banks off the sea at its mouth; and all fresh water, for keeping its shallows inside it. */}
+          {near && <clipPath id={`land-${near.id}`}><path d={near.d} /></clipPath>}
           <clipPath id="dry-land">{[...map.regions, ...map.beyond].map((r) => <path key={r.id} d={r.d} />)}</clipPath>
           <clipPath id="fresh-water">{rivers.map((r, i) => <path key={`r${i}`} d={r.shape} />)}{lakes.map((l, i) => <path key={`l${i}`} d={l.d} />)}</clipPath>
           {/* The land of the neighbouring worlds, for keeping the frontier line to where it belongs. */}
@@ -299,7 +311,13 @@ export function SettingMap({ s, onPick, onOpen, selected, tools, compact }: { s:
           )
         })}
 
-        {/* Seen closely, a land shows what it is made up of, and everyone and everything in it. */}
+        {/* Seen closely, a land shows what it is made up of, and everyone and everything in it. The ground of each
+            feature is bounded by a fine line, as the lands are on the world map. */}
+        {near && on('features') && (
+          <g fill="none" stroke={t.ink} strokeWidth={1.1 * z} strokeDasharray={`${3 * z} ${3 * z}`} opacity=".55" pointerEvents="none" clipPath={`url(#land-${near.id})`}>
+            {near.features.map((f) => f.d && <path key={f.id} d={f.d} />)}
+          </g>
+        )}
         {near && on('features') && near.features.map((f) => {
           const lake = map.lakes.find((l) => l.feature === f.id)
           const [x, y] = lake ? [lake.x, lake.y - 9] : [f.x, f.y]
@@ -311,8 +329,8 @@ export function SettingMap({ s, onPick, onOpen, selected, tools, compact }: { s:
             </g>
           )
         })}
-        {near && tokens.map((k, i) => {
-          const { x, y } = near.spots[i]
+        {near && tokens.map((k) => {
+          const { x, y } = k
           return (
             <g key={k.id} className="site" transform={about(x, y)} onClick={() => go(k.id)}>
               <g transform={`translate(${x} ${y})`} stroke={t.ink} strokeWidth="1" strokeLinejoin="round">
